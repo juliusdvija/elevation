@@ -96,6 +96,28 @@ selection.changed.on(() => renderer.setSelection({ faces: selection.faces, edges
 model.changed.on(() => selection.prune(model));
 viewport.canvas.addEventListener('pointerleave', () => feedback.clear());
 
+// Grid snap, remembered per browser.
+const GRID_SNAP_KEY = 'elevation.gridSnap';
+try {
+  inference.gridSnap = localStorage.getItem(GRID_SNAP_KEY) !== 'off';
+} catch {
+  // Storage unavailable: keep the default.
+}
+function syncGridSnap() {
+  shell.gridSnapToggle.setAttribute('aria-pressed', String(inference.gridSnap));
+  shell.gridSnapToggle.title = inference.gridSnap ? 'Snap to grid: on' : 'Snap to grid: off';
+}
+shell.gridSnapToggle.addEventListener('click', () => {
+  inference.gridSnap = !inference.gridSnap;
+  try {
+    localStorage.setItem(GRID_SNAP_KEY, inference.gridSnap ? 'on' : 'off');
+  } catch {
+    // Not persisted; the toggle still works for this session.
+  }
+  syncGridSnap();
+});
+syncGridSnap();
+
 // Drawings
 const drawings = new DrawingPanel(model);
 shell.workspace.append(drawings.el);

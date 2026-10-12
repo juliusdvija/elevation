@@ -31,6 +31,9 @@ const DIRECTION_RADIUS = 12; // px
 const ALIGN_RADIUS = 8; // px
 const MIN_DRAG = 16; // px from the start point before directions kick in
 const MAX_POINTS = 4;
+/** Spacing of the ground grid drawn in the viewport (mm). */
+export const GRID_SPACING = 1000;
+const GRID_RADIUS = 8; // px
 
 const AXES: { kind: SnapKind; dir: THREE.Vector3; color: number; arrow: string }[] = [
   { kind: 'axis-x', dir: new THREE.Vector3(1, 0, 0), color: theme.axisX, arrow: 'ArrowRight' },
@@ -38,7 +41,7 @@ const AXES: { kind: SnapKind; dir: THREE.Vector3; color: number; arrow: string }
   { kind: 'axis-z', dir: new THREE.Vector3(0, 0, 1), color: theme.axisZ, arrow: 'ArrowUp' },
 ];
 
-const SNAP_KINDS = new Set<Pick['kind']>(['vertex', 'guide-point', 'intersection', 'midpoint', 'edge', 'guide']);
+const SNAP_KINDS = new Set<Pick['kind']>(['vertex', 'origin', 'guide-point', 'intersection', 'midpoint', 'edge', 'guide']);
 
 export function kindColor(kind: SnapKind): number | undefined {
   if (kind === 'parallel' || kind === 'perpendicular') return PARALLEL_COLOR;
@@ -64,6 +67,8 @@ export class Inference {
   private lastDirection: Direction | null = null;
   /** Normal of the face a drawing started on, for "perpendicular to face". */
   startNormal: THREE.Vector3 | null = null;
+  /** Snap to the ground grid. */
+  gridSnap = true;
 
   constructor(
     private readonly model: Model,
@@ -107,7 +112,7 @@ export class Inference {
     const cursor = new THREE.Vector2(e.clientX, e.clientY);
     const px = (p: THREE.Vector3) => this.viewport.toScreen(p)?.distanceTo(cursor) ?? Infinity;
 
-    if (pick.kind === 'vertex' || pick.kind === 'midpoint' || pick.kind === 'guide-point' || pick.kind === 'intersection') {
+    if (pick.kind === 'vertex' || pick.kind === 'origin' || pick.kind === 'midpoint' || pick.kind === 'guide-point' || pick.kind === 'intersection') {
       if (!from || pick.point.distanceTo(from) > 1) this.remember(pick.point);
     }
     if (pick.kind === 'edge' || pick.kind === 'midpoint') {
@@ -151,10 +156,12 @@ export class Inference {
         this.lastDirection = { kind: best.kind, dir: best.dir, label: best.label };
         const line = { point: from, direction: best.dir };
         const aligned = this.alignOnLine(line, px);
+        const grid = aligned ? null : this.gridOnLine(line, best.point, px);
+        const base = best.label ?? labelFor(best.kind);
         return {
-          point: aligned?.point ?? best.point,
+          point: aligned?.point ?? grid ?? best.point,
           kind: best.kind,
-          label: aligned ? `${best.label ?? labelFor(best.kind)} · From Point` : best.label,
+          label: aligned ? `${base} · From Point` : grid ? `${base} · Grid` : best.label,
           pick,
           direction: best.dir,
           guides: aligned ? [aligned.guide] : [],
@@ -171,6 +178,8 @@ export class Inference {
           : { normal: new THREE.Vector3(0, 0, 1), d: 0 };
       const aligned = this.alignInPlane(ray, plane, px, from ? [from] : []);
       if (aligned) return { point: aligned.point, kind: 'from-point', pick, guides: aligned.guides };
+      const grid = this.gridPoint(pick.point, px);
+      if (grid) return { point: grid, kind: 'grid', pick, guides: [] };
       return { point: pick.point, kind: pick.kind, pick, guides: [] };
     }
     return null;
@@ -241,6 +250,42 @@ export class Inference {
       }
     }
     return best;
+  }
+
+  /** Nearest ground-grid intersection to a point on the ground, when close on screen. */
+  gridPoint(point: THREE.Vector3, px: (p: THREE.Vector3) => number): THREE.Vector3 | null {
+    if (!this.gridSnap || Math.abs(point.z) > 1e-3) return null;
+    const g = new THREE.Vector3(
+      Math.round(point.x / GRID_SPACING) * GRID_SPACING,
+      Math.round(point.y / GRID_SPACING) * GRID_SPACING,
+      0,
+    );
+    if (!this.gridVisible(g)) return null;
+    return px(g) < GRID_RADIUS ? g : null;
+  }
+
+  /** Where a line on the ground crosses a grid line, near `point`. */
+  private gridOnLine(line: Line3, point: THREE.Vector3, px: (p: THREE.Vector3) => number): THREE.Vector3 | null {
+    if (!this.gridSnap || Math.abs(line.point.z) > 1e-3 || Math.abs(line.direction.z) > 1e-9) return null;
+    if (!this.gridVisible(point)) return null;
+    let best: { point: THREE.Vector3; d: number } | null = null;
+    for (const axis of ['x', 'y'] as const) {
+      if (Math.abs(line.direction[axis]) < 1e-9) continue;
+      const target = Math.round(point[axis] / GRID_SPACING) * GRID_SPACING;
+      const t = (target - line.point[axis]) / line.direction[axis];
+      const q = line.point.clone().addScaledVector(line.direction, t);
+      const d = px(q);
+      if (d < GRID_RADIUS && (!best || d < best.d)) best = { point: q, d };
+    }
+    return best?.point ?? null;
+  }
+
+  /** Grid snapping only makes sense while grid cells are comfortably larger than the snap radius. */
+  private gridVisible(near: THREE.Vector3): boolean {
+    const a = this.viewport.toScreen(near);
+    const b = this.viewport.toScreen(near.clone().add(new THREE.Vector3(GRID_SPACING, 0, 0)));
+    const c = this.viewport.toScreen(near.clone().add(new THREE.Vector3(0, GRID_SPACING, 0)));
+    return !!a && !!b && !!c && Math.min(a.distanceTo(b), a.distanceTo(c)) > GRID_RADIUS * 3;
   }
 
   /** Axis directions, then directions relative to the reference edge and start face. */

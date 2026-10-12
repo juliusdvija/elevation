@@ -73,14 +73,16 @@ export function createRectangleTool(ctx: ToolContext): Tool {
     const pick = ctx.picker.pick(e.clientX, e.clientY);
 
     let result: InferredPoint | null = null;
-    if ((pick.kind === 'vertex' || pick.kind === 'midpoint' || pick.kind === 'edge' || pick.kind === 'intersection' || pick.kind === 'guide-point' || pick.kind === 'guide') && onPlane(plane, pick.point)) {
+    if ((pick.kind === 'vertex' || pick.kind === 'origin' || pick.kind === 'midpoint' || pick.kind === 'edge' || pick.kind === 'intersection' || pick.kind === 'guide-point' || pick.kind === 'guide') && onPlane(plane, pick.point)) {
       result = { point: pick.point, kind: pick.kind, pick, guides: [] };
     } else {
       const aligned = inference.alignInPlane(ray, plane, px, [corner!]);
       if (aligned) result = { point: aligned.point, kind: 'from-point', pick, guides: aligned.guides };
       else {
         const hit = ray.intersectPlane(new THREE.Plane(plane.normal.clone(), -plane.d), new THREE.Vector3());
-        if (hit) result = { point: hit, kind: 'face', label: '', pick, guides: [] };
+        const grid = hit && inference.gridPoint(hit, px);
+        if (grid) result = { point: grid, kind: 'grid', pick, guides: [] };
+        else if (hit) result = { point: hit, kind: 'face', label: '', pick, guides: [] };
       }
       if (result) {
         const d = result.point.clone().sub(corner!);

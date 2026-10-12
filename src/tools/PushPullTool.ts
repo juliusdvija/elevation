@@ -71,7 +71,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
       // Snap the distance to the height of an existing point (not the preview's own).
       const { anchor, normal, vertices } = face;
       const pick = ctx.picker.pick(e.clientX, e.clientY, { edges: false, vertexFilter: (v) => vertices.has(v) });
-      if (pick.kind === 'vertex' || pick.kind === 'guide-point' || pick.kind === 'intersection') {
+      if (pick.kind === 'vertex' || pick.kind === 'origin' || pick.kind === 'guide-point' || pick.kind === 'intersection') {
         const d = pick.point.clone().sub(anchor).dot(normal);
         const onNormal = anchor.clone().addScaledVector(normal, d);
         ctx.feedback.show({ point: pick.point, kind: pick.kind, pick, guides: [{ from: pick.point, to: onNormal }] });

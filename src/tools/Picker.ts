@@ -8,6 +8,7 @@ import { closestOnLineToRay, intersectLines, type Line3 } from './lines';
 export type Pick =
   | { kind: 'vertex'; id: Id; point: THREE.Vector3 }
   | { kind: 'guide-point'; id: Id; point: THREE.Vector3 }
+  | { kind: 'origin'; point: THREE.Vector3 }
   | { kind: 'intersection'; point: THREE.Vector3 }
   | { kind: 'midpoint'; id: Id; point: THREE.Vector3 }
   | { kind: 'edge'; id: Id; point: THREE.Vector3 }
@@ -65,7 +66,7 @@ export class Picker {
   }
 
   /**
-   * What the cursor points at, in priority order: vertex, guide point,
+   * What the cursor points at, in priority order: vertex, origin, guide point,
    * intersection with a guide, edge midpoint, edge, guide line, face, ground.
    * Geometry hidden behind a face is ignored.
    */
@@ -86,6 +87,9 @@ export class Picker {
         if (d < VERTEX_RADIUS && (!best || d < best.d) && visible(v.position)) best = { id: v.id, point: v.position.clone(), d };
       }
       if (best) return { kind: 'vertex', id: best.id, point: best.point };
+
+      const origin = new THREE.Vector3();
+      if (px(origin) < VERTEX_RADIUS && visible(origin)) return { kind: 'origin', point: origin };
     }
 
     if (guides) {

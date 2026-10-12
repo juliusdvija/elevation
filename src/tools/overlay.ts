@@ -43,6 +43,8 @@ export type SnapKind =
   | 'intersection'
   | 'guide'
   | 'guide-point'
+  | 'origin'
+  | 'grid'
   | 'square';
 
 const SNAP_LABELS: Record<SnapKind, string> = {
@@ -60,6 +62,8 @@ const SNAP_LABELS: Record<SnapKind, string> = {
   intersection: 'Intersection',
   guide: 'On Guide',
   'guide-point': 'Guide Point',
+  origin: 'Origin',
+  grid: 'Grid Point',
   square: 'Square',
 };
 

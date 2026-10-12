@@ -3,6 +3,7 @@ import {
   Box,
   Eraser,
   Expand,
+  Grid3x3,
   Hand,
   PanelRight,
   MousePointer2,
@@ -22,6 +23,7 @@ export interface ShellElements {
   workspace: HTMLElement;
   viewport: HTMLElement;
   drawingsToggle: HTMLButtonElement;
+  gridSnapToggle: HTMLButtonElement;
   toolButtons: Map<string, HTMLButtonElement>;
   viewButtons: Map<StandardView, HTMLButtonElement>;
   projection: HTMLButtonElement;
@@ -99,8 +101,9 @@ export function buildShell(
   projection.type = 'button';
   projection.title = 'Toggle perspective / parallel projection';
   const zoomExtents = iconButton(Expand, 'Zoom extents (Shift+Z)');
+  const gridSnapToggle = iconButton(Grid3x3, 'Snap to grid');
   const cameraGroup = el('div', 'group');
-  cameraGroup.append(projection, zoomExtents);
+  cameraGroup.append(projection, zoomExtents, gridSnapToggle);
 
   const undo = iconButton(Undo2, 'Undo (⌘Z)');
   const redo = iconButton(Redo2, 'Redo (⇧⌘Z)');
@@ -131,5 +134,5 @@ export function buildShell(
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
+  return { root, workspace, viewport, drawingsToggle, gridSnapToggle, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
 }

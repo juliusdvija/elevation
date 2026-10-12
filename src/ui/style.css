@@ -198,13 +198,13 @@ input:focus-visible {
 }
 
 .snap-marker {
+  /* A zero-size anchor at the snapped point; dot and label hang off it. */
   position: absolute;
   top: 0;
   left: 0;
+  width: 0;
+  height: 0;
   pointer-events: none;
-  display: flex;
-  align-items: center;
-  gap: 6px;
   --snap: #3f72c9;
 }
 
@@ -213,16 +213,21 @@ input:focus-visible {
 }
 
 .snap-marker i {
-  width: 10px;
-  height: 10px;
-  margin: -5px 0 0 -5px;
+  position: absolute;
+  left: -6px;
+  top: -6px;
+  width: 12px;
+  height: 12px;
+  box-sizing: border-box;
   border: 2px solid var(--snap);
   border-radius: 50%;
   background: var(--surface);
 }
 
 .snap-marker span:not(:empty) {
-  margin: 18px 0 0 4px;
+  position: absolute;
+  left: 12px;
+  top: 12px;
   padding: 2px 6px;
   border-radius: 4px;
   background: var(--surface);
@@ -246,6 +251,8 @@ input:focus-visible {
 .snap-marker[data-kind='intersection'] { --snap: #1d1d1b; }
 .snap-marker[data-kind='guide'],
 .snap-marker[data-kind='guide-point'] { --snap: #6f6d67; }
+.snap-marker[data-kind='origin'] { --snap: #2e9d4a; }
+.snap-marker[data-kind='grid'] { --snap: #8a8780; }
 .snap-marker[data-kind='square'] { --snap: #1aa3b8; }
 
 .drawings {
@@ -380,4 +387,21 @@ input:focus-visible {
     border-left: 0;
     border-top: 1px solid var(--line);
   }
+}
+
+.select-box {
+  position: absolute;
+  pointer-events: none;
+  border: 1px solid #2f6fde;
+  background: rgb(47 111 222 / 0.06);
+}
+
+.select-box[hidden] {
+  display: none;
+}
+
+.select-box[data-mode='crossing'] {
+  border-style: dashed;
+  background: rgb(79 154 90 / 0.06);
+  border-color: #4f9a5a;
 }

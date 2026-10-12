@@ -24,6 +24,13 @@ export class Selection {
     this.changed.emit();
   }
 
+  /** Adds several entities with a single change event. */
+  addAll(refs: EntityRef[]): void {
+    if (refs.length === 0) return;
+    for (const ref of refs) this.set(ref).add(ref.id);
+    this.changed.emit();
+  }
+
   toggle(ref: EntityRef): void {
     const set = this.set(ref);
     if (set.has(ref.id)) set.delete(ref.id);
