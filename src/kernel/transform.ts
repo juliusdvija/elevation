@@ -2,8 +2,8 @@ import * as THREE from 'three';
 import type { Face, Id, Model } from './Model';
 import { loopPairs } from './Model';
 import { healEdges, weldVertices } from './cleanup';
-import { splitEdgeAt } from './draw';
-import { canonicalPlane, EPS, planeFromPointNormal, projectOnSegment, samePlane, type Plane } from './math';
+import { splitEdge, splitEdgeAt } from './draw';
+import { canonicalPlane, closestBetweenSegments, EPS, planeFromPointNormal, projectOnSegment, samePlane, type Plane } from './math';
 import { newellNormal, rebuildPlane } from './faces';
 
 /** Vertices used by a set of faces and edges. */
@@ -73,6 +73,8 @@ export function copyEntities(model: Model, faces: Iterable<Id>, edges: Iterable<
   return created;
 }
 
+const MIN_TRIANGLE_AREA = 0.5; // mm²
+
 /** Whether all of a face's vertices lie in one plane. */
 function isPlanar(model: Model, face: Face): boolean {
   const points = model.faceLoops(face).flat().map((v) => model.position(v));
@@ -87,7 +89,7 @@ function isPlanar(model: Model, face: Face): boolean {
  * SketchUp). Coplanar triangles are merged back by healing. Returns the new
  * diagonal edges.
  */
-function foldFace(model: Model, face: Face): Id[] {
+function foldFace(model: Model, face: Face): { diagonals: Id[]; faces: Id[] } {
   const loops = model.faceLoops(face);
   const ids = loops.flat();
   const positions = ids.map((v) => model.position(v));
@@ -99,21 +101,38 @@ function foldFace(model: Model, face: Face): Id[] {
 
   model.removeFace(face.id);
   const diagonals: Id[] = [];
+  const created: Id[] = [];
+  const loopVertices = [...new Set(ids)];
   for (const [i, j, k] of triangles) {
-    const tri = [ids[i], ids[j], ids[k]];
-    for (const [a, b] of loopPairs(tri)) {
-      if (model.edgeBetween(a, b) === undefined) diagonals.push(model.addEdge(a, b));
-    }
-    const [a, b, c] = tri.map((v) => model.position(v));
-    let normal = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a)).normalize();
-    let outer = tri;
+    const [a, b, c] = [ids[i], ids[j], ids[k]].map((v) => model.position(v));
+    let normal = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+    // Skip slivers from collinear points: they cover no area.
+    if (normal.length() / 2 < MIN_TRIANGLE_AREA) continue;
+    normal.normalize();
+    let tri = [ids[i], ids[j], ids[k]];
     if (normal.dot(face.normal) < 0) {
       normal = normal.negate();
-      outer = [tri[0], tri[2], tri[1]];
+      tri = [tri[0], tri[2], tri[1]];
     }
-    if (normal.lengthSq() > 0) model.putFace({ outer, holes: [], normal });
+    // Keep vertices that lie on a triangle side in its loop, so no edge spans them.
+    const outer: Id[] = [];
+    for (const [p, q] of loopPairs(tri)) {
+      outer.push(p);
+      const P = model.position(p);
+      const Q = model.position(q);
+      const between = loopVertices
+        .filter((v) => v !== p && v !== q)
+        .map((v) => ({ v, ...projectOnSegment(model.position(v), P, Q) }))
+        .filter(({ t, distance }) => distance < EPS && t > 0 && t < 1)
+        .sort((x, y) => x.t - y.t);
+      outer.push(...between.map((x) => x.v));
+    }
+    for (const [p, q] of loopPairs(outer)) {
+      if (model.edgeBetween(p, q) === undefined) diagonals.push(model.addEdge(p, q));
+    }
+    created.push(model.putFace({ outer, holes: [], normal }));
   }
-  return diagonals;
+  return { diagonals, faces: created };
 }
 
 /**
@@ -124,9 +143,37 @@ function foldFace(model: Model, face: Face): Id[] {
  */
 export function settle(model: Model, vertices: Iterable<Id>): void {
   const survivors = weldVertices(model, vertices);
-
-  // A vertex landing on an edge splits it, and so does an edge sweeping over a vertex.
   const live = () => [...survivors].filter((v) => model.hasVertex(v));
+  const facesNear = () => {
+    const faces = new Set<Id>();
+    for (const v of live()) for (const f of model.facesAtVertex(v)) faces.add(f);
+    return faces;
+  };
+
+  // Fold faces that bent out of plane; refresh the normal of flat faces that tilted.
+  const healCandidates = new Set<Id>();
+  const folded = new Set<Id>();
+  for (const id of facesNear()) {
+    if (!model.hasFace(id)) continue;
+    const face = model.face(id);
+    if (!isPlanar(model, face)) {
+      const fold = foldFace(model, face);
+      for (const e of fold.diagonals) healCandidates.add(e);
+      for (const f of fold.faces) {
+        folded.add(f);
+        // Triangles may lie in a neighbour's plane and merge with it.
+        for (const e of model.faceEdges(model.face(f))) healCandidates.add(e);
+      }
+      continue;
+    }
+    const n = newellNormal(face.outer.map((v) => model.position(v)));
+    if (n.lengthSq() < 1e-12) continue;
+    n.normalize();
+    if (n.dot(face.normal) < 0) n.negate();
+    if (n.angleTo(face.normal) > 1e-9) model.putFace({ ...face, normal: n });
+  }
+
+  // A vertex landing on an edge splits it.
   for (const v of live()) {
     const p = model.position(v);
     for (const e of model.allEdges()) {
@@ -137,42 +184,55 @@ export function settle(model: Model, vertices: Iterable<Id>): void {
       }
     }
   }
-  for (const v of live()) {
-    for (const e of model.edgesAt(v)) {
-      if (!model.hasEdge(e)) continue;
-      const other = model.allVertices().find((w) => {
-        const edge = model.edge(e);
-        return w.id !== edge.a && w.id !== edge.b && onEdgeInterior(model, e, w.position);
-      });
-      if (other) splitEdgeAt(model, e, other.id);
-    }
-  }
 
-  // Fold faces that bent out of plane.
-  const healCandidates = new Set<Id>();
-  const facesNear = () => {
-    const faces = new Set<Id>();
-    for (const v of live()) for (const f of model.facesAtVertex(v)) faces.add(f);
-    return faces;
+  // Edges of the settled geometry (and fold diagonals): split at vertices lying
+  // on them and where they cross other edges, until nothing more needs splitting.
+  const queue = new Set<Id>(healCandidates);
+  for (const v of live()) for (const e of model.edgesAt(v)) queue.add(e);
+  const splitInto = (edge: { a: Id; b: Id }, w: Id) => {
+    survivors.add(w);
+    for (const piece of [model.edgeBetween(edge.a, w), model.edgeBetween(w, edge.b)]) {
+      if (piece === undefined) continue;
+      queue.add(piece);
+      healCandidates.add(piece);
+    }
   };
-  for (const id of facesNear()) {
-    if (!model.hasFace(id)) continue;
-    const face = model.face(id);
-    if (!isPlanar(model, face)) {
-      for (const e of foldFace(model, face)) healCandidates.add(e);
+  while (queue.size > 0) {
+    const e = queue.values().next().value as Id;
+    queue.delete(e);
+    if (!model.hasEdge(e)) continue;
+    const edge = model.edge(e);
+    const onIt = model.allVertices().find((w) => w.id !== edge.a && w.id !== edge.b && onEdgeInterior(model, e, w.position));
+    if (onIt) {
+      splitEdgeAt(model, e, onIt.id);
+      splitInto(edge, onIt.id);
       continue;
     }
-    // A flat face may have tilted: refresh its normal, keeping its side.
-    const n = newellNormal(face.outer.map((v) => model.position(v)));
-    if (n.lengthSq() < 1e-12) continue;
-    n.normalize();
-    if (n.dot(face.normal) < 0) n.negate();
-    if (n.angleTo(face.normal) > 1e-9) model.putFace({ ...face, normal: n });
+    const A = model.position(edge.a);
+    const B = model.position(edge.b);
+    for (const other of model.allEdges()) {
+      if (other.id === e || other.a === edge.a || other.a === edge.b || other.b === edge.a || other.b === edge.b) continue;
+      const C = model.position(other.a);
+      const D = model.position(other.b);
+      const hit = closestBetweenSegments(A, B, C, D);
+      if (hit.parallel || hit.distance >= EPS) continue;
+      const lengthAB = A.distanceTo(B);
+      const lengthCD = C.distanceTo(D);
+      const interior = (t: number, length: number) => t * length > EPS && (1 - t) * length > EPS;
+      if (!interior(hit.s, lengthAB) || !interior(hit.t, lengthCD)) continue;
+      const w = splitEdge(model, other.id, A.clone().lerp(B, hit.s));
+      splitEdgeAt(model, e, w);
+      splitInto(edge, w);
+      // The other edge's pieces may have been waiting in the queue themselves.
+      splitInto(other, w);
+      break;
+    }
   }
 
   // Recompute faces in each affected plane (keeps faces, splits or merges regions).
   const planes: Plane[] = [];
-  for (const id of facesNear()) {
+  for (const id of new Set([...facesNear(), ...folded])) {
+    if (!model.hasFace(id)) continue;
     const plane = canonicalPlane(model.facePlane(model.face(id)));
     if (!planes.some((p) => samePlane(p, plane))) planes.push(plane);
   }

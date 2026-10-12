@@ -130,6 +130,36 @@ function defaultNormal(plane: Plane): THREE.Vector3 {
 }
 
 /**
+ * Normal for a new face so it agrees with the faces that share its edges:
+ * on a consistently oriented surface, neighbours (in any plane) run a shared
+ * edge in opposite directions. The outer loop runs counter-clockwise around
+ * `plane.normal`, holes clockwise. Returns null when no neighbour decides it.
+ */
+function orientationFromNeighbours(model: Model, loops: Id[][], plane: Plane): THREE.Vector3 | null {
+  let votes = 0;
+  for (const [a, b] of loops.flatMap((loop) => loopPairs(loop))) {
+    const edge = model.edgeBetween(a, b);
+    if (edge === undefined) continue;
+    const faces = model.facesOfEdge(edge).map((id) => model.face(id));
+    for (const neighbour of faces) {
+      // A coplanar neighbour always counts; across planes only a lone
+      // neighbour does (with more faces on the edge it is ambiguous).
+      const coplanar = samePlane(model.facePlane(neighbour), plane);
+      if (!coplanar && faces.length !== 1) continue;
+      const weight = coplanar ? 2 : 1;
+      for (const l of model.faceLoops(neighbour)) {
+        for (const [x, y] of loopPairs(l)) {
+          if (x === a && y === b) votes -= weight; // same direction: we must flip
+          if (x === b && y === a) votes += weight;
+        }
+      }
+    }
+  }
+  if (votes === 0) return null;
+  return votes > 0 ? plane.normal.clone() : plane.normal.clone().negate();
+}
+
+/**
  * Splits a closed walk at edges it traverses twice (dangling edges, bridges
  * between an outer loop and an inner one) into simple cycles.
  */
@@ -285,7 +315,9 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
   const kept = new Set<Id>();
   for (const c of candidates) {
     const id = c.owner && heir.get(c.owner.id) === c ? c.owner.id : undefined;
-    const normal = c.owner ? c.owner.normal.clone() : defaultNormal(plane);
+    const normal = c.owner
+      ? c.owner.normal.clone()
+      : (orientationFromNeighbours(model, [c.region.loop, ...c.region.holes.map((h) => h.loop)], plane) ?? defaultNormal(plane));
     const flip = normal.dot(plane.normal) < 0;
     const outer = flip ? reverseLoop(c.region.loop) : c.region.loop;
     const holes = c.region.holes.map((h) => (flip ? reverseLoop(h.loop) : h.loop));

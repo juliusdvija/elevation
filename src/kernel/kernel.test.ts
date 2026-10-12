@@ -5,6 +5,7 @@ import { drawPolygon, drawSegments } from './draw';
 import { eraseEdges, eraseFaces } from './cleanup';
 import { pushPull } from './pushPull';
 import { faceArea } from './faces';
+import { validateModel } from './validate';
 
 const v = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
 
@@ -259,5 +260,47 @@ describe('push/pull next to a solid', () => {
     expect(volume(model)).toBe(18_000_000_000 + 1_500_000_000);
     // The porch floor merges with the building floor into one footprint.
     expect(model.allFaces().filter((f) => f.normal.z === -1).length).toBe(1);
+  });
+});
+
+describe('consistency found by fuzzing', () => {
+  const consistent = (model: Model) => validateModel(model, { orientation: true });
+
+  it('keeps faces consistently oriented with a lower block built against a wall', () => {
+    const model = new Model();
+    run(model, () => drawPolygon(model, rect(0, 0, 3000, 3000)));
+    run(model, () => pushPull(model, model.allFaces()[0].id, -2000));
+    run(model, () => drawPolygon(model, rect(3000, 0, 5000, 3000)));
+    const ground = model.allFaces().find((f) => f.normal.z === -1 && Math.round(faceArea(model, f)) === 6_000_000)!;
+    run(model, () => pushPull(model, ground.id, -1000));
+    expect(consistent(model)).toEqual([]);
+    expect(isClosedSolid(model)).toBe(true);
+    // The upper part of the shared wall stays; the part between the blocks goes.
+    const wall = model.allFaces().filter((f) => f.normal.x === 1 && model.position(f.outer[0]).x === 3000);
+    expect(wall.map((f) => Math.round(faceArea(model, f)))).toEqual([3_000_000]);
+  });
+
+  it('does not put a lid over a hole when pulling a face that has one', () => {
+    const model = new Model();
+    run(model, () => drawPolygon(model, rect(0, 0, 3000, 3000)));
+    run(model, () => pushPull(model, model.allFaces()[0].id, -1000));
+    run(model, () => drawPolygon(model, rect(1000, 1000, 2000, 2000, 1000)));
+    const hole = model.allFaces().find((f) => f.normal.z === 1 && Math.round(faceArea(model, f)) === 1_000_000)!;
+    run(model, () => pushPull(model, hole.id, -500));
+    const roof = model.allFaces().find((f) => f.normal.z === 1 && f.holes.length === 1)!;
+    run(model, () => pushPull(model, roof.id, 600));
+    expect(isClosedSolid(model)).toBe(true);
+    expect(consistent(model)).toEqual([]);
+    expect(validateModel(model)).toEqual([]);
+  });
+
+  it('removes the volume and its outline when pushing a face onto the opposite one', () => {
+    const model = new Model();
+    run(model, () => drawPolygon(model, rect(0, 0, 3000, 2000)));
+    run(model, () => pushPull(model, model.allFaces()[0].id, -2500));
+    const back = model.allFaces().find((f) => f.normal.y === 1)!;
+    run(model, () => pushPull(model, back.id, -2000));
+    expect(model.faceCount).toBe(0);
+    expect(model.edgeCount).toBe(0);
   });
 });

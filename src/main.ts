@@ -242,5 +242,6 @@ if (import.meta.env.DEV) {
     (await import('./dev/sample')).buildSample(doc);
     navigator.zoomExtents();
   };
-  Object.assign(window, { __elevation: { doc, model, viewport, picker, tools, selection, drawings, loadSample } });
+  const validate = async () => (await import('./kernel/validate')).validateModel(model);
+  Object.assign(window, { __elevation: { doc, model, viewport, picker, tools, selection, drawings, loadSample, validate } });
 }

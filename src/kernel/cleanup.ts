@@ -103,6 +103,20 @@ export function eraseEdges(model: Model, ids: Iterable<Id>): void {
   tidyVertices(model, touched);
 }
 
+/**
+ * Removes edges left without any face (e.g. between two solids that merged),
+ * except those in `keep` (lines that were already loose on purpose).
+ */
+export function removeBareEdges(model: Model, keep: ReadonlySet<Id>): void {
+  const touched = new Set<Id>();
+  for (const e of model.allEdges()) {
+    if (keep.has(e.id) || model.facesOfEdge(e.id).length > 0) continue;
+    model.removeEdge(e.id);
+    touched.add(e.a).add(e.b);
+  }
+  tidyVertices(model, touched);
+}
+
 export function eraseFaces(model: Model, ids: Iterable<Id>): void {
   for (const id of ids) if (model.hasFace(id)) model.removeFace(id);
 }

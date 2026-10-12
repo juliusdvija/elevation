@@ -1,12 +1,12 @@
 import * as THREE from 'three';
 import type { Face, Id, Model } from './Model';
 import { loopPairs } from './Model';
-import { healEdges } from './cleanup';
+import { healEdges, removeBareEdges } from './cleanup';
 import { settle } from './transform';
 import { insertSegment } from './draw';
 import { faceInteriorPoint, setFaceNormal, updateFaces } from './faces';
 import { pointInsideSolid } from './solid';
-import { EPS, canonicalPlane, planeFrame, pointInPolygon, to2D, distanceToPlane, isParallel, isPerpendicular, planeFromPointNormal, samePlane } from './math';
+import { EPS, canonicalPlane, planeFrame, pointInPolygon, projectOnSegment, to2D, distanceToPlane, isParallel, isPerpendicular, planeFromPointNormal, samePlane } from './math';
 
 /**
  * Push/Pull a face by `distance` along its normal (negative pushes in).
@@ -65,9 +65,12 @@ function moveFace(model: Model, face: Face, distance: number): boolean {
   }
 
   const offset = face.normal.clone().multiplyScalar(distance);
+  const looseBefore = new Set(model.allEdges().filter((e) => model.facesOfEdge(e.id).length === 0).map((e) => e.id));
   for (const v of vertices) model.moveVertex(v, model.position(v).clone().add(offset));
 
   settle(model, vertices);
+  // Pushing a face onto the opposite one removes the volume: drop its bare outline.
+  removeBareEdges(model, looseBefore);
   return true;
 }
 
@@ -85,14 +88,36 @@ function extrude(model: Model, face: Face, distance: number): void {
   // Moving into material cuts a recess; otherwise material is added.
   const cutting = ahead;
 
-  // Side walls keyed by plane, with the direction that points out of the material.
+  // Side walls: each base edge sweeps a quad; `outward` points out of the material.
   const sides = loops.flatMap((loop) =>
     loopPairs(loop).map(([a, b]) => {
-      const A = model.position(a);
-      const outward = model.position(b).clone().sub(A).cross(n).normalize();
-      return { plane: canonicalPlane(planeFromPointNormal(A, outward)), outward };
+      const A = model.position(a).clone();
+      const B = model.position(b).clone();
+      const outward = B.clone().sub(A).cross(n).normalize();
+      return { plane: canonicalPlane(planeFromPointNormal(A, outward)), outward, A, B };
     }),
   );
+  // The base outline, to recognise the cap (the base moved by `offset`) by position.
+  const baseFrame = planeFrame(model.facePlane(face));
+  const baseOuter = face.outer.map((v) => to2D(baseFrame, model.position(v)));
+  const baseHoles = face.holes.map((h) => h.map((v) => to2D(baseFrame, model.position(v))));
+  const capPlaneD = n.dot(model.position(face.outer[0])) + distance;
+  const inCap = (p: THREE.Vector3) => {
+    if (Math.abs(n.dot(p) - capPlaneD) > EPS) return false;
+    const q = to2D(baseFrame, p.clone().sub(offset));
+    return pointInPolygon(q, baseOuter) && !baseHoles.some((h) => pointInPolygon(q, h));
+  };
+
+  /** The side whose swept quad contains `p` (strictly between base and cap). */
+  const sideContaining = (p: THREE.Vector3) =>
+    sides.find((side) => {
+      if (Math.abs(side.outward.dot(p) - side.outward.dot(side.A)) > EPS) return false;
+      const t = p.clone().sub(side.A).dot(n) / distance;
+      if (t <= 1e-6 || t >= 1 - 1e-6) return false;
+      const base = p.clone().addScaledVector(n, -distance * t);
+      const { t: along, distance: off } = projectOnSegment(base, side.A, side.B);
+      return off < EPS && along > 0 && along < 1;
+    });
 
   // Existing faces in the side-wall planes, to spot walls built against them.
   const wallsBefore = model
@@ -103,14 +128,16 @@ function extrude(model: Model, face: Face, distance: number): void {
       const project = (loop: readonly Id[]) => loop.map((v) => to2D(frame, model.position(v)));
       return { normal: f.normal.clone(), frame, outer: project(f.outer), holes: f.holes.map(project) };
     });
-  const againstWall = (p: THREE.Vector3, normal: THREE.Vector3) =>
+  const inWallBefore = (p: THREE.Vector3, accept: (normal: THREE.Vector3) => boolean) =>
     wallsBefore.some((w) => {
-      if (w.normal.dot(normal) > -0.5 || Math.abs(w.frame.normal.dot(p) - w.frame.normal.dot(w.frame.origin)) > EPS) return false;
+      if (!accept(w.normal) || Math.abs(w.frame.normal.dot(p) - w.frame.normal.dot(w.frame.origin)) > EPS) return false;
       const q = to2D(w.frame, p);
       return pointInPolygon(q, w.outer) && !w.holes.some((h) => pointInPolygon(q, h));
     });
+  const againstWall = (p: THREE.Vector3, normal: THREE.Vector3) => inWallBefore(p, (w) => w.dot(normal) < -0.5);
 
   const facesBefore = new Set(model.allFaces().map((f) => f.id));
+  const looseBefore = new Set(model.allEdges().filter((e) => model.facesOfEdge(e.id).length === 0).map((e) => e.id));
   const created = new Set<Id>();
   const base = loops.map((loop) => loop.map((v) => model.position(v).clone()));
 
@@ -136,18 +163,35 @@ function extrude(model: Model, face: Face, distance: number): void {
   }
 
   for (const f of model.allFaces()) {
-    if (facesBefore.has(f.id)) continue;
+    const inside = faceInteriorPoint(model, f);
+    if (!inside) continue;
     if (isParallel(f.normal, n)) {
-      setFaceNormal(model, f.id, cap);
+      if (!inCap(inside)) {
+        // The cap's holes close into loops of new edges; those are openings, not faces.
+        const inCapPlane = Math.abs(n.dot(inside) - capPlaneD) < EPS;
+        if (inCapPlane && !facesBefore.has(f.id)) model.removeFace(f.id);
+        continue;
+      }
+      // A cap landing back to back on an existing face (pushing right through,
+      // or onto another solid) leaves nothing there.
+      if (facesBefore.has(f.id) && f.normal.dot(cap) < 0) model.removeFace(f.id);
+      else setFaceNormal(model, f.id, cap);
       continue;
     }
-    const plane = model.facePlane(f);
-    const side = sides.find((s) => samePlane(s.plane, plane));
-    if (!side) continue;
+    // Faces inside the swept sides, found by position (rebuilt planes may
+    // have handed them old ids).
+    const side = sideContaining(inside);
+    if (!side) {
+      // A new face that is neither a side, the cap, nor part of a face that
+      // was already there is a loop that closed by coincidence (e.g. across
+      // the mouth of an opening): drop it.
+      if (!facesBefore.has(f.id) && !inWallBefore(inside, () => true)) model.removeFace(f.id);
+      continue;
+    }
     const desired = side.outward.clone().multiplyScalar(sideSign);
-    // A new wall facing an existing wall back to back is internal: drop it.
-    const inside = faceInteriorPoint(model, f);
-    if (inside && againstWall(inside, desired)) model.removeFace(f.id);
+    // A side built back to back against an existing wall is internal: the
+    // shared region goes, from both.
+    if (againstWall(inside, desired)) model.removeFace(f.id);
     else setFaceNormal(model, f.id, desired);
   }
 
@@ -162,6 +206,7 @@ function extrude(model: Model, face: Face, distance: number): void {
     }
   }
   healEdges(model, edges);
+  removeBareEdges(model, looseBefore);
 }
 
 /** Signed distance along `face`'s normal from its plane to `point`. */
