@@ -136,6 +136,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 | 22 | Tekeninginstellingen undo-baar via de history | Bouwlagen en doorsneden wijzigen voelt als elke andere bewerking (en markeert het bestand als gewijzigd). |
 | 23 | Maten (twee punten + afstand) horen bij de tekeninginstellingen, in wereldcoördinaten | Eén opslagplek met undo en bestandsformaat erbij; getekend in 3D (`DimensionRenderer`) en in elk aanzicht waaraan de maat evenwijdig is (`drawing/dimensions.ts`); een plattegrond toont de maten van zijn eigen bouwlaag. Delete in de maattool verwijdert de maat onder de cursor. |
 | 24 | Schaalfiguur = gedeeld component met een vlak silhouet (`kernel/figure.ts`, tool N) | Gedraagt zich als elk component (verplaatsen, roteren, tekeningen); draait bij plaatsen naar de camera. Eén definitie voor alle figuren. |
+| 25 | "Face me" is een vlag op de definitie; de draaiing zit in `placements()`, niet in de opgeslagen matrix | Renderer, picker, snappen en bounds gebruiken allemaal `placements()`, dus alles blijft consistent terwijl de camera draait; er komt geen undo-stap of wijzigingsvlag bij. Tekeningen draaien de figuur per aanzicht naar de kijker (plattegrond: zoals opgeslagen). Een nieuw document begint met een schaalfiguur op de origin (`reset()`, zonder undo-stap). |
 
 ---
 

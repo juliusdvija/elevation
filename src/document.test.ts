@@ -160,4 +160,22 @@ describe('scale figure', () => {
     doc.history.undo();
     expect(doc.model.allInstances().length).toBe(1);
   });
+
+  it('turns to face the camera, in 3D and in each elevation, without changing the file', () => {
+    const doc = new Document();
+    doc.reset();
+    expect(doc.dirty).toBe(false);
+    expect(doc.history.canUndo).toBe(false);
+    const width = (m: THREE.Box3) => ({ x: m.max.x - m.min.x, y: m.max.y - m.min.y });
+    doc.setViewer(new THREE.Vector3(0, -10000, 1500));
+    expect(width(doc.bounds()).x).toBeGreaterThan(300);
+    expect(width(doc.bounds()).y).toBeLessThan(1);
+    expect(doc.setViewer(new THREE.Vector3(10000, 0, 1500))).toBe(true);
+    expect(width(doc.bounds()).y).toBeGreaterThan(300);
+    expect(width(doc.bounds()).x).toBeLessThan(1);
+    expect(doc.dirty).toBe(false);
+    const right = doc.flatten(new THREE.Vector3(1e6, 0, 0)).bounds();
+    expect(right.max.y - right.min.y).toBeGreaterThan(300);
+    expect(parse(serialize(toFile(doc.model.toData(), undefined, doc.definitionsInUse()))).definitions?.[0].faceMe).toBe(true);
+  });
 });

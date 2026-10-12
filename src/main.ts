@@ -337,9 +337,11 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
+viewport.beforeRender = () => doc.setViewer(viewport.rig.camera.position);
 viewport.rig.setView('iso');
 const recovered = restoreAutosave(doc, viewport.rig);
 if (recovered.restored) afterLoad();
+else doc.addDefaultFigure();
 if (recovered.unsaved) ctx.setHint('Restored your unsaved work from last time. Save it to keep it in a file (⌘S).');
 startAutosave(doc, viewport.rig);
 syncTitle();

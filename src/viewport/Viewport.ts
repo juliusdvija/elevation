@@ -20,6 +20,8 @@ export class Viewport {
 
   private readonly raycaster = new THREE.Raycaster();
   private dirty = true;
+  /** Runs just before a frame is drawn, so things that follow the camera can update. */
+  beforeRender: (() => void) | null = null;
 
   constructor(readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -110,6 +112,7 @@ export class Viewport {
   private frame(): void {
     if (!this.dirty) return;
     this.dirty = false;
+    this.beforeRender?.();
     this.renderer.render(this.scene, this.rig.camera);
   }
 }

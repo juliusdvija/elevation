@@ -55,9 +55,12 @@ export function buildSheets(
   const bounds = flat.bounds();
   const markers = sectionMarkers(settings, bounds);
   const levels = sortedLevels(settings);
+  const faceMe = doc.hasFaceMe;
   return refs.map((ref) => {
     const setup = viewSetup(ref, settings, bounds);
-    const drawing = computeDrawing(flat, setup);
+    // Scale figures face the viewer of each elevation and section; in plans they stay as stored.
+    const viewer = faceMe && setup.kind !== 'plan' ? setup.w.clone().multiplyScalar(-1e6) : null;
+    const drawing = computeDrawing(faceMe ? doc.flatten(viewer) : flat, setup);
     const sheet = layoutSheet(drawing, setup, { levels, sections: markers, dimensions: dimensionMarkers(settings, setup) }, options);
     return { setup, sheet, empty: drawing.lines.length === 0 && drawing.cutLoops.length === 0 };
   });

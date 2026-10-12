@@ -17,6 +17,8 @@ export interface Definition {
   name: string;
   kind: 'group' | 'component';
   model: Model;
+  /** Instances turn about the vertical axis to face the viewer (a scale figure). */
+  faceMe?: boolean;
 }
 
 /**
@@ -38,6 +40,7 @@ export interface DefinitionData {
   name: string;
   kind: 'group' | 'component';
   model: ModelData;
+  faceMe?: boolean;
 }
 
 /** Several models' edits applied as one undo step. */
@@ -118,8 +121,8 @@ export class Document {
     return d;
   }
 
-  private addDefinition(kind: 'group' | 'component', name: string, model: Model, id = this.nextDefinitionId++): Definition {
-    const definition = { id, name, kind, model };
+  private addDefinition(kind: 'group' | 'component', name: string, model: Model, id = this.nextDefinitionId++, faceMe = false): Definition {
+    const definition: Definition = { id, name, kind, model, ...(faceMe ? { faceMe } : {}) };
     this.definitions.set(id, definition);
     this.nextDefinitionId = Math.max(this.nextDefinitionId, id + 1);
     model.changed.on(() => this.geometryChanged.emit());
@@ -154,15 +157,68 @@ export class Document {
 
   // ------------------------------------------------------------ placements
 
-  /** Every placed model in the world, starting with the root. */
-  placements(): Placement[] {
+  /**
+   * Where the viewer's camera is, for face-me instances. Set by the viewport;
+   * not saved. Null leaves them as stored.
+   */
+  private viewer: THREE.Vector3 | null = null;
+  private faceMeSignature = '';
+
+  /** Whether any definition turns its instances to face the viewer. */
+  get hasFaceMe(): boolean {
+    for (const d of this.definitions.values()) if (d.faceMe) return true;
+    return false;
+  }
+
+  /** The matrix of an instance: as stored, or turned to face `viewer` when its definition asks. */
+  private instanceMatrix(instance: { matrix: readonly number[] }, def: Definition, parent: THREE.Matrix4, viewer: THREE.Vector3 | null): THREE.Matrix4 {
+    const stored = new THREE.Matrix4().fromArray(instance.matrix);
+    if (!def.faceMe || !viewer) return stored;
+    const position = new THREE.Vector3().setFromMatrixPosition(stored);
+    const world = position.clone().applyMatrix4(parent);
+    const dx = viewer.x - world.x;
+    const dy = viewer.y - world.y;
+    if (Math.hypot(dx, dy) < 1e-6) return stored;
+    // Turn about the vertical in world space, whatever the parent's own turn.
+    const parentYaw = Math.atan2(parent.elements[1], parent.elements[0]);
+    const yaw = Math.atan2(-dx, dy) - parentYaw;
+    const scale = new THREE.Vector3().setFromMatrixColumn(stored, 0).length();
+    return new THREE.Matrix4()
+      .makeRotationZ(yaw)
+      .scale(new THREE.Vector3(scale, scale, scale))
+      .setPosition(position);
+  }
+
+  /**
+   * Tells the document where the camera is so face-me instances can turn
+   * towards it. Returns true when something visibly turned.
+   */
+  setViewer(position: THREE.Vector3 | null): boolean {
+    this.viewer = position ? position.clone() : null;
+    if (!this.hasFaceMe) return false;
+    const signature = this.placements()
+      .filter((p) => p.definition?.faceMe)
+      .map((p) => `${p.matrix.elements[0].toFixed(3)},${p.matrix.elements[1].toFixed(3)}`)
+      .join(';');
+    if (signature === this.faceMeSignature) return false;
+    this.faceMeSignature = signature;
+    this.geometryChanged.emit();
+    return true;
+  }
+
+  /**
+   * Every placed model in the world, starting with the root. Face-me
+   * instances face `viewer`: the camera by default, or as stored with null.
+   */
+  placements(viewer: THREE.Vector3 | null | undefined = undefined): Placement[] {
+    const eye = viewer === undefined ? this.viewer : viewer;
     const result: Placement[] = [];
     const visit = (model: Model, path: Id[], matrix: THREE.Matrix4, definition: Definition | undefined, seen: Set<number>) => {
       result.push({ model, path, matrix, inverse: matrix.clone().invert(), definition });
       for (const instance of model.allInstances()) {
         const def = this.definitions.get(instance.definition);
         if (!def || seen.has(def.id)) continue;
-        const m = matrix.clone().multiply(new THREE.Matrix4().fromArray(instance.matrix));
+        const m = matrix.clone().multiply(this.instanceMatrix(instance, def, matrix, eye));
         visit(def.model, [...path, instance.id], m, def, new Set([...seen, def.id]));
       }
     };
@@ -180,7 +236,7 @@ export class Document {
       const instance = model.instance(id);
       definition = this.definitions.get(instance.definition);
       if (!definition) return null;
-      matrix.multiply(new THREE.Matrix4().fromArray(instance.matrix));
+      matrix.multiply(this.instanceMatrix(instance, definition, matrix.clone(), this.viewer));
       model = definition.model;
     }
     return { model, path: [...path], matrix, inverse: matrix.clone().invert(), definition };
@@ -270,7 +326,7 @@ export class Document {
     if (!def) {
       const geometry = new Model();
       geometry.edit(() => drawPolygon(geometry, figureOutline()));
-      def = this.addDefinition('component', FIGURE_NAME, geometry);
+      def = this.addDefinition('component', FIGURE_NAME, geometry, undefined, true);
     }
     const ctx = this.context;
     return ctx.model.addInstance(def.id, world.clone().premultiply(ctx.inverse));
@@ -308,12 +364,13 @@ export class Document {
 
   /**
    * All geometry flattened into one world-space model (for drawings).
-   * Groups' faces are copied as they are; nothing is merged.
+   * Groups' faces are copied as they are; nothing is merged. Face-me
+   * instances face `viewer`, or stay as stored.
    */
-  flatten(): Model {
+  flatten(viewer: THREE.Vector3 | null = null): Model {
     const flat = new Model();
     flat.edit(() => {
-      for (const p of this.placements()) {
+      for (const p of this.placements(viewer)) {
         copyBetweenModels(p.model, flat, p.model.allFaces().map((f) => f.id), p.model.allEdges().map((e) => e.id), p.matrix, false);
       }
     });
@@ -343,7 +400,7 @@ export class Document {
       .sort((a, b) => a - b)
       .map((id) => {
         const d = this.definition(id);
-        return { id, name: d.name, kind: d.kind, model: d.model.toData() };
+        return { id, name: d.name, kind: d.kind, model: d.model.toData(), ...(d.faceMe ? { faceMe: true } : {}) };
       });
   }
 
@@ -360,7 +417,7 @@ export class Document {
     for (const d of options.definitions ?? []) {
       const model = new Model();
       model.load(d.model);
-      this.addDefinition(d.kind, d.name, model, d.id);
+      this.addDefinition(d.kind, d.name, model, d.id, d.faceMe);
     }
     this.contextPath = [];
     this.model.load(data);
@@ -375,8 +432,18 @@ export class Document {
     this.geometryChanged.emit();
   }
 
-  /** Starts an empty document. */
+  /** Starts a new document: empty but for a scale figure standing on the origin. */
   reset(): void {
     this.load({ nextId: 1, vertices: [], edges: [], faces: [], guides: [] }, UNTITLED, null);
+    this.addDefaultFigure();
+  }
+
+  /** Puts a scale figure on the origin without making an undo step or marking the file changed. */
+  addDefaultFigure(): void {
+    this.run('Scale Figure', () => this.placeFigure(new THREE.Matrix4()));
+    this.history.clear();
+    this.savedHead = this.history.head;
+    this.geometryChanged.emit();
+    this.changed.emit();
   }
 }

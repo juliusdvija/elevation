@@ -25,7 +25,7 @@ const RIGHT_HALF: [number, number][] = [
   [0, FIGURE_HEIGHT],
 ];
 
-/** The figure's outline in its own plane (the XZ plane, front facing −Y). */
+/** The figure's outline in its own plane (the XZ plane, front facing +Y, the side of its face normal). */
 export function figureOutline(): THREE.Vector3[] {
   const right = RIGHT_HALF.map(([x, z]) => new THREE.Vector3(x, 0, z));
   const left = RIGHT_HALF.slice(1, -1)
@@ -38,6 +38,6 @@ export function figureOutline(): THREE.Vector3[] {
 export function figureMatrix(point: THREE.Vector3, towards: THREE.Vector3): THREE.Matrix4 {
   const dx = towards.x - point.x;
   const dy = towards.y - point.y;
-  const yaw = Math.hypot(dx, dy) < 1e-6 ? 0 : Math.atan2(dx, -dy);
+  const yaw = Math.hypot(dx, dy) < 1e-6 ? 0 : Math.atan2(-dx, dy);
   return new THREE.Matrix4().makeTranslation(point.x, point.y, point.z).multiply(new THREE.Matrix4().makeRotationZ(yaw));
 }
