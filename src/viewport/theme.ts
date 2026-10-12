@@ -1,0 +1,13 @@
+/** Colours for the 3D viewport. Kept in one place so styles stay consistent. */
+export const theme = {
+  background: 0xf4f3ef,
+  ground: 0xd8d5cc,
+  gridMinor: 0xe4e2dc,
+  gridMajor: 0xd5d2ca,
+  axisX: 0xd2564c,
+  axisY: 0x4f9a5a,
+  axisZ: 0x3f72c9,
+  face: 0xfbfaf7,
+  faceBack: 0xb9c3cf,
+  edge: 0x1d1d1b,
+} as const;
