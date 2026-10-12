@@ -3,8 +3,9 @@ import type { Face, Id, Model } from './Model';
 import { loopPairs } from './Model';
 import { healEdges, weldVertices } from './cleanup';
 import { insertSegment } from './draw';
-import { coplanarSameSide, setFaceNormal, updateFaces } from './faces';
-import { EPS, canonicalPlane, distanceToPlane, isParallel, isPerpendicular, planeFromPointNormal, samePlane } from './math';
+import { faceInteriorPoint, setFaceNormal, updateFaces } from './faces';
+import { pointInsideSolid } from './solid';
+import { EPS, canonicalPlane, planeFrame, pointInPolygon, to2D, distanceToPlane, isParallel, isPerpendicular, planeFromPointNormal, samePlane } from './math';
 
 /**
  * Push/Pull a face by `distance` along its normal (negative pushes in).
@@ -30,29 +31,6 @@ function neighbours(model: Model, face: Face): Face[][] {
       .filter((f) => f !== face.id)
       .map((f) => model.face(f)),
   );
-}
-
-/**
- * Whether the face lies on the surface of a solid: it, or a coplanar face
- * connected to it (e.g. the box top around a rectangle drawn on it), borders a
- * face in another plane.
- */
-function isOnSolid(model: Model, face: Face): boolean {
-  const seen = new Set<Id>([face.id]);
-  const queue = [face];
-  while (queue.length > 0) {
-    const current = queue.pop()!;
-    for (const list of neighbours(model, current)) {
-      for (const g of list) {
-        if (!isParallel(g.normal, current.normal)) return true;
-        if (!seen.has(g.id) && coplanarSameSide(model, g, current)) {
-          seen.add(g.id);
-          queue.push(g);
-        }
-      }
-    }
-  }
-  return false;
 }
 
 function canMoveFace(model: Model, face: Face): boolean {
@@ -101,7 +79,13 @@ function extrude(model: Model, face: Face, distance: number): void {
   const offset = n.clone().multiplyScalar(distance);
   const loops = model.faceLoops(face).map((loop) => [...loop]);
 
-  const attached = isOnSolid(model, face);
+  // Probe for material just ahead of and behind the face, along the travel direction.
+  const dir = n.clone().multiplyScalar(sign);
+  const sample = faceInteriorPoint(model, face);
+  const ahead = sample !== null && pointInsideSolid(model, sample.clone().addScaledVector(dir, 1));
+  const behind = sample !== null && pointInsideSolid(model, sample.clone().addScaledVector(dir, -1));
+  // Moving into material cuts a recess; otherwise material is added.
+  const cutting = ahead;
 
   // Side walls keyed by plane, with the direction that points out of the material.
   const sides = loops.flatMap((loop) =>
@@ -111,6 +95,22 @@ function extrude(model: Model, face: Face, distance: number): void {
       return { plane: canonicalPlane(planeFromPointNormal(A, outward)), outward };
     }),
   );
+
+  // Existing faces in the side-wall planes, to spot walls built against them.
+  const wallsBefore = model
+    .allFaces()
+    .filter((f) => sides.some((side) => samePlane(side.plane, model.facePlane(f))))
+    .map((f) => {
+      const frame = planeFrame(model.facePlane(f));
+      const project = (loop: readonly Id[]) => loop.map((v) => to2D(frame, model.position(v)));
+      return { normal: f.normal.clone(), frame, outer: project(f.outer), holes: f.holes.map(project) };
+    });
+  const againstWall = (p: THREE.Vector3, normal: THREE.Vector3) =>
+    wallsBefore.some((w) => {
+      if (w.normal.dot(normal) > -0.5 || Math.abs(w.frame.normal.dot(p) - w.frame.normal.dot(w.frame.origin)) > EPS) return false;
+      const q = to2D(w.frame, p);
+      return pointInPolygon(q, w.outer) && !w.holes.some((h) => pointInPolygon(q, h));
+    });
 
   const facesBefore = new Set(model.allFaces().map((f) => f.id));
   const created = new Set<Id>();
@@ -126,12 +126,15 @@ function extrude(model: Model, face: Face, distance: number): void {
   }
   updateFaces(model, created);
 
-  const cap = attached ? n : n.clone().multiplyScalar(sign);
-  const sideSign = !attached || distance > 0 ? 1 : -1;
+  // New faces point away from material: out of an added block, into a cut recess.
+  const cap = cutting ? dir.clone().negate() : dir;
+  const sideSign = cutting ? -1 : 1;
 
+  // The original face becomes an opening (cut) or an internal face (bump on a
+  // solid); a free-standing face stays as the base of the new block.
   if (model.hasFace(face.id)) {
-    if (attached) model.removeFace(face.id);
-    else setFaceNormal(model, face.id, n.clone().multiplyScalar(-sign));
+    if (ahead || behind) model.removeFace(face.id);
+    else setFaceNormal(model, face.id, dir.clone().negate());
   }
 
   for (const f of model.allFaces()) {
@@ -142,7 +145,12 @@ function extrude(model: Model, face: Face, distance: number): void {
     }
     const plane = model.facePlane(f);
     const side = sides.find((s) => samePlane(s.plane, plane));
-    if (side) setFaceNormal(model, f.id, side.outward.clone().multiplyScalar(sideSign));
+    if (!side) continue;
+    const desired = side.outward.clone().multiplyScalar(sideSign);
+    // A new wall facing an existing wall back to back is internal: drop it.
+    const inside = faceInteriorPoint(model, f);
+    if (inside && againstWall(inside, desired)) model.removeFace(f.id);
+    else setFaceNormal(model, f.id, desired);
   }
 
   // Merge new walls that continue an existing coplanar wall.

@@ -245,3 +245,19 @@ describe('undo', () => {
     expect(model.vertexCount + model.edgeCount + model.faceCount).toBe(0);
   });
 });
+
+describe('push/pull next to a solid', () => {
+  it('pulls a ground rectangle against a building into its own block', () => {
+    const model = new Model();
+    run(model, () => drawPolygon(model, rect(0, 0, 3000, 3000)));
+    run(model, () => pushPull(model, model.allFaces()[0].id, -2000));
+    // Porch on the ground sharing part of the front wall's bottom edge.
+    run(model, () => drawPolygon(model, rect(1000, -1500, 2000, 0)));
+    const porch = model.allFaces().find((f) => f.normal.z === -1 && Math.round(faceArea(model, f)) === 1_500_000)!;
+    run(model, () => pushPull(model, porch.id, -1000));
+    expect(isClosedSolid(model)).toBe(true);
+    expect(volume(model)).toBe(18_000_000_000 + 1_500_000_000);
+    // The porch floor merges with the building floor into one footprint.
+    expect(model.allFaces().filter((f) => f.normal.z === -1).length).toBe(1);
+  });
+});

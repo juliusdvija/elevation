@@ -15,6 +15,8 @@ import { createPushPullTool } from './tools/PushPullTool';
 import { createEraserTool } from './tools/EraserTool';
 import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
+import { DrawingPanel } from './ui/DrawingPanel';
+import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
 
 const toolInfo = [
   { id: 'select', label: 'Select', shortcut: 'Space' },
@@ -84,6 +86,21 @@ tools.activate('select');
 selection.changed.on(() => renderer.setSelection({ faces: selection.faces, edges: selection.edges }));
 model.changed.on(() => selection.prune(model));
 viewport.canvas.addEventListener('pointerleave', () => marker.hide());
+
+// Drawings
+const drawings = new DrawingPanel(model);
+shell.workspace.append(drawings.el);
+const cutPlane = new CutPlaneGizmo(viewport);
+drawings.viewChanged.on((setup) => cutPlane.show(setup, model.bounds()));
+function syncDrawingsToggle() {
+  shell.drawingsToggle.setAttribute('aria-pressed', String(drawings.isVisible));
+  shell.drawingsToggle.title = drawings.isVisible ? 'Hide drawings' : 'Show drawings';
+}
+shell.drawingsToggle.addEventListener('click', () => {
+  drawings.setVisible(!drawings.isVisible);
+  syncDrawingsToggle();
+});
+syncDrawingsToggle();
 
 // Camera
 for (const [view, button] of shell.viewButtons) {
@@ -175,5 +192,9 @@ viewport.rig.setView('iso');
 
 if (import.meta.env.DEV) {
   // Debug handle for the browser console.
-  Object.assign(window, { __elevation: { doc, model, viewport, picker, tools, selection } });
+  const loadSample = async () => {
+    (await import('./dev/sample')).buildSample(doc);
+    navigator.zoomExtents();
+  };
+  Object.assign(window, { __elevation: { doc, model, viewport, picker, tools, selection, drawings, loadSample } });
 }

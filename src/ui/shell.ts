@@ -4,6 +4,7 @@ import {
   Eraser,
   Expand,
   Hand,
+  PanelRight,
   MousePointer2,
   PenLine,
   RectangleHorizontal,
@@ -17,7 +18,9 @@ import type { StandardView } from '../viewport/CameraRig';
 
 export interface ShellElements {
   root: HTMLElement;
+  workspace: HTMLElement;
   viewport: HTMLElement;
+  drawingsToggle: HTMLButtonElement;
   toolButtons: Map<string, HTMLButtonElement>;
   viewButtons: Map<StandardView, HTMLButtonElement>;
   projection: HTMLButtonElement;
@@ -102,9 +105,15 @@ export function buildShell(
   const historyGroup = el('div', 'group');
   historyGroup.append(undo, redo);
 
-  toolbar.append(brand, toolGroup, el('div', 'spacer'), viewGroup, cameraGroup, historyGroup);
+  const drawingsToggle = iconButton(PanelRight, 'Show drawings');
+  const panelGroup = el('div', 'group');
+  panelGroup.append(drawingsToggle);
 
+  toolbar.append(brand, toolGroup, el('div', 'spacer'), viewGroup, cameraGroup, historyGroup, panelGroup);
+
+  const workspace = el('div', 'workspace');
   const viewport = el('main', 'viewport');
+  workspace.append(viewport);
 
   const statusbar = el('footer', 'statusbar');
   const hint = el('div', 'hint');
@@ -117,8 +126,8 @@ export function buildShell(
   measureWrap.append(measurements);
   statusbar.append(hint, measureWrap);
 
-  root.append(toolbar, viewport, statusbar);
+  root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, viewport, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
+  return { root, workspace, viewport, drawingsToggle, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
 }
