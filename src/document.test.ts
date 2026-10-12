@@ -7,7 +7,8 @@ import { faceArea } from './kernel/faces';
 import { validateModel } from './kernel/validate';
 import { parse, serialize, toFile } from './io/format';
 import { computeDrawing } from './drawing/project';
-import { DEFAULT_VIEW_OPTIONS, viewSetup } from './drawing/views';
+import { viewSetup } from './drawing/views';
+import { DEFAULT_SETTINGS } from './drawing/settings';
 
 const v = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
 const rect = (x0: number, y0: number, x1: number, y1: number, z = 0) => [v(x0, y0, z), v(x1, y0, z), v(x1, y1, z), v(x0, y1, z)];
@@ -140,7 +141,7 @@ describe('saving groups', () => {
     withBox(doc);
     groupAll(doc);
     const flat = doc.flatten();
-    const drawing = computeDrawing(flat, viewSetup('plan', { ...DEFAULT_VIEW_OPTIONS, cutHeight: 500 }, flat.bounds()));
+    const drawing = computeDrawing(flat, viewSetup({ kind: 'plan', level: 'level-0' }, { ...DEFAULT_SETTINGS, cutHeight: 500 }, flat.bounds()));
     expect(drawing.cutLoops).toHaveLength(1);
   });
 });

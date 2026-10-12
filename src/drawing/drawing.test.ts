@@ -6,7 +6,8 @@ import { pushPull } from '../kernel/pushPull';
 import { faceArea } from '../kernel/faces';
 import { signedArea } from '../kernel/math';
 import { computeDrawing, type Drawing } from './project';
-import { DEFAULT_VIEW_OPTIONS, viewSetup, type ViewKind } from './views';
+import { viewSetup, type ViewKind } from './views';
+import { DEFAULT_SETTINGS, type DrawingSettings, type ViewRef } from './settings';
 
 const v = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
 const rect = (x0: number, y0: number, x1: number, y1: number, z = 0) => [v(x0, y0, z), v(x1, y0, z), v(x1, y1, z), v(x0, y1, z)];
@@ -23,8 +24,14 @@ function topFace(model: Model, z: number) {
   return model.allFaces().find((f) => f.normal.z === 1 && model.position(f.outer[0]).z === z)!;
 }
 
-function draw(model: Model, kind: ViewKind, options = DEFAULT_VIEW_OPTIONS): Drawing {
-  return computeDrawing(model, viewSetup(kind, options, model.bounds()));
+function refFor(kind: ViewKind): ViewRef {
+  if (kind === 'plan') return { kind: 'plan', level: 'level-0' };
+  if (kind === 'section') return { kind: 'section', section: 'A' };
+  return { kind };
+}
+
+function draw(model: Model, kind: ViewKind, settings: DrawingSettings = DEFAULT_SETTINGS): Drawing {
+  return computeDrawing(model, viewSetup(refFor(kind), settings, model.bounds()));
 }
 
 const totalLength = (d: Drawing) => Math.round(d.lines.reduce((sum, l) => sum + l.a.distanceTo(l.b), 0));
@@ -72,7 +79,7 @@ describe('plans and sections', () => {
   });
 
   it('draws nothing above the cut', () => {
-    const d = draw(box(), 'plan', { ...DEFAULT_VIEW_OPTIONS, cutHeight: 5000 });
+    const d = draw(box(), 'plan', { ...DEFAULT_SETTINGS, cutHeight: 5000 });
     expect(d.cutLoops).toHaveLength(0);
     // Looking down from above the box: its top outline.
     expect(totalLength(d)).toBeGreaterThanOrEqual(20_000);
@@ -100,5 +107,43 @@ describe('plans and sections', () => {
     const d = draw(model, 'plan');
     expect(d.cutLoops).toHaveLength(2);
     expect(cutArea(d)).toBe(24_000_000 + 4_000_000);
+  });
+});
+
+describe('levels', () => {
+  /** Two stacked boxes: ground floor 0–3000, first floor 3000–6000 (smaller). */
+  function stacked(): Model {
+    const model = box();
+    // A 2 x 2 m block on top of the 6 x 4 x 3 m box.
+    model.edit(() => drawPolygon(model, rect(1000, 1000, 3000, 3000, 3000)));
+    const inner = model.allFaces().find((f) => f.normal.z === 1 && Math.round(faceArea(model, f)) === 4_000_000)!;
+    model.edit(() => pushPull(model, inner.id, 3000));
+    return model;
+  }
+  const settings: DrawingSettings = {
+    ...DEFAULT_SETTINGS,
+    levels: [
+      { id: 'level-0', name: 'Ground floor', elevation: 0 },
+      { id: 'level-1', name: 'First floor', elevation: 3000 },
+    ],
+  };
+
+  it('cuts each level at its own height', () => {
+    const model = stacked();
+    const ground = computeDrawing(model, viewSetup({ kind: 'plan', level: 'level-0' }, settings, model.bounds()));
+    const first = computeDrawing(model, viewSetup({ kind: 'plan', level: 'level-1' }, settings, model.bounds()));
+    expect(cutArea(ground)).toBe(24_000_000);
+    expect(cutArea(first)).toBe(4_000_000);
+  });
+
+  it('does not show what lies below a level through its plan', () => {
+    const model = stacked();
+    // A level at 3.5 m: the ground floor roof (at 3 m) lies below it and is left out.
+    const raised = { ...settings, levels: [{ id: 'level-1', name: 'Mezzanine', elevation: 3500 }] };
+    const plan = computeDrawing(model, viewSetup({ kind: 'plan', level: 'level-1' }, raised, model.bounds()));
+    expect(plan.bounds.max.x).toBeLessThanOrEqual(3000);
+    // At exactly 3 m the roof is the floor (a terrace) and is shown.
+    const first = computeDrawing(model, viewSetup({ kind: 'plan', level: 'level-1' }, settings, model.bounds()));
+    expect(first.bounds.max.x).toBe(6000);
   });
 });

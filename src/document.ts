@@ -4,6 +4,7 @@ import { History, type Operation, type Transaction } from './core/history';
 import { Model, type Id, type ModelData, type ModelEdit } from './kernel/Model';
 import { removeBareEdges, eraseFaces } from './kernel/cleanup';
 import { copyBetweenModels } from './kernel/transform';
+import { DEFAULT_SETTINGS, type DrawingSettings } from './drawing/settings';
 
 const UNTITLED = 'Untitled';
 
@@ -62,6 +63,9 @@ export class Document {
   readonly geometryChanged = new Emitter<void>();
   readonly contextChanged = new Emitter<void>();
   readonly definitions = new Map<number, Definition>();
+  /** Fires when levels, plan cut height or sections change. */
+  readonly settingsChanged = new Emitter<void>();
+  drawingSettings: DrawingSettings = structuredClone(DEFAULT_SETTINGS);
 
   name = UNTITLED;
   /** Where the document was opened from or saved to, when the browser allows writing back. */
@@ -125,6 +129,24 @@ export class Document {
     let n = 1;
     while (taken.has(`${base} ${n}`)) n++;
     return `${base} ${n}`;
+  }
+
+  /** Changes the drawing settings as one undoable step. */
+  updateDrawingSettings(label: string, next: DrawingSettings): void {
+    const before = this.drawingSettings;
+    const after = structuredClone(next);
+    this.history.transact(label, (tx) =>
+      tx.run({
+        apply: () => {
+          this.drawingSettings = after;
+          this.settingsChanged.emit();
+        },
+        revert: () => {
+          this.drawingSettings = before;
+          this.settingsChanged.emit();
+        },
+      }),
+    );
   }
 
   // ------------------------------------------------------------ placements
@@ -312,8 +334,9 @@ export class Document {
     data: ModelData,
     name: string,
     handle: FileSystemFileHandle | null,
-    options: { unsaved?: boolean; definitions?: DefinitionData[] } = {},
+    options: { unsaved?: boolean; definitions?: DefinitionData[]; drawing?: DrawingSettings } = {},
   ): void {
+    this.drawingSettings = structuredClone(options.drawing ?? DEFAULT_SETTINGS);
     this.definitions.clear();
     this.nextDefinitionId = 1;
     for (const d of options.definitions ?? []) {
@@ -330,6 +353,7 @@ export class Document {
       this.changed.emit();
     }
     this.contextChanged.emit();
+    this.settingsChanged.emit();
     this.geometryChanged.emit();
   }
 

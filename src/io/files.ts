@@ -35,7 +35,7 @@ export function applyCamera(rig: CameraRig, camera: CameraData | undefined): voi
 }
 
 function contents(doc: Document, rig: CameraRig): string {
-  return serialize(toFile(doc.model.toData(), cameraData(rig), doc.definitionsInUse()));
+  return serialize(toFile(doc.model.toData(), cameraData(rig), doc.definitionsInUse(), doc.drawingSettings));
 }
 
 /**
@@ -100,7 +100,7 @@ export async function openDocument(doc: Document, rig: CameraRig): Promise<Eleva
   const picked = await pickFile();
   if (!picked) return null;
   const file = parse(await picked.file.text());
-  doc.load(file.model, baseName(picked.file.name), picked.handle, { definitions: file.definitions });
+  doc.load(file.model, baseName(picked.file.name), picked.handle, { definitions: file.definitions, drawing: file.drawing });
   applyCamera(rig, file.camera);
   return file;
 }

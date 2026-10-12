@@ -1,8 +1,9 @@
 import type { ModelData } from '../kernel/Model';
 import type { DefinitionData } from '../document';
+import type { DrawingSettings } from '../drawing/settings';
 
 /** Version of the .elev file format written by this build. */
-export const FORMAT_VERSION = 2;
+export const FORMAT_VERSION = 3;
 
 export interface CameraData {
   position: [number, number, number];
@@ -19,11 +20,13 @@ export interface ElevationFile {
   model: ModelData;
   /** Groups and components (format 2). */
   definitions?: DefinitionData[];
+  /** Levels, plan cut height and sections (format 3). */
+  drawing?: DrawingSettings;
   camera?: CameraData;
 }
 
-export function toFile(model: ModelData, camera?: CameraData, definitions: DefinitionData[] = []): ElevationFile {
-  return { format: 'elevation', version: FORMAT_VERSION, units: 'mm', model, definitions, camera };
+export function toFile(model: ModelData, camera?: CameraData, definitions: DefinitionData[] = [], drawing?: DrawingSettings): ElevationFile {
+  return { format: 'elevation', version: FORMAT_VERSION, units: 'mm', model, definitions, drawing, camera };
 }
 
 export function serialize(file: ElevationFile): string {

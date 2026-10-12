@@ -1,9 +1,12 @@
-import { Download, createElement } from 'lucide';
+import { Download, Layers, Plus, Trash2, createElement, type IconNode } from 'lucide';
 import { Emitter } from '../core/emitter';
 import type { Document } from '../document';
-import { computeDrawing } from '../drawing/project';
-import { drawingToSvg } from '../drawing/svg';
-import { DEFAULT_VIEW_OPTIONS, viewSetup, type ViewKind, type ViewOptions, type ViewSetup } from '../drawing/views';
+import { buildSheets } from '../drawing/build';
+import { sheetsToPdf } from '../drawing/pdf';
+import { allViews, nextLevel, sectionCoordinate, sortedLevels, type DrawingSettings, type ViewRef } from '../drawing/settings';
+import type { Paper } from '../drawing/sheet';
+import { sheetToSvg } from '../drawing/svg';
+import type { ViewKind, ViewSetup } from '../drawing/views';
 
 const TABS: [ViewKind, string][] = [
   ['plan', 'Plan'],
@@ -15,6 +18,13 @@ const TABS: [ViewKind, string][] = [
 ];
 
 const SCALES = [50, 100, 200, 500];
+const PAPERS: [Paper, string][] = [
+  ['fit', 'Fit'],
+  ['A4', 'A4'],
+  ['A3', 'A3'],
+  ['A2', 'A2'],
+  ['A1', 'A1'],
+];
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
   const node = document.createElement(tag);
@@ -23,10 +33,42 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
   return node;
 }
 
+function iconButton(icon: IconNode, title: string): HTMLButtonElement {
+  const b = el('button', 'icon-button');
+  b.type = 'button';
+  b.title = title;
+  b.setAttribute('aria-label', title);
+  b.append(createElement(icon, { width: 18, height: 18, 'stroke-width': 1.75 }));
+  return b;
+}
+
+function field(label: string, control: HTMLElement, unit?: string): HTMLLabelElement {
+  const f = el('label', 'field');
+  f.append(el('span', undefined, label), control);
+  if (unit) f.append(el('span', 'unit', unit));
+  return f;
+}
+
+function numberInput(value: number, step = 100): HTMLInputElement {
+  const input = el('input');
+  input.type = 'number';
+  input.step = String(step);
+  input.value = String(Math.round(value));
+  return input;
+}
+
+function download(data: BlobPart, type: string, name: string): void {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([data], { type }));
+  link.download = name;
+  link.click();
+  URL.revokeObjectURL(link.href);
+}
+
 /**
- * Side panel with the 2D drawings. Recomputes the visible drawing whenever
- * the model changes (at most once per frame), so it follows edits and tool
- * previews live.
+ * Side panel with the 2D drawings: plans per level, elevations and sections,
+ * recomputed live whenever the model changes (at most once per frame). Exports
+ * SVG, PDF, or the whole drawing set as one PDF.
  */
 export class DrawingPanel {
   readonly el = el('aside', 'drawings');
@@ -34,21 +76,27 @@ export class DrawingPanel {
   readonly viewChanged = new Emitter<ViewSetup | null>();
 
   private kind: ViewKind = 'plan';
-  private options: ViewOptions = { ...DEFAULT_VIEW_OPTIONS };
+  private levelId: string | null = null;
+  private sectionId = 'A';
   private scale = 100;
-  private svg = '';
+  private paper: Paper = 'fit';
+  /** Live value while a slider is dragged, before it is committed to the document. */
+  private preview: DrawingSettings | null = null;
   private setup: ViewSetup | null = null;
+  private svg = '';
   private frame = 0;
   private visible = true;
+  private editingLevels = false;
 
   private readonly tabs = new Map<ViewKind, HTMLButtonElement>();
   private readonly controls = el('div', 'drawings-controls');
+  private readonly levelsEditor = el('div', 'levels-editor');
   private readonly stage = el('div', 'drawings-stage');
   private readonly sheet = el('div', 'drawings-sheet');
   private readonly empty = el('div', 'drawings-empty', 'Draw something to see its drawings here.');
   private readonly status = el('span', 'drawings-status');
+  private readonly exportMenu = el('div', 'export-menu');
   private view = { x: 0, y: 0, zoom: 1 };
-  private exportButton!: HTMLButtonElement;
 
   constructor(private readonly doc: Document) {
     const header = el('div', 'drawings-header');
@@ -60,20 +108,20 @@ export class DrawingPanel {
       this.tabs.set(kind, button);
       tabs.append(button);
     }
-    const exportButton = el('button', 'icon-button');
-    exportButton.type = 'button';
-    exportButton.title = 'Export SVG';
-    exportButton.setAttribute('aria-label', 'Export SVG');
-    exportButton.append(createElement(Download, { width: 18, height: 18, 'stroke-width': 1.75 }));
-    exportButton.addEventListener('click', () => this.export());
     header.append(tabs);
-    this.exportButton = exportButton;
 
+    this.buildExportMenu();
     this.stage.append(this.sheet, this.empty);
-    this.el.append(header, this.controls, this.stage);
+    this.el.append(header, this.controls, this.levelsEditor, this.stage);
     this.bindStage();
 
     doc.geometryChanged.on(() => this.schedule());
+    doc.settingsChanged.on(() => {
+      this.preview = null;
+      this.renderControls();
+      this.renderLevelsEditor();
+      this.schedule();
+    });
     this.setKind('plan');
   }
 
@@ -93,83 +141,225 @@ export class DrawingPanel {
     return this.visible;
   }
 
+  private get settings(): DrawingSettings {
+    return this.preview ?? this.doc.drawingSettings;
+  }
+
+  /** The selected level (falls back to the lowest when it was removed). */
+  private currentLevel(): string {
+    const s = this.settings;
+    return (s.levels.find((l) => l.id === this.levelId) ?? sortedLevels(s)[0]).id;
+  }
+
+  /** The selected section (falls back to the first). */
+  private currentSection(): string {
+    const s = this.settings;
+    return (s.sections.find((x) => x.id === this.sectionId) ?? s.sections[0]).id;
+  }
+
+  private currentRef(): ViewRef {
+    if (this.kind === 'plan') return { kind: 'plan', level: this.currentLevel() };
+    if (this.kind === 'section') return { kind: 'section', section: this.currentSection() };
+    return { kind: this.kind };
+  }
+
   private setKind(kind: ViewKind): void {
     this.kind = kind;
     for (const [k, button] of this.tabs) button.setAttribute('aria-pressed', String(k === kind));
     this.renderControls();
+    this.renderLevelsEditor();
     this.view = { x: 0, y: 0, zoom: 1 };
     this.applyView();
     this.schedule();
   }
 
+  /** Commits a settings change (one undo step). */
+  private commit(label: string, change: (s: DrawingSettings) => void): void {
+    const next = structuredClone(this.doc.drawingSettings);
+    change(next);
+    this.doc.updateDrawingSettings(label, next);
+  }
+
   private renderControls(): void {
     this.controls.replaceChildren();
+    const s = this.settings;
 
     if (this.kind === 'plan') {
-      const label = el('label', 'field');
-      label.append(el('span', undefined, 'Cut height'));
-      const input = el('input');
-      input.type = 'number';
-      input.step = '100';
-      input.value = String(this.options.cutHeight);
-      input.addEventListener('input', () => {
-        const value = Number(input.value);
-        if (Number.isFinite(value)) {
-          this.options.cutHeight = value;
-          this.schedule();
-        }
+      const select = el('select');
+      for (const level of sortedLevels(s)) {
+        const option = el('option', undefined, `${level.name} (+${Math.round(level.elevation)})`);
+        option.value = level.id;
+        option.selected = level.id === this.currentLevel();
+        select.append(option);
+      }
+      select.addEventListener('change', () => {
+        this.levelId = select.value;
+        this.schedule();
       });
-      label.append(input, el('span', 'unit', 'mm'));
-      this.controls.append(label);
+      const levels = iconButton(Layers, 'Edit levels');
+      levels.setAttribute('aria-pressed', String(this.editingLevels));
+      levels.addEventListener('click', () => {
+        this.editingLevels = !this.editingLevels;
+        this.renderControls();
+        this.renderLevelsEditor();
+      });
+      const cut = numberInput(s.cutHeight);
+      cut.addEventListener('change', () => {
+        const value = Number(cut.value);
+        if (Number.isFinite(value)) this.commit('Plan Cut Height', (n) => (n.cutHeight = value));
+      });
+      this.controls.append(field('Level', select), levels, field('Cut', cut, 'mm'));
     }
 
     if (this.kind === 'section') {
-      const axis = el('div', 'group segmented');
-      for (const [value, text] of [
-        ['y', 'A–A'],
-        ['x', 'B–B'],
-      ] as const) {
-        const button = el('button', 'text-button', text);
+      const ids = el('div', 'group segmented');
+      for (const section of s.sections) {
+        const button = el('button', 'text-button', `${section.id}–${section.id}`);
         button.type = 'button';
-        button.setAttribute('aria-pressed', String(this.options.sectionAxis === value));
+        button.setAttribute('aria-pressed', String(section.id === this.currentSection()));
         button.addEventListener('click', () => {
-          this.options.sectionAxis = value;
+          this.sectionId = section.id;
           this.renderControls();
           this.schedule();
         });
-        axis.append(button);
+        ids.append(button);
       }
-      const label = el('label', 'field');
-      label.append(el('span', undefined, 'Position'));
+      const section = s.sections.find((x) => x.id === this.currentSection())!;
+      const bounds = this.doc.bounds();
+      const at = sectionCoordinate(section, bounds);
+      const [lo, hi] = bounds.isEmpty() ? [-5000, 5000] : section.axis === 'y' ? [bounds.min.y, bounds.max.y] : [bounds.min.x, bounds.max.x];
+      const input = numberInput(at);
       const range = el('input');
       range.type = 'range';
-      range.min = '0';
-      range.max = '1';
-      range.step = '0.01';
-      range.value = String(this.options.sectionPosition);
-      range.addEventListener('input', () => {
-        this.options.sectionPosition = Number(range.value);
-        this.schedule();
+      range.min = String(Math.floor(lo));
+      range.max = String(Math.ceil(hi));
+      range.step = '50';
+      range.value = String(Math.round(at));
+      const setPosition = (value: number, live: boolean) => {
+        const update = (n: DrawingSettings) => {
+          const target = n.sections.find((x) => x.id === section.id);
+          if (target) target.position = value;
+        };
+        if (live) {
+          const next = structuredClone(this.doc.drawingSettings);
+          update(next);
+          this.preview = next;
+          input.value = String(Math.round(value));
+          this.schedule();
+        } else {
+          this.commit(`Move Section ${section.id}`, update);
+        }
+      };
+      range.addEventListener('input', () => setPosition(Number(range.value), true));
+      range.addEventListener('change', () => setPosition(Number(range.value), false));
+      input.addEventListener('change', () => {
+        const value = Number(input.value);
+        if (Number.isFinite(value)) setPosition(value, false);
       });
-      label.append(range);
-      this.controls.append(axis, label);
+      this.controls.append(ids, field(section.axis === 'y' ? 'y' : 'x', input, 'mm'), range);
     }
 
-    const scaleLabel = el('label', 'field');
-    scaleLabel.append(el('span', undefined, 'Scale'));
-    const select = el('select');
-    for (const s of SCALES) {
-      const option = el('option', undefined, `1:${s}`);
-      option.value = String(s);
-      option.selected = s === this.scale;
-      select.append(option);
+    const scale = el('select');
+    for (const value of SCALES) {
+      const option = el('option', undefined, `1:${value}`);
+      option.value = String(value);
+      option.selected = value === this.scale;
+      scale.append(option);
     }
-    select.addEventListener('change', () => {
-      this.scale = Number(select.value);
+    scale.addEventListener('change', () => {
+      this.scale = Number(scale.value);
       this.schedule();
     });
-    scaleLabel.append(select);
-    this.controls.append(el('div', 'spacer'), this.status, scaleLabel, this.exportButton);
+    const paper = el('select');
+    for (const [value, label] of PAPERS) {
+      const option = el('option', undefined, label);
+      option.value = value;
+      option.selected = value === this.paper;
+      paper.append(option);
+    }
+    paper.addEventListener('change', () => {
+      this.paper = paper.value as Paper;
+      this.schedule();
+    });
+    const exportButton = iconButton(Download, 'Export');
+    exportButton.addEventListener('click', (e) => {
+      e.stopPropagation();
+      this.exportMenu.hidden = !this.exportMenu.hidden;
+    });
+    const exportWrap = el('div', 'export-wrap');
+    exportWrap.append(exportButton, this.exportMenu);
+    this.controls.append(el('div', 'spacer'), this.status, field('Scale', scale), field('Paper', paper), exportWrap);
+  }
+
+  private renderLevelsEditor(): void {
+    this.levelsEditor.replaceChildren();
+    this.levelsEditor.hidden = !(this.kind === 'plan' && this.editingLevels);
+    if (this.levelsEditor.hidden) return;
+    const s = this.doc.drawingSettings;
+    const levels = sortedLevels(s);
+    for (const level of levels) {
+      const row = el('div', 'level-row');
+      const name = el('input');
+      name.value = level.name;
+      name.addEventListener('change', () => this.commit('Rename Level', (n) => (n.levels.find((l) => l.id === level.id)!.name = name.value.trim() || level.name)));
+      const elevation = numberInput(level.elevation);
+      elevation.addEventListener('change', () => {
+        const value = Number(elevation.value);
+        if (Number.isFinite(value)) this.commit('Level Height', (n) => (n.levels.find((l) => l.id === level.id)!.elevation = value));
+      });
+      const remove = iconButton(Trash2, 'Remove level');
+      remove.disabled = levels.length <= 1;
+      remove.addEventListener('click', () => this.commit('Remove Level', (n) => (n.levels = n.levels.filter((l) => l.id !== level.id))));
+      row.append(name, field('', elevation, 'mm'), remove);
+      this.levelsEditor.append(row);
+    }
+    const add = el('button', 'pill-button');
+    add.type = 'button';
+    add.append(createElement(Plus, { width: 14, height: 14 }), ' Add level');
+    add.addEventListener('click', () => {
+      const level = nextLevel(this.doc.drawingSettings);
+      this.levelId = level.id;
+      this.commit('Add Level', (n) => n.levels.push(level));
+    });
+    this.levelsEditor.append(add);
+  }
+
+  private buildExportMenu(): void {
+    this.exportMenu.hidden = true;
+    const item = (label: string, action: () => void) => {
+      const b = el('button', 'menu-item', label);
+      b.type = 'button';
+      b.addEventListener('click', () => {
+        this.exportMenu.hidden = true;
+        action();
+      });
+      this.exportMenu.append(b);
+    };
+    item('This drawing as SVG', () => this.exportSvg());
+    item('This drawing as PDF', () => this.exportPdf(false));
+    item('All drawings as PDF', () => this.exportPdf(true));
+    document.addEventListener('click', () => (this.exportMenu.hidden = true));
+  }
+
+  private fileBase(): string {
+    return this.doc.name.replace(/[\\/:*?"<>|]+/g, '-');
+  }
+
+  private exportSvg(): void {
+    if (!this.svg || !this.setup) return;
+    download(this.svg, 'image/svg+xml', `${this.fileBase()} - ${this.setup.title} 1-${this.scale}.svg`);
+  }
+
+  private exportPdf(all: boolean): void {
+    const refs = all ? allViews(this.doc.drawingSettings) : [this.currentRef()];
+    const built = buildSheets(this.doc, refs, { scale: this.scale, paper: this.paper }).filter((b) => all || !b.empty);
+    if (built.length === 0) return;
+    const pdf = sheetsToPdf(
+      built.map((b) => b.sheet),
+      this.doc.name,
+    );
+    const name = all ? `${this.fileBase()} - drawings 1-${this.scale}.pdf` : `${this.fileBase()} - ${built[0].setup.title} 1-${this.scale}.pdf`;
+    download(pdf.slice().buffer, 'application/pdf', name);
   }
 
   private schedule(): void {
@@ -181,12 +371,12 @@ export class DrawingPanel {
   }
 
   private update(): void {
-    const bounds = this.doc.bounds();
-    this.setup = viewSetup(this.kind, this.options, bounds);
+    const start = performance.now();
+    const flat = this.doc.flatten();
+    const [built] = buildSheets(this.doc, [this.currentRef()], { scale: this.scale, paper: this.paper }, flat, this.settings);
+    this.setup = built.setup;
     this.viewChanged.emit(this.setup);
 
-    // Groups and components are drawn like any other geometry.
-    const flat = this.doc.flatten();
     const isEmpty = flat.edgeCount === 0;
     this.empty.hidden = !isEmpty;
     this.sheet.hidden = isEmpty;
@@ -195,23 +385,11 @@ export class DrawingPanel {
       this.svg = '';
       return;
     }
-
-    const start = performance.now();
-    const drawing = computeDrawing(flat, this.setup);
-    this.svg = drawingToSvg(drawing, this.setup, { scale: this.scale });
+    this.svg = sheetToSvg(built.sheet);
     this.sheet.innerHTML = this.svg;
     const ms = Math.max(1, Math.round(performance.now() - start));
-    this.status.textContent = `Live · ${ms} ms`;
-  }
-
-  private export(): void {
-    if (!this.svg || !this.setup) return;
-    const blob = new Blob([this.svg], { type: 'image/svg+xml' });
-    const link = document.createElement('a');
-    link.href = URL.createObjectURL(blob);
-    link.download = `${this.setup.title.replace(/[^\w]+/g, '-').toLowerCase()}-1-${this.scale}.svg`;
-    link.click();
-    URL.revokeObjectURL(link.href);
+    this.status.textContent = built.sheet.fits ? `Live · ${ms} ms` : `Too big for ${this.paper} at 1:${this.scale}`;
+    this.status.dataset.warn = String(!built.sheet.fits);
   }
 
   /** Wheel zooms around the cursor, drag pans, double-click resets. */

@@ -81,10 +81,12 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 ## 4. 2D-engine (`src/drawing`)
 
-- Views: plattegrond (snede op instelbare hoogte, standaard +1200), vier aanzichten, doorsnede A–A / B–B. Groepen worden eerst **plat geslagen** naar één wereldmodel (`doc.flatten()`).
+- **Tekeninginstellingen** (`drawing/settings.ts`, opgeslagen in het document en het bestand, wijzigingen zijn undo-baar): **bouwlagen** (naam + vloerpeil), de **snijhoogte** van plattegronden (standaard 1200 boven de vloer) en de **doorsneden** (A–A kijkt noord, B–B kijkt west, positie in mm of midden van het model).
+- Views (`ViewRef`): een plattegrond **per bouwlaag** (gesneden op peil + snijhoogte, en alleen getekend tot de eigen vloer, zodat lagere verdiepingen niet doorschemeren; wat precies op vloerhoogte ligt, zoals een dakterras, telt wel mee), vier aanzichten, en de doorsneden. Groepen worden eerst **plat geslagen** naar één wereldmodel (`doc.flatten()`).
 - **Hidden-line removal is exact en analytisch**: elke rand wordt geprojecteerd en weggeknipt waar een vlak ervoor ligt (intervalrekening per vlak). Samenvallende lijnstukken worden samengevoegd (dichtstbijzijnde diepte wint).
 - **Snede**: het snijvlak wordt met alle vlakken gesneden; stukken worden aan elkaar geschakeld tot gesloten lussen en gevuld (poché, even-odd).
-- **Stijl** (`svg.ts`): lijndiktes in **papier-mm** (export op 1:100 print correct), diepte-fading over een vaste afstand (12 m), grondlijn, titel en schaalbalk. Stijl is een set tokens (`MINIMAL`).
+- **Sheet-opmaak** (`sheet.ts`): zet een tekening om naar **papier-primitieven** (lijnen, vlakken, tekst in papier-mm) met poché, grondlijn, **peilmarkeringen** (▼ naam + peil, in aanzichten en doorsneden), **snijsymbolen** (streep-stippellijn, zware uiteinden, pijlen in kijkrichting en de letter, in plattegronden), titelblok en schaalbalk; op "passend" formaat of op A4–A1 liggend (met een waarschuwing als het niet past). Stijl is een set tokens (`MINIMAL`): lijndiktes in **papier-mm**, diepte-fading over 12 m.
+- **Renderers**: `svg.ts` (scherm en SVG-export) en `pdf.ts`, een **eigen PDF-schrijver**: echte vectorpaden, even-odd-vullingen, streepjes en Helvetica (standaard-PDF-lettertype, niets ingesloten), meerdere pagina's per bestand. `build.ts` bouwt sheets voor één of alle views (de **tekeningenset**).
 - Live: het paneel herberekent bij elke wijziging (max. één keer per frame), ook tijdens tool-previews.
 
 ---
@@ -100,7 +102,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 ## 6. Bestanden (`src/io`)
 
-- Formaat **`.elev`**: leesbare JSON `{ format, version, units: 'mm', model, definitions, camera }`. Huidige versie: **2** (definities). Nieuwere versies worden geweigerd met een duidelijke melding.
+- Formaat **`.elev`**: leesbare JSON `{ format, version, units: 'mm', model, definitions, drawing, camera }`. Versie 2 voegde definities toe, **3** de tekeninginstellingen. Nieuwere versies worden geweigerd met een duidelijke melding.
 - Opslaan via de **File System Access API** waar beschikbaar (schrijft terug naar hetzelfde bestand), anders download/bestandskiezer.
 - Een **herstelkopie** in `localStorage` vangt herladen op; het bestand blijft de echte opslag.
 
@@ -127,6 +129,11 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 | 15 | `.elev` als JSON met versienummer | Leesbaar, diff-baar, uitbreidbaar. |
 | 16 | Boog via middelpunt + straal + hoek | Voorkeur van de gebruiker; past bij hoe architecten maatvoeren. |
 | 17 | Raster-snap op 1 m op de grond, uitschakelbaar | Snel op hele maten tekenen; schakelt zichzelf uit bij ver uitzoomen. |
+| 18 | Plattegrond per bouwlaag, getekend tot de eigen vloer | Lagere verdiepingen schemeren niet door; terrassen op vloerhoogte blijven zichtbaar. |
+| 19 | Doorsneden als vaste objecten met een positie in mm | Een doorsnede blijft staan als het model groeit, en kan in plattegronden gemarkeerd worden. |
+| 20 | Tussenlaag van papier-primitieven voor SVG en PDF | Eén opmaak, twee identieke uitvoerformaten. |
+| 21 | Eigen PDF-schrijver i.p.v. een library | Onze tekeningen zijn lijnen, vlakken en tekst: exacte vectoren, geen afhankelijkheden, klein bestand. |
+| 22 | Tekeninginstellingen undo-baar via de history | Bouwlagen en doorsneden wijzigen voelt als elke andere bewerking (en markeert het bestand als gewijzigd). |
 
 ---
 
@@ -135,5 +142,5 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Een volume wegduwen terwijl er iets aan vastzit laat dat deel open achter (zoals SketchUp).
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten hebben nog geen eigen assen/naam-UI; nog geen componentenoverzicht.
-- Tekeningen: nog geen snijsymbolen, bouwlagen, maatvoering of PDF-export.
+- Tekeningen: nog geen maatvoering of meerdere tekeningen per blad; tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
 - Prestaties: kernel-bewerkingen en tekeningen zijn O(n²) en rekenen alles opnieuw; prima voor gebouwen van normale omvang, niet voor zeer grote modellen.

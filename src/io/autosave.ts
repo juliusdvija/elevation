@@ -15,11 +15,15 @@ export function startAutosave(doc: Document, rig: CameraRig): void {
   const write = () => {
     try {
       if (doc.model.vertexCount === 0 && !doc.fileHandle) localStorage.removeItem(KEY);
-      else localStorage.setItem(KEY, JSON.stringify({ name: doc.name, dirty: doc.dirty, file: serialize(toFile(doc.model.toData(), cameraData(rig), doc.definitionsInUse())) }));
+      else localStorage.setItem(KEY, JSON.stringify({ name: doc.name, dirty: doc.dirty, file: serialize(toFile(doc.model.toData(), cameraData(rig), doc.definitionsInUse(), doc.drawingSettings)) }));
     } catch {
       // Storage full or unavailable: the recovery copy is best effort.
     }
   };
+  doc.settingsChanged.on(() => {
+    clearTimeout(timer);
+    timer = window.setTimeout(write, DELAY);
+  });
   doc.geometryChanged.on(() => {
     clearTimeout(timer);
     timer = window.setTimeout(write, DELAY);
@@ -38,7 +42,7 @@ export function restoreAutosave(doc: Document, rig: CameraRig): { restored: bool
     if (!raw) return { restored: false, unsaved: false };
     const saved = JSON.parse(raw) as { name: string; dirty: boolean; file: string };
     const file = parse(saved.file);
-    doc.load(file.model, saved.name, null, { unsaved: saved.dirty, definitions: file.definitions });
+    doc.load(file.model, saved.name, null, { unsaved: saved.dirty, definitions: file.definitions, drawing: file.drawing });
     applyCamera(rig, file.camera);
     return { restored: true, unsaved: saved.dirty };
   } catch {

@@ -9,7 +9,8 @@ import { faceArea, faceContainsPoint, faceInteriorPoint } from './faces';
 import { planeFrame } from './math';
 import { selfIntersections, snapshot, validateModel, type Problem } from './validate';
 import { computeDrawing } from '../drawing/project';
-import { DEFAULT_VIEW_OPTIONS, viewSetup, type ViewKind } from '../drawing/views';
+import { viewSetup } from '../drawing/views';
+import { DEFAULT_SETTINGS, allViews } from '../drawing/settings';
 
 /** Small deterministic PRNG (mulberry32). */
 export function rng(seed: number) {
@@ -299,7 +300,7 @@ export interface FuzzFailure {
   model: Model;
 }
 
-const VIEWS: ViewKind[] = ['plan', 'front', 'right', 'section'];
+const VIEWS = allViews(DEFAULT_SETTINGS);
 
 /** Operations people use on solids; these must also keep faces consistently oriented. */
 const SOLID_OPS = new Set(['push/pull', 'move all', 'rotate all']);
@@ -367,9 +368,9 @@ export function fuzz(seed: number, steps: number, options: FuzzOptions | ((model
 
     for (const kind of VIEWS) {
       try {
-        computeDrawing(model, viewSetup(kind, DEFAULT_VIEW_OPTIONS, model.bounds()));
+        computeDrawing(model, viewSetup(kind, DEFAULT_SETTINGS, model.bounds()));
       } catch (error) {
-        problems.push({ kind: 'drawing', detail: `${kind}: ${(error as Error).message}` });
+        problems.push({ kind: 'drawing', detail: `${kind.kind}: ${(error as Error).message}` });
       }
     }
     // Orientation is undefined on self-intersecting geometry; report that instead.

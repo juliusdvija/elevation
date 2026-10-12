@@ -147,6 +147,13 @@ function projectEdges(model: Model, setup: ViewSetup, occluders: Occluder[]) {
       if (A.z < cut) A = A.clone().lerp(B, (cut - A.z) / (B.z - A.z));
       else if (B.z < cut) B = B.clone().lerp(A, (cut - B.z) / (A.z - B.z));
     }
+    const limit = setup.depthLimit;
+    if (limit !== null) {
+      // And nothing deeper than the view reaches (a plan stops at its floor).
+      if (A.z > limit && B.z > limit) continue;
+      if (A.z > limit) A = A.clone().lerp(B, (A.z - limit) / (A.z - B.z));
+      else if (B.z > limit) B = B.clone().lerp(A, (B.z - limit) / (B.z - A.z));
+    }
 
     const a2 = new THREE.Vector2(A.x, A.y);
     const b2 = new THREE.Vector2(B.x, B.y);
