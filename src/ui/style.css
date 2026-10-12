@@ -40,13 +40,12 @@ body {
 
 .toolbar {
   display: flex;
+  flex-wrap: wrap;
   align-items: center;
-  gap: 12px;
+  gap: 6px 12px;
   padding: 8px 12px;
   background: var(--surface);
   border-bottom: 1px solid var(--line);
-  overflow-x: auto;
-  scrollbar-width: none;
 }
 
 .brand {

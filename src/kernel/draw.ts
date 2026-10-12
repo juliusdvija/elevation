@@ -16,9 +16,15 @@ function insertIntoLoop(loop: readonly Id[], a: Id, b: Id, w: Id): Id[] {
 
 /** Splits an edge at `p` (which must lie on it); faces using it get the new vertex. */
 export function splitEdge(model: Model, edgeId: Id, p: THREE.Vector3): Id {
+  const w = model.addVertex(p);
+  splitEdgeAt(model, edgeId, w);
+  return w;
+}
+
+/** Splits an edge at an existing vertex `w` lying on it. */
+export function splitEdgeAt(model: Model, edgeId: Id, w: Id): void {
   const edge = model.edge(edgeId);
   const faces = model.facesOfEdge(edgeId);
-  const w = model.addVertex(p);
   model.removeEdge(edgeId);
   model.addEdge(edge.a, w);
   model.addEdge(w, edge.b);
@@ -30,7 +36,6 @@ export function splitEdge(model: Model, edgeId: Id, p: THREE.Vector3): Id {
       holes: face.holes.map((h) => insertIntoLoop(h, edge.a, edge.b, w)),
     });
   }
-  return w;
 }
 
 /** The vertex at `p`: an existing one, a split of the edge under it, or a new one. */

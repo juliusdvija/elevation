@@ -1,7 +1,8 @@
 import * as THREE from 'three';
 import type { Face, Id, Model } from './Model';
 import { loopPairs } from './Model';
-import { healEdges, weldVertices } from './cleanup';
+import { healEdges } from './cleanup';
+import { settle } from './transform';
 import { insertSegment } from './draw';
 import { faceInteriorPoint, setFaceNormal, updateFaces } from './faces';
 import { pointInsideSolid } from './solid';
@@ -66,10 +67,7 @@ function moveFace(model: Model, face: Face, distance: number): boolean {
   const offset = face.normal.clone().multiplyScalar(distance);
   for (const v of vertices) model.moveVertex(v, model.position(v).clone().add(offset));
 
-  const survivors = weldVertices(model, vertices);
-  const edges = new Set<Id>();
-  for (const v of survivors) if (model.hasVertex(v)) for (const e of model.edgesAt(v)) edges.add(e);
-  healEdges(model, edges);
+  settle(model, vertices);
   return true;
 }
 

@@ -9,6 +9,11 @@ import { SnapMarker } from './tools/overlay';
 import { Inference } from './tools/inference';
 import { InferenceFeedback } from './tools/feedback';
 import { createTapeMeasureTool } from './tools/TapeMeasureTool';
+import { createMoveTool } from './tools/MoveTool';
+import { createRotateTool } from './tools/RotateTool';
+import { createCircleTool } from './tools/CircleTool';
+import { createArcTool } from './tools/ArcTool';
+import { createOffsetTool } from './tools/OffsetTool';
 import { ToolManager } from './tools/ToolManager';
 import { createOrbitTool, createPanTool } from './tools/navigationTools';
 import { createSelectTool } from './tools/SelectTool';
@@ -25,7 +30,12 @@ const toolInfo = [
   { id: 'select', label: 'Select', shortcut: 'Space' },
   { id: 'line', label: 'Line', shortcut: 'L' },
   { id: 'rectangle', label: 'Rectangle', shortcut: 'R' },
+  { id: 'circle', label: 'Circle', shortcut: 'C' },
+  { id: 'arc', label: 'Arc', shortcut: 'A' },
   { id: 'pushpull', label: 'Push/Pull', shortcut: 'P' },
+  { id: 'move', label: 'Move', shortcut: 'M' },
+  { id: 'rotate', label: 'Rotate', shortcut: 'Q' },
+  { id: 'offset', label: 'Offset', shortcut: 'F' },
   { id: 'eraser', label: 'Eraser', shortcut: 'E' },
   { id: 'tape', label: 'Tape Measure', shortcut: 'T' },
   { id: 'orbit', label: 'Orbit', shortcut: 'O' },
@@ -74,7 +84,12 @@ for (const create of [
   createSelectTool,
   createLineTool,
   createRectangleTool,
+  createCircleTool,
+  createArcTool,
   createPushPullTool,
+  createMoveTool,
+  createRotateTool,
+  createOffsetTool,
   createEraserTool,
   createTapeMeasureTool,
   createOrbitTool,
@@ -169,7 +184,7 @@ shell.redo.addEventListener('click', redo);
 syncHistory();
 
 // Keyboard
-const MEASUREMENT_KEY = /^[0-9.,;\-]$/;
+const MEASUREMENT_KEY = /^[0-9.,;\-\/]$/;
 const MEASUREMENT_UNIT_KEY = /^[a-z ]$/i;
 
 window.addEventListener('keydown', (e) => {

@@ -13,6 +13,8 @@ export function createPushPullTool(ctx: ToolContext): Tool {
   let face: { id: Id; anchor: THREE.Vector3; normal: THREE.Vector3; vertices: Set<Id> } | null = null;
   let preview: ModelEdit | null = null;
   let distance = 0;
+  /** Unsnapped cursor distance: its sign is the direction a typed distance goes. */
+  let direction = 1;
 
   const revertPreview = () => {
     preview?.revert();
@@ -24,6 +26,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     ctx.feedback.clear();
     face = null;
     distance = 0;
+    direction = 1;
     ctx.setMeasurement('');
     ctx.setHint(HINT_START);
   };
@@ -69,6 +72,8 @@ export function createPushPullTool(ctx: ToolContext): Tool {
         return;
       }
       // Snap the distance to the height of an existing point (not the preview's own).
+      const raw = distanceAt(e);
+      if (Math.abs(raw) > 1e-6) direction = Math.sign(raw);
       const { anchor, normal, vertices } = face;
       const pick = ctx.picker.pick(e.clientX, e.clientY, { edges: false, vertexFilter: (v) => vertices.has(v) });
       if (pick.kind === 'vertex' || pick.kind === 'origin' || pick.kind === 'guide-point' || pick.kind === 'intersection') {
@@ -78,7 +83,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
         showPreview(d);
       } else {
         ctx.feedback.clear();
-        showPreview(distanceAt(e));
+        showPreview(raw);
       }
     },
 
@@ -108,7 +113,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     onMeasurement(text) {
       const length = parseLength(text);
       if (!face || length === null) return false;
-      commit(distance < 0 ? -length : length);
+      commit(direction * length);
       return true;
     },
 
