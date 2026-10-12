@@ -5,6 +5,8 @@ import type { Navigator } from './Navigator';
 import type { Picker } from './Picker';
 import type { Selection } from './Selection';
 import type { SnapMarker } from './overlay';
+import type { Inference } from './inference';
+import type { InferenceFeedback } from './feedback';
 
 export interface ToolContext {
   doc: Document;
@@ -14,6 +16,8 @@ export interface ToolContext {
   picker: Picker;
   selection: Selection;
   marker: SnapMarker;
+  inference: Inference;
+  feedback: InferenceFeedback;
   setHint(text: string): void;
   /** Shows a live value in the Measurements box (empty clears it). */
   setMeasurement(value: string): void;

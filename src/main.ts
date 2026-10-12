@@ -6,6 +6,9 @@ import { Navigator } from './tools/Navigator';
 import { Picker } from './tools/Picker';
 import { Selection } from './tools/Selection';
 import { SnapMarker } from './tools/overlay';
+import { Inference } from './tools/inference';
+import { InferenceFeedback } from './tools/feedback';
+import { createTapeMeasureTool } from './tools/TapeMeasureTool';
 import { ToolManager } from './tools/ToolManager';
 import { createOrbitTool, createPanTool } from './tools/navigationTools';
 import { createSelectTool } from './tools/SelectTool';
@@ -24,6 +27,7 @@ const toolInfo = [
   { id: 'rectangle', label: 'Rectangle', shortcut: 'R' },
   { id: 'pushpull', label: 'Push/Pull', shortcut: 'P' },
   { id: 'eraser', label: 'Eraser', shortcut: 'E' },
+  { id: 'tape', label: 'Tape Measure', shortcut: 'T' },
   { id: 'orbit', label: 'Orbit', shortcut: 'O' },
   { id: 'pan', label: 'Pan', shortcut: 'H' },
 ];
@@ -37,6 +41,8 @@ const navigator = new Navigator(viewport);
 const picker = new Picker(model, viewport, renderer);
 const selection = new Selection();
 const marker = new SnapMarker(viewport);
+const inference = new Inference(model, picker, viewport);
+const feedback = new InferenceFeedback(viewport, marker);
 
 // Measurements box: shows live values from the active tool, or what the user types.
 let typed = '';
@@ -54,6 +60,8 @@ const ctx: ToolContext = {
   picker,
   selection,
   marker,
+  inference,
+  feedback,
   setHint: (text) => (shell.hint.textContent = text),
   setMeasurement: (value) => {
     live = value;
@@ -68,6 +76,7 @@ for (const create of [
   createRectangleTool,
   createPushPullTool,
   createEraserTool,
+  createTapeMeasureTool,
   createOrbitTool,
   createPanTool,
 ]) {
@@ -78,14 +87,14 @@ tools.changed.on((tool) => {
   for (const [id, button] of shell.toolButtons) button.setAttribute('aria-pressed', String(id === tool.id));
   typed = '';
   showMeasurement();
-  marker.hide();
+  feedback.clear();
 });
 for (const [id, button] of shell.toolButtons) button.addEventListener('click', () => tools.activate(id));
 tools.activate('select');
 
 selection.changed.on(() => renderer.setSelection({ faces: selection.faces, edges: selection.edges }));
 model.changed.on(() => selection.prune(model));
-viewport.canvas.addEventListener('pointerleave', () => marker.hide());
+viewport.canvas.addEventListener('pointerleave', () => feedback.clear());
 
 // Drawings
 const drawings = new DrawingPanel(model);

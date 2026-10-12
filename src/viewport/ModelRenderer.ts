@@ -7,9 +7,11 @@ import type { Viewport } from './Viewport';
 export interface Highlight {
   faces: Iterable<Id>;
   edges: Iterable<Id>;
+  guides?: Iterable<Id>;
 }
 
 const EMPTY: Highlight = { faces: [], edges: [] };
+const GUIDE_REACH = 100_000; // guide lines are drawn 100 m each way
 
 /**
  * Draws the model: faces white on the front, blue-grey on the back (like
@@ -25,6 +27,8 @@ export class ModelRenderer {
   private readonly selectionEdges: THREE.LineSegments;
   private readonly hoverFaces: THREE.Mesh;
   private readonly hoverEdges: THREE.LineSegments;
+  private readonly guideLines: THREE.LineSegments;
+  private readonly guidePoints: THREE.Points;
 
   /** Face id per triangle of the face meshes, for picking. */
   private triangleFaces: Id[] = [];
@@ -65,7 +69,17 @@ export class ModelRenderer {
     for (const obj of [this.selectionFaces, this.hoverFaces, this.selectionEdges, this.hoverEdges]) obj.raycast = () => {};
     this.edges.raycast = () => {};
 
-    this.group.add(this.front, this.back, this.edges, this.hoverFaces, this.selectionFaces, this.hoverEdges, this.selectionEdges);
+    this.guideLines = new THREE.LineSegments(
+      new THREE.BufferGeometry(),
+      new THREE.LineDashedMaterial({ color: theme.guide, dashSize: 200, gapSize: 150, transparent: true, opacity: 0.8 }),
+    );
+    this.guidePoints = new THREE.Points(
+      new THREE.BufferGeometry(),
+      new THREE.PointsMaterial({ color: theme.guide, size: 5, sizeAttenuation: false }),
+    );
+    for (const obj of [this.guideLines, this.guidePoints]) obj.raycast = () => {};
+
+    this.group.add(this.guideLines, this.guidePoints, this.front, this.back, this.edges, this.hoverFaces, this.selectionFaces, this.hoverEdges, this.selectionEdges);
     viewport.content.add(this.group);
 
     model.changed.on(() => this.rebuild());
@@ -119,6 +133,15 @@ export class ModelRenderer {
     this.edges.geometry.dispose();
     this.edges.geometry = this.edgeGeometry(this.model.allEdges().map((e) => e.id));
 
+    const guides = this.model.allGuides();
+    this.guideLines.geometry.dispose();
+    this.guideLines.geometry = this.guideGeometry(guides.map((g) => g.id));
+    this.guideLines.computeLineDistances();
+    this.guidePoints.geometry.dispose();
+    this.guidePoints.geometry = new THREE.BufferGeometry().setFromPoints(
+      guides.flatMap((g) => (g.kind === 'point' ? [g.point] : [])),
+    );
+
     // Drop highlights of entities that no longer exist.
     this.setSelection(this.selection);
     this.setHover(this.hover);
@@ -139,6 +162,19 @@ export class ModelRenderer {
     return geometry;
   }
 
+  private guideGeometry(ids: Iterable<Id>): THREE.BufferGeometry {
+    const wanted = new Set(ids);
+    const points: THREE.Vector3[] = [];
+    for (const g of this.model.allGuides()) {
+      if (!wanted.has(g.id) || g.kind !== 'line') continue;
+      points.push(
+        g.point.clone().addScaledVector(g.direction, -GUIDE_REACH),
+        g.point.clone().addScaledVector(g.direction, GUIDE_REACH),
+      );
+    }
+    return new THREE.BufferGeometry().setFromPoints(points);
+  }
+
   private updateHighlight(mesh: THREE.Mesh, lines: THREE.LineSegments, highlight: Highlight): void {
     const positions: number[] = [];
     for (const id of highlight.faces) {
@@ -151,7 +187,11 @@ export class ModelRenderer {
     mesh.geometry = geometry;
 
     lines.geometry.dispose();
-    lines.geometry = this.edgeGeometry(highlight.edges);
+    const edges = this.edgeGeometry(highlight.edges).getAttribute('position').array as Float32Array;
+    const guides = this.guideGeometry(highlight.guides ?? []).getAttribute('position')?.array ?? new Float32Array();
+    const merged = new THREE.BufferGeometry();
+    merged.setAttribute('position', new THREE.Float32BufferAttribute([...edges, ...guides], 3));
+    lines.geometry = merged;
     this.viewport.requestRender();
   }
 }

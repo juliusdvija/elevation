@@ -80,8 +80,13 @@ export class DrawingPanel {
   setVisible(visible: boolean): void {
     this.visible = visible;
     this.el.hidden = !visible;
-    if (visible) this.schedule();
-    else this.viewChanged.emit(null);
+    if (visible) {
+      this.schedule();
+    } else {
+      cancelAnimationFrame(this.frame);
+      this.frame = 0;
+      this.viewChanged.emit(null);
+    }
   }
 
   get isVisible(): boolean {

@@ -8,6 +8,7 @@ import {
   MousePointer2,
   PenLine,
   RectangleHorizontal,
+  Ruler,
   Redo2,
   Rotate3d,
   Undo2,
@@ -37,6 +38,7 @@ const TOOL_ICONS: Record<string, IconNode> = {
   rectangle: RectangleHorizontal,
   pushpull: ArrowUpFromLine,
   eraser: Eraser,
+  tape: Ruler,
   orbit: Rotate3d,
   pan: Hand,
 };

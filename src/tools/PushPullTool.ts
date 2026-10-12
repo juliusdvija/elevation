@@ -10,7 +10,7 @@ const HINT_DRAG = 'Move to set the distance and click, or type a distance and pr
 
 export function createPushPullTool(ctx: ToolContext): Tool {
   const model = ctx.doc.model;
-  let face: { id: Id; anchor: THREE.Vector3; normal: THREE.Vector3 } | null = null;
+  let face: { id: Id; anchor: THREE.Vector3; normal: THREE.Vector3; vertices: Set<Id> } | null = null;
   let preview: ModelEdit | null = null;
   let distance = 0;
 
@@ -21,6 +21,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
 
   const reset = () => {
     revertPreview();
+    ctx.feedback.clear();
     face = null;
     distance = 0;
     ctx.setMeasurement('');
@@ -67,7 +68,18 @@ export function createPushPullTool(ctx: ToolContext): Tool {
         ctx.renderer.setHover(hit && { faces: [hit.id], edges: [] });
         return;
       }
-      showPreview(distanceAt(e));
+      // Snap the distance to the height of an existing point (not the preview's own).
+      const { anchor, normal, vertices } = face;
+      const pick = ctx.picker.pick(e.clientX, e.clientY, { edges: false, vertexFilter: (v) => vertices.has(v) });
+      if (pick.kind === 'vertex' || pick.kind === 'guide-point' || pick.kind === 'intersection') {
+        const d = pick.point.clone().sub(anchor).dot(normal);
+        const onNormal = anchor.clone().addScaledVector(normal, d);
+        ctx.feedback.show({ point: pick.point, kind: pick.kind, pick, guides: [{ from: pick.point, to: onNormal }] });
+        showPreview(d);
+      } else {
+        ctx.feedback.clear();
+        showPreview(distanceAt(e));
+      }
     },
 
     pointerDown(e) {
@@ -77,7 +89,18 @@ export function createPushPullTool(ctx: ToolContext): Tool {
       }
       const hit = ctx.picker.face(e.clientX, e.clientY);
       if (!hit) return;
-      face = { id: hit.id, anchor: hit.point, normal: model.face(hit.id).normal.clone() };
+      face = {
+        id: hit.id,
+        anchor: hit.point,
+        normal: model.face(hit.id).normal.clone(),
+        // Points to snap to: everything except the face itself, which moves.
+        vertices: new Set(
+          model
+            .allVertices()
+            .map((v) => v.id)
+            .filter((v) => !model.faceVertices(model.face(hit.id)).includes(v)),
+        ),
+      };
       ctx.renderer.setHover(null);
       ctx.setHint(HINT_DRAG);
     },

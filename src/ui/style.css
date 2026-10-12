@@ -240,6 +240,13 @@ input:focus-visible {
 .snap-marker[data-kind='axis-x'] { --snap: #d2564c; }
 .snap-marker[data-kind='axis-y'] { --snap: #4f9a5a; }
 .snap-marker[data-kind='axis-z'] { --snap: #3f72c9; }
+.snap-marker[data-kind='parallel'],
+.snap-marker[data-kind='perpendicular'] { --snap: #c13fc1; }
+.snap-marker[data-kind='from-point'] { --snap: #8a8780; }
+.snap-marker[data-kind='intersection'] { --snap: #1d1d1b; }
+.snap-marker[data-kind='guide'],
+.snap-marker[data-kind='guide-point'] { --snap: #6f6d67; }
+.snap-marker[data-kind='square'] { --snap: #1aa3b8; }
 
 .drawings {
   display: flex;

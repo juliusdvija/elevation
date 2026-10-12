@@ -13,4 +13,5 @@ export const theme = {
   selection: 0x2f6fde,
   hover: 0x6f9be8,
   preview: 0x1d1d1b,
+  guide: 0x8a8780,
 } as const;

@@ -28,8 +28,16 @@ export interface Face {
   readonly normal: THREE.Vector3;
 }
 
-type Table = 'vertices' | 'edges' | 'faces';
-type Entity = Vertex | Edge | Face;
+/**
+ * A construction guide: an infinite line or a point. Guides help drawing
+ * (they can be snapped to) but are not geometry and never form faces.
+ */
+export type Guide =
+  | { readonly id: Id; readonly kind: 'line'; readonly point: THREE.Vector3; readonly direction: THREE.Vector3 }
+  | { readonly id: Id; readonly kind: 'point'; readonly point: THREE.Vector3 };
+
+type Table = 'vertices' | 'edges' | 'faces' | 'guides';
+type Entity = Vertex | Edge | Face | Guide;
 
 interface JournalEntry {
   table: Table;
@@ -83,6 +91,7 @@ export class Model {
   private readonly vertices = new Map<Id, Vertex>();
   private readonly edges = new Map<Id, Edge>();
   private readonly faces = new Map<Id, Face>();
+  private readonly guides = new Map<Id, Guide>();
 
   private readonly vertexEdges = new Map<Id, Set<Id>>();
   private readonly edgeByPair = new Map<string, Id>();
@@ -146,6 +155,14 @@ export class Model {
 
   allFaces(): Face[] {
     return [...this.faces.values()];
+  }
+
+  allGuides(): Guide[] {
+    return [...this.guides.values()];
+  }
+
+  hasGuide(id: Id): boolean {
+    return this.guides.has(id);
   }
 
   position(id: Id): THREE.Vector3 {
@@ -301,6 +318,22 @@ export class Model {
     this.write('faces', id, undefined);
   }
 
+  addGuideLine(point: THREE.Vector3, direction: THREE.Vector3): Id {
+    const id = this.nextId++;
+    this.write('guides', id, { id, kind: 'line', point: point.clone(), direction: direction.clone().normalize() });
+    return id;
+  }
+
+  addGuidePoint(point: THREE.Vector3): Id {
+    const id = this.nextId++;
+    this.write('guides', id, { id, kind: 'point', point: point.clone() });
+    return id;
+  }
+
+  removeGuide(id: Id): void {
+    this.write('guides', id, undefined);
+  }
+
   /** Writes an entity without journaling; used by undo/redo. */
   restore(table: Table, id: Id, value: Entity | undefined): void {
     this.set(table, id, value);
@@ -315,7 +348,8 @@ export class Model {
   }
 
   private table(table: Table): Map<Id, Entity> {
-    return (table === 'vertices' ? this.vertices : table === 'edges' ? this.edges : this.faces) as Map<Id, Entity>;
+    const tables = { vertices: this.vertices, edges: this.edges, faces: this.faces, guides: this.guides };
+    return tables[table] as Map<Id, Entity>;
   }
 
   private set(table: Table, id: Id, value: Entity | undefined): void {
