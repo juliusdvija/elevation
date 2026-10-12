@@ -31,6 +31,7 @@ import { openDocument, saveDocument } from './io/files';
 import { restoreAutosave, startAutosave } from './io/autosave';
 import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
 import { GroupBar } from './ui/GroupBar';
+import { ComponentsPanel } from './ui/ComponentsPanel';
 
 const toolInfo = [
   { id: 'select', label: 'Select', shortcut: 'Space' },
@@ -174,6 +175,14 @@ shell.gridSnapToggle.addEventListener('click', () => {
   syncGridSnap();
 });
 syncGridSnap();
+
+// Components overview
+const components = new ComponentsPanel(shell.viewport, doc, selection);
+shell.componentsToggle.addEventListener('click', () => {
+  components.setVisible(!components.isVisible);
+  shell.componentsToggle.setAttribute('aria-pressed', String(components.isVisible));
+  shell.componentsToggle.title = components.isVisible ? 'Hide components' : 'Show components';
+});
 
 // Drawings
 const drawings = new DrawingPanel(doc);

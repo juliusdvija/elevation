@@ -584,3 +584,69 @@ input:focus-visible {
 .menu-item:hover {
   background: var(--hover);
 }
+
+.components-panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 240px;
+  max-height: calc(100% - 80px);
+  overflow: auto;
+  padding: 8px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 6px 18px rgb(0 0 0 / 0.07);
+  font-size: 12px;
+  z-index: 2;
+}
+
+.components-panel[hidden] {
+  display: none;
+}
+
+.components-title {
+  padding: 2px 6px 8px;
+  font-weight: 600;
+  color: var(--ink);
+}
+
+.components-empty {
+  padding: 4px 6px 6px;
+  color: var(--ink-muted);
+  line-height: 1.4;
+}
+
+.components-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+
+.components-row .name-input {
+  flex: 1;
+  width: 0;
+  padding: 0 6px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--ink);
+  font: inherit;
+  height: 28px;
+}
+
+.components-row .name-input:hover {
+  background: rgba(0, 0, 0, 0.05);
+}
+
+.components-kind {
+  display: grid;
+  place-items: center;
+  width: 18px;
+  height: 18px;
+  border-radius: 4px;
+  background: rgba(0, 0, 0, 0.06);
+  color: var(--ink-muted);
+  font-size: 10px;
+  font-weight: 600;
+}

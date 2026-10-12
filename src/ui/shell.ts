@@ -14,6 +14,7 @@ import {
   Grid3x3,
   Hand,
   PanelRight,
+  Boxes,
   MousePointer2,
   PenLine,
   RectangleHorizontal,
@@ -33,6 +34,7 @@ export interface ShellElements {
   workspace: HTMLElement;
   viewport: HTMLElement;
   drawingsToggle: HTMLButtonElement;
+  componentsToggle: HTMLButtonElement;
   gridSnapToggle: HTMLButtonElement;
   docName: HTMLElement;
   newDoc: HTMLButtonElement;
@@ -138,8 +140,9 @@ export function buildShell(
   historyGroup.append(undo, redo);
 
   const drawingsToggle = iconButton(PanelRight, 'Show drawings');
+  const componentsToggle = iconButton(Boxes, 'Show components');
   const panelGroup = el('div', 'group');
-  panelGroup.append(drawingsToggle);
+  panelGroup.append(componentsToggle, drawingsToggle);
 
   toolbar.append(brand, docName, fileGroup, toolGroup, el('div', 'spacer'), viewGroup, cameraGroup, historyGroup, panelGroup);
 
@@ -161,5 +164,5 @@ export function buildShell(
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, gridSnapToggle, docName, newDoc, openDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, gridSnapToggle, docName, newDoc, openDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
 }
