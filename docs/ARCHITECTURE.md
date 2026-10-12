@@ -137,12 +137,13 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 | 23 | Maten (twee punten + afstand) horen bij de tekeninginstellingen, in wereldcoördinaten | Eén opslagplek met undo en bestandsformaat erbij; getekend in 3D (`DimensionRenderer`) en in elk aanzicht waaraan de maat evenwijdig is (`drawing/dimensions.ts`); een plattegrond toont de maten van zijn eigen bouwlaag. Delete in de maattool verwijdert de maat onder de cursor. |
 | 24 | Schaalfiguur = gedeeld component met een vlak silhouet (`kernel/figure.ts`, tool N) | Gedraagt zich als elk component (verplaatsen, roteren, tekeningen); draait bij plaatsen naar de camera. Eén definitie voor alle figuren. |
 | 25 | "Face me" is een vlag op de definitie; de draaiing zit in `placements()`, niet in de opgeslagen matrix | Renderer, picker, snappen en bounds gebruiken allemaal `placements()`, dus alles blijft consistent terwijl de camera draait; er komt geen undo-stap of wijzigingsvlag bij. Tekeningen draaien de figuur per aanzicht naar de kijker (plattegrond: zoals opgeslagen). Een nieuw document begint met een schaalfiguur op de origin (`reset()`, zonder undo-stap). |
+| 26 | Na Push/Pull worden openingen in een voorheen gesloten model gesloten (`kernel/close.ts`) | Wat op een doorgeduwd vlak stond blijft anders als open koker achter. Alleen als het model eerst gesloten was; vlakke lussen van open randen krijgen een deksel; eerst geprobeerd op een kopie en alleen overgenomen als het aantal kapotte randen daalt zonder driewegverbindingen. |
 
 ---
 
 ## 8. Bekende beperkingen
 
-- Een volume wegduwen terwijl er iets aan vastzit laat dat deel open achter (zoals SketchUp).
+- Een volume wegduwen terwijl er iets aan vastzit: het deel dat blijft staan wordt nu dichtgemaakt als het model eerst gesloten was (besluit 26). In de solids-fuzz faalt nog ~22% van de reeksen van 30 stappen, vooral door randen met drie vlakken waar volumes elkaar raken.
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten hebben nog geen eigen assen/naam-UI; nog geen componentenoverzicht.
 - Tekeningen: maten zijn handmatig (geen automatische maatketens) en er zijn nog geen meerdere tekeningen per blad; tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).

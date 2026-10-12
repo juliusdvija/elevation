@@ -3,6 +3,7 @@ import type { Face, Id, Model } from './Model';
 import { loopPairs } from './Model';
 import { healEdges, removeBareEdges } from './cleanup';
 import { settle } from './transform';
+import { closeOpenings, isClosed } from './close';
 import { insertSegment } from './draw';
 import { faceInteriorPoint, rebuildPlane, setFaceNormal, updateFaces, type RegionDecision } from './faces';
 import { insideTester } from './solid';
@@ -20,9 +21,13 @@ import { EPS, canonicalPlane, planeFrame, pointInPolygon, projectOnSegment, to2D
 export function pushPull(model: Model, faceId: Id, distance: number): boolean {
   if (Math.abs(distance) < EPS || !model.hasFace(faceId)) return false;
   const face = model.face(faceId);
-  if (canMoveFace(model, face) && !sweepMeetsOtherGeometry(model, face, distance)) return moveFace(model, face, distance);
-  extrude(model, face, distance);
-  return true;
+  const wasClosed = isClosed(model);
+  let changed = true;
+  if (canMoveFace(model, face) && !sweepMeetsOtherGeometry(model, face, distance)) changed = moveFace(model, face, distance);
+  else extrude(model, face, distance);
+  // Whatever stood on the swept face is left open at the cut: put its cap back.
+  if (changed) closeOpenings(model, wasClosed);
+  return changed;
 }
 
 /** Other faces on the face's boundary edges, per edge. */

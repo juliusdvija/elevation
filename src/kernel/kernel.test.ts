@@ -355,3 +355,25 @@ describe('push/pull through other geometry', () => {
     expect(volume(model)).toBe(18_000_000_000 + 2_000_000_000);
   });
 });
+
+describe('closing what a push leaves open', () => {
+  it('puts the cap back on a block left standing when the face under it is pushed through', () => {
+    const model = new Model();
+    run(model, () => {
+      drawPolygon(model, rect(0, 0, 4000, 4000));
+      pushPull(model, model.allFaces()[0].id, -4000);
+    });
+    const zs = (f: { id: number }) => model.faceVertices(model.face(f.id)).map((id) => model.position(id).z);
+    const base = model.allFaces().find((f) => zs(f).every((z) => z === 0) && model.faceVertices(model.face(f.id)).length === 4)!;
+    // A 1 m block hanging under the cube.
+    run(model, () => drawPolygon(model, rect(1500, 1500, 2500, 2500)));
+    const small = model.allFaces().find((f) => zs(f).every((z) => z === 0) && model.faceVertices(model.face(f.id)).every((id) => model.position(id).x >= 1500 && model.position(id).x <= 2500))!;
+    run(model, () => pushPull(model, small.id, 1000));
+    expect(isClosedSolid(model)).toBe(true);
+    const ring = model.allFaces().find((f) => zs(f).every((z) => z === 0) && model.faceLoops(model.face(f.id)).length > 1)!;
+    run(model, () => pushPull(model, ring.id, -4000));
+    void base;
+    expect(validateModel(model)).toEqual([]);
+    expect(isClosedSolid(model)).toBe(true);
+  });
+});
