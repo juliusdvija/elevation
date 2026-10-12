@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { theme } from '../viewport/theme';
 import type { Pick, Picker } from './Picker';
 import type { Viewport } from '../viewport/Viewport';
-import type { Model } from '../kernel/Model';
+import { worldEdge, worldFacePlane } from './space';
 import type { SnapKind } from './overlay';
 import { alignmentInPlane, closestOnLineToRay, intersectLines, projectOnLine, type Line3 } from './lines';
 
@@ -71,7 +71,6 @@ export class Inference {
   gridSnap = true;
 
   constructor(
-    private readonly model: Model,
     private readonly picker: Picker,
     private readonly viewport: Viewport,
   ) {}
@@ -116,9 +115,7 @@ export class Inference {
       if (!from || pick.point.distanceTo(from) > 1) this.remember(pick.point);
     }
     if (pick.kind === 'edge' || pick.kind === 'midpoint') {
-      const edge = this.model.edge(pick.id);
-      const a = this.model.position(edge.a).clone();
-      const b = this.model.position(edge.b).clone();
+      const [a, b] = worldEdge(pick.placement, pick.id);
       this.reference = { a, b, dir: b.clone().sub(a).normalize() };
     }
 
@@ -147,7 +144,10 @@ export class Inference {
 
     if (from && px(from) > MIN_DRAG) {
       let best: (Direction & { point: THREE.Vector3; d: number }) | null = null;
+      const view = this.viewport.rig.direction();
       for (const candidate of this.directions()) {
+        // A direction seen end-on (blue axis in a top view) cannot be followed with the cursor.
+        if (Math.abs(candidate.dir.dot(view)) > 0.995) continue;
         const point = closestOnLineToRay({ point: from, direction: candidate.dir }, ray);
         const d = px(point);
         if (d < DIRECTION_RADIUS && (!best || d < best.d) && point.distanceTo(from) > 1e-6) best = { ...candidate, point, d };
@@ -172,10 +172,7 @@ export class Inference {
     this.lastDirection = null;
 
     if (pick.kind === 'face' || pick.kind === 'ground') {
-      const plane =
-        pick.kind === 'face'
-          ? this.model.facePlane(this.model.face(pick.id))
-          : { normal: new THREE.Vector3(0, 0, 1), d: 0 };
+      const plane = pick.kind === 'face' ? worldFacePlane(pick.placement, pick.id) : { normal: new THREE.Vector3(0, 0, 1), d: 0 };
       const aligned = this.alignInPlane(ray, plane, px, from ? [from] : []);
       if (aligned) return { point: aligned.point, kind: 'from-point', pick, guides: aligned.guides };
       const grid = this.gridPoint(pick.point, px);

@@ -3,11 +3,14 @@ import {
   Circle,
   Move,
   RotateCw,
+  Save,
   Spline,
   SquareDashed,
   Box,
   Eraser,
   Expand,
+  FilePlus,
+  FolderOpen,
   Grid3x3,
   Hand,
   PanelRight,
@@ -29,6 +32,10 @@ export interface ShellElements {
   viewport: HTMLElement;
   drawingsToggle: HTMLButtonElement;
   gridSnapToggle: HTMLButtonElement;
+  docName: HTMLElement;
+  newDoc: HTMLButtonElement;
+  openDoc: HTMLButtonElement;
+  saveDoc: HTMLButtonElement;
   toolButtons: Map<string, HTMLButtonElement>;
   viewButtons: Map<StandardView, HTMLButtonElement>;
   projection: HTMLButtonElement;
@@ -88,6 +95,12 @@ export function buildShell(
 
   const toolbar = el('header', 'toolbar');
   const brand = el('div', 'brand', 'Elevation');
+  const docName = el('div', 'doc-name');
+  const newDoc = iconButton(FilePlus, 'New');
+  const openDoc = iconButton(FolderOpen, 'Open… (⌘O)');
+  const saveDoc = iconButton(Save, 'Save (⌘S)');
+  const fileGroup = el('div', 'group');
+  fileGroup.append(newDoc, openDoc, saveDoc);
 
   const toolGroup = el('div', 'group');
   const toolButtons = new Map<string, HTMLButtonElement>();
@@ -124,7 +137,7 @@ export function buildShell(
   const panelGroup = el('div', 'group');
   panelGroup.append(drawingsToggle);
 
-  toolbar.append(brand, toolGroup, el('div', 'spacer'), viewGroup, cameraGroup, historyGroup, panelGroup);
+  toolbar.append(brand, docName, fileGroup, toolGroup, el('div', 'spacer'), viewGroup, cameraGroup, historyGroup, panelGroup);
 
   const workspace = el('div', 'workspace');
   const viewport = el('main', 'viewport');
@@ -144,5 +157,5 @@ export function buildShell(
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, gridSnapToggle, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
+  return { root, workspace, viewport, drawingsToggle, gridSnapToggle, docName, newDoc, openDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { arcPoints, circlePoints, offsetPolygon } from './shapes';
+import { arcFromCenter, arcSegments, circlePoints, offsetPolygon } from './shapes';
 
 const v = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
 const Z = v(0, 0, 1);
@@ -14,14 +14,20 @@ describe('shapes', () => {
     expect(round(pts[0])).toEqual([600, 100, 0]);
   });
 
-  it('builds an arc through its ends and its bulge point', () => {
-    const pts = arcPoints(v(0, 0), v(1000, 0), Z, 500, 12);
-    expect(round(pts[0])).toEqual([0, 0, 0]);
-    expect(round(pts[12])).toEqual([1000, 0, 0]);
-    // Bulge of half the chord is a half circle; its middle point is the apex.
-    expect(round(pts[6])).toEqual([500, 500, 0]);
-    const flipped = arcPoints(v(0, 0), v(1000, 0), Z, -200, 8);
-    expect(Math.min(...flipped.map((p) => p.y))).toBeCloseTo(-200, 6);
+  it('builds an arc from centre, start point and angle', () => {
+    const pts = arcFromCenter(v(0, 0), Z, v(1000, 0), Math.PI / 2, 6);
+    expect(pts).toHaveLength(7);
+    expect(round(pts[0])).toEqual([1000, 0, 0]);
+    expect(round(pts[6])).toEqual([0, 1000, 0]);
+    expect(pts.every((p) => Math.abs(p.length() - 1000) < 1e-9)).toBe(true);
+    // Negative angles sweep clockwise.
+    expect(round(arcFromCenter(v(0, 0), Z, v(1000, 0), -Math.PI / 2, 4)[4])).toEqual([0, -1000, 0]);
+  });
+
+  it('uses one segment per 15 degrees', () => {
+    expect(arcSegments(Math.PI / 2)).toBe(6);
+    expect(arcSegments(2 * Math.PI)).toBe(24);
+    expect(arcSegments(0.01)).toBe(2);
   });
 
   it('offsets a square inwards and outwards', () => {

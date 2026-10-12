@@ -5,6 +5,7 @@ import { EPS } from '../kernel/math';
 import { kindColor, type InferredPoint } from './inference';
 import { PreviewLines } from './overlay';
 import type { Tool, ToolContext } from './Tool';
+import { space, worldFacePlane } from './space';
 
 const HINT_START = 'Click to start a line.';
 const HINT_NEXT =
@@ -31,12 +32,14 @@ export function createLineTool(ctx: ToolContext): Tool {
   /** Draws start→end; ends the chain when the line closed a face. */
   const commit = (end: THREE.Vector3) => {
     if (!start || end.distanceTo(start) < EPS) return;
-    const from = start;
-    const facesBefore = ctx.doc.model.faceCount;
-    ctx.doc.run('Line', () => drawSegments(ctx.doc.model, [[from, end]]));
+    const s = space(ctx);
+    const from = s.toLocal(start);
+    const to = s.toLocal(end);
+    const facesBefore = s.model.faceCount;
+    ctx.doc.run('Line', () => drawSegments(s.model, [[from, to]]));
     inference.remember(end);
     inference.release();
-    if (ctx.doc.model.faceCount > facesBefore) reset();
+    if (s.model.faceCount > facesBefore) reset();
     else {
       start = end.clone();
       preview.clear();
@@ -68,7 +71,7 @@ export function createLineTool(ctx: ToolContext): Tool {
       if (!start) {
         start = p.point.clone();
         inference.remember(start);
-        inference.startNormal = p.pick.kind === 'face' ? ctx.doc.model.face(p.pick.id).normal.clone() : null;
+        inference.startNormal = p.pick.kind === 'face' ? worldFacePlane(p.pick.placement, p.pick.id).normal : null;
         ctx.setHint(HINT_NEXT);
       } else {
         commit(p.point);

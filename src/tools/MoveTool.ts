@@ -1,12 +1,14 @@
 import * as THREE from 'three';
 import { formatLength, parseLength } from '../core/units';
-import type { ModelEdit } from '../kernel/Model';
 import { EPS } from '../kernel/math';
 import { copyEntities, transformVertices } from '../kernel/transform';
 import { kindColor, type InferredPoint } from './inference';
 import { PreviewLines } from './overlay';
 import { highlightOf, targetVertices, targetsAt, type Targets } from './targets';
 import type { Tool, ToolContext } from './Tool';
+import type { Operation } from '../core/history';
+import { space } from './space';
+import { previewEdit } from './preview';
 
 const HINT_START = 'Click a point to move from. Moves the selection, or what is under the cursor.';
 const HINT_MOVE = 'Click to place, or type a distance. Option/Ctrl toggles copy.';
@@ -22,27 +24,36 @@ export function parseArray(text: string): { count: number; divide: boolean } | n
 }
 
 export function createMoveTool(ctx: ToolContext): Tool {
-  const model = ctx.doc.model;
   const { inference, feedback } = ctx;
   const rubber = new PreviewLines(ctx.viewport);
 
   let targets: Targets | null = null;
   let base: THREE.Vector3 | null = null;
   let copy = false;
-  let preview: ModelEdit | null = null;
+  let preview: Operation | null = null;
   let offset = new THREE.Vector3();
   let hover: InferredPoint | null = null;
   let lastEvent: PointerEvent | null = null;
   let lastCopy: { targets: Targets; offset: THREE.Vector3 } | null = null;
 
+  /** Moves (or copies) targets by a world-space displacement. */
   const perform = (t: Targets, d: THREE.Vector3, asCopy: boolean, count = 1, divide = false) => {
+    const s = space(ctx);
+    const model = s.model;
+    const local = (step: THREE.Vector3) => s.matrixToLocal(new THREE.Matrix4().makeTranslation(step.x, step.y, step.z));
     if (!asCopy) {
-      transformVertices(model, targetVertices(ctx, t), new THREE.Matrix4().makeTranslation(d.x, d.y, d.z));
+      const m = local(d);
+      for (const id of t.instances) model.setInstanceMatrix(id, m.clone().multiply(new THREE.Matrix4().fromArray(model.instance(id).matrix)));
+      transformVertices(model, targetVertices(ctx, t), m);
       return;
     }
     for (let i = 1; i <= count; i++) {
-      const step = d.clone().multiplyScalar(divide ? i / count : i);
-      copyEntities(model, t.faces, t.edges, new THREE.Matrix4().makeTranslation(step.x, step.y, step.z));
+      const m = local(d.clone().multiplyScalar(divide ? i / count : i));
+      for (const id of t.instances) {
+        const inst = model.instance(id);
+        model.addInstance(inst.definition, m.clone().multiply(new THREE.Matrix4().fromArray(inst.matrix)));
+      }
+      copyEntities(model, t.faces, t.edges, m);
     }
   };
 
@@ -55,7 +66,8 @@ export function createMoveTool(ctx: ToolContext): Tool {
     revertPreview();
     if (!targets || offset.length() < EPS) return;
     const t = targets;
-    preview = model.edit(() => perform(t, offset, copy)).edit;
+    // Preview in every model (moving an instance edits its parent).
+    preview = previewEdit(ctx, () => perform(t, offset, copy));
   };
 
   const reset = () => {
@@ -75,7 +87,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
   const commit = (d: THREE.Vector3) => {
     if (!targets || d.length() < EPS) return reset();
     const t = targets;
-    const asCopy = copy && t.faces.length + t.edges.length > 0;
+    const asCopy = copy && t.faces.length + t.edges.length + t.instances.length > 0;
     revertPreview();
     ctx.doc.run(asCopy ? 'Copy' : 'Move', () => perform(t, d, asCopy));
     lastCopy = asCopy ? { targets: t, offset: d.clone() } : null;

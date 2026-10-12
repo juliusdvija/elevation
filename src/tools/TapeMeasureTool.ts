@@ -5,6 +5,7 @@ import { closestOnLineToRay, projectOnLine, type Line3 } from './lines';
 import { kindColor, type InferredPoint } from './inference';
 import { PreviewLines } from './overlay';
 import type { Tool, ToolContext } from './Tool';
+import { worldEdge } from './space';
 
 const HINT_START = 'Click an edge to place a parallel guide, or a point to measure from.';
 const HINT_GUIDE = 'Move to offset the guide and click, or type a distance and press Enter.';
@@ -104,9 +105,8 @@ export function createTapeMeasureTool(ctx: ToolContext): Tool {
         const id = p.pick.id;
         let edge: Line3;
         if (p.pick.kind === 'edge') {
-          const ed = model.edge(id);
-          const a = model.position(ed.a);
-          edge = { point: a.clone(), direction: model.position(ed.b).clone().sub(a).normalize() };
+          const [a, b] = worldEdge(p.pick.placement, id);
+          edge = { point: a, direction: b.clone().sub(a).normalize() };
         } else {
           const g = model.allGuides().find((x) => x.id === id);
           if (!g || g.kind !== 'line') return;

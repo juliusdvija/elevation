@@ -6,6 +6,7 @@ import { circlePoints } from '../kernel/shapes';
 import { PreviewLines } from './overlay';
 import { parseSegments, planeOfStart, pointInPlane } from './planeOfStart';
 import type { Tool, ToolContext } from './Tool';
+import { space } from './space';
 
 const HINT_CENTER = 'Click the centre. Circles follow the face you start on. Type 24s to set the number of sides.';
 const HINT_RADIUS = 'Click to set the radius, or type it and press Enter.';
@@ -33,7 +34,8 @@ export function createCircleTool(ctx: ToolContext): Tool {
   const commit = (radius: number) => {
     if (!center || radius < EPS) return;
     const pts = points(radius);
-    ctx.doc.run('Circle', () => drawPolygon(ctx.doc.model, pts));
+    const s = space(ctx);
+    ctx.doc.run('Circle', () => drawPolygon(s.model, pts.map(s.toLocal)));
     inference.remember(center);
     reset();
   };

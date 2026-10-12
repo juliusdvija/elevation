@@ -24,7 +24,10 @@ import { createEraserTool } from './tools/EraserTool';
 import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
+import { openDocument, saveDocument } from './io/files';
+import { restoreAutosave, startAutosave } from './io/autosave';
 import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
+import { GroupBar } from './ui/GroupBar';
 
 const toolInfo = [
   { id: 'select', label: 'Select', shortcut: 'Space' },
@@ -46,12 +49,12 @@ const shell = buildShell(document.getElementById('app')!, toolInfo);
 const doc = new Document();
 const { history, model } = doc;
 const viewport = new Viewport(shell.viewport);
-const renderer = new ModelRenderer(model, viewport);
+const renderer = new ModelRenderer(doc, viewport);
 const navigator = new Navigator(viewport);
-const picker = new Picker(model, viewport, renderer);
+const picker = new Picker(doc, viewport, renderer);
 const selection = new Selection();
 const marker = new SnapMarker(viewport);
-const inference = new Inference(model, picker, viewport);
+const inference = new Inference(picker, viewport);
 const feedback = new InferenceFeedback(viewport, marker);
 
 // Measurements box: shows live values from the active tool, or what the user types.
@@ -107,8 +110,39 @@ tools.changed.on((tool) => {
 for (const [id, button] of shell.toolButtons) button.addEventListener('click', () => tools.activate(id));
 tools.activate('select');
 
-selection.changed.on(() => renderer.setSelection({ faces: selection.faces, edges: selection.edges }));
-model.changed.on(() => selection.prune(model));
+selection.changed.on(() => renderer.setSelection({ faces: selection.faces, edges: selection.edges, instances: selection.instances }));
+doc.geometryChanged.on(() => selection.prune(doc.context.model));
+doc.contextChanged.on(() => {
+  tools.cancel();
+  selection.clear();
+});
+
+// Groups and components
+function makeGroup(kind: 'group' | 'component') {
+  if (selection.empty) return;
+  tools.cancel();
+  const faces = [...selection.faces];
+  const edges = [...selection.edges];
+  const instances = [...selection.instances];
+  const id = doc.run(kind === 'group' ? 'Make Group' : 'Make Component', () => doc.makeDefinition(kind, faces, edges, instances));
+  selection.clear();
+  selection.add({ kind: 'instance', id });
+}
+function selectedInstance(): number | undefined {
+  return selection.instances.size === 1 && selection.faces.size === 0 && selection.edges.size === 0 ? [...selection.instances][0] : undefined;
+}
+function explodeSelected() {
+  const id = selectedInstance();
+  if (id === undefined) return;
+  tools.cancel();
+  doc.run('Explode', () => doc.explode(id));
+  selection.clear();
+}
+function editSelected() {
+  const id = selectedInstance();
+  if (id !== undefined) doc.enter(id);
+}
+new GroupBar(shell.viewport, doc, selection, { makeGroup, explode: explodeSelected, edit: editSelected });
 viewport.canvas.addEventListener('pointerleave', () => feedback.clear());
 
 // Grid snap, remembered per browser.
@@ -134,10 +168,10 @@ shell.gridSnapToggle.addEventListener('click', () => {
 syncGridSnap();
 
 // Drawings
-const drawings = new DrawingPanel(model);
+const drawings = new DrawingPanel(doc);
 shell.workspace.append(drawings.el);
 const cutPlane = new CutPlaneGizmo(viewport);
-drawings.viewChanged.on((setup) => cutPlane.show(setup, model.bounds()));
+drawings.viewChanged.on((setup) => cutPlane.show(setup, doc.bounds()));
 function syncDrawingsToggle() {
   shell.drawingsToggle.setAttribute('aria-pressed', String(drawings.isVisible));
   shell.drawingsToggle.title = drawings.isVisible ? 'Hide drawings' : 'Show drawings';
@@ -162,6 +196,58 @@ shell.projection.addEventListener('click', () => {
   viewport.requestRender();
 });
 shell.zoomExtents.addEventListener('click', () => navigator.zoomExtents());
+
+// Files
+function syncTitle() {
+  shell.docName.textContent = doc.name;
+  shell.docName.dataset.dirty = String(doc.dirty);
+  document.title = `${doc.name}${doc.dirty ? ' •' : ''} — Elevation`;
+}
+doc.changed.on(syncTitle);
+
+function afterLoad() {
+  tools.cancel();
+  selection.clear();
+  viewport.requestRender();
+}
+
+async function confirmDiscard(): Promise<boolean> {
+  return !doc.dirty || window.confirm(`Discard unsaved changes to "${doc.name}"?`);
+}
+
+async function save(saveAs = false) {
+  try {
+    tools.cancel();
+    await saveDocument(doc, viewport.rig, { saveAs });
+  } catch (error) {
+    window.alert(`Could not save: ${(error as Error).message}`);
+  }
+}
+
+async function open() {
+  if (!(await confirmDiscard())) return;
+  try {
+    const file = await openDocument(doc, viewport.rig);
+    if (!file) return;
+    afterLoad();
+    if (!file.camera) navigator.zoomExtents();
+  } catch (error) {
+    window.alert((error as Error).message);
+  }
+}
+
+async function newDocument() {
+  if (!(await confirmDiscard())) return;
+  doc.reset();
+  afterLoad();
+}
+
+shell.saveDoc.addEventListener('click', () => save());
+shell.openDoc.addEventListener('click', () => open());
+shell.newDoc.addEventListener('click', () => newDocument());
+window.addEventListener('beforeunload', (e) => {
+  if (doc.dirty && doc.fileHandle) e.preventDefault();
+});
 
 // History
 function syncHistory() {
@@ -220,7 +306,16 @@ window.addEventListener('keydown', (e) => {
     }
   }
 
-  if (mod && e.key.toLowerCase() === 'z') {
+  if (mod && e.key.toLowerCase() === 'g') {
+    e.preventDefault();
+    makeGroup(e.shiftKey ? 'component' : 'group');
+  } else if (mod && e.key.toLowerCase() === 's') {
+    e.preventDefault();
+    save(e.shiftKey);
+  } else if (mod && e.key.toLowerCase() === 'o') {
+    e.preventDefault();
+    open();
+  } else if (mod && e.key.toLowerCase() === 'z') {
     e.preventDefault();
     if (e.shiftKey) redo();
     else undo();
@@ -235,6 +330,11 @@ window.addEventListener('keydown', (e) => {
 });
 
 viewport.rig.setView('iso');
+const recovered = restoreAutosave(doc, viewport.rig);
+if (recovered.restored) afterLoad();
+if (recovered.unsaved) ctx.setHint('Restored your unsaved work from last time. Save it to keep it in a file (⌘S).');
+startAutosave(doc, viewport.rig);
+syncTitle();
 
 if (import.meta.env.DEV) {
   // Debug handle for the browser console.

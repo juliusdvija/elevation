@@ -250,3 +250,44 @@ function onEdgeInterior(model: Model, edgeId: Id, p: THREE.Vector3): boolean {
   const length = a.distanceTo(b);
   return distance < EPS && t * length > EPS && (1 - t) * length > EPS;
 }
+
+/**
+ * Copies faces and edges from `source` into `target`, transformed by
+ * `matrix`. With `settleAfter`, the copy merges with what is already there
+ * (as when exploding a group); otherwise it is placed as is (filling a new,
+ * empty group). Returns the created vertices.
+ */
+export function copyBetweenModels(
+  source: Model,
+  target: Model,
+  faces: Iterable<Id>,
+  edges: Iterable<Id>,
+  matrix: THREE.Matrix4,
+  settleAfter: boolean,
+): Id[] {
+  const faceList = [...faces].filter((f) => source.hasFace(f)).map((f) => source.face(f));
+  const edgeIds = new Set([...edges].filter((e) => source.hasEdge(e)));
+  for (const f of faceList) for (const e of source.faceEdges(f)) edgeIds.add(e);
+
+  const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
+  const map = new Map<Id, Id>();
+  const copy = (v: Id) => {
+    let c = map.get(v);
+    if (c === undefined) map.set(v, (c = target.addVertex(source.position(v).clone().applyMatrix4(matrix))));
+    return c;
+  };
+  for (const e of edgeIds) {
+    const edge = source.edge(e);
+    target.addEdge(copy(edge.a), copy(edge.b));
+  }
+  for (const f of faceList) {
+    target.putFace({
+      outer: f.outer.map(copy),
+      holes: f.holes.map((h) => h.map(copy)),
+      normal: f.normal.clone().applyMatrix3(normalMatrix).normalize(),
+    });
+  }
+  const created = [...map.values()];
+  if (settleAfter) settle(target, created);
+  return created;
+}

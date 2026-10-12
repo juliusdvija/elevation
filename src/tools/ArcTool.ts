@@ -1,101 +1,128 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import { formatLength, parseLength } from '../core/units';
 import { drawSegments } from '../kernel/draw';
 import { EPS, type Plane } from '../kernel/math';
-import { arcPoints, bulgeDirection } from '../kernel/shapes';
+import { arcFromCenter, arcSegments } from '../kernel/shapes';
+import { theme } from '../viewport/theme';
 import { PreviewLines } from './overlay';
 import { parseSegments, planeOfStart, pointInPlane } from './planeOfStart';
 import type { Tool, ToolContext } from './Tool';
+import { space } from './space';
 
-const HINT_START = 'Click the start of the arc. Type 12s to set the number of segments.';
-const HINT_END = 'Click the end of the arc, or type the chord length.';
-const HINT_BULGE = 'Move to set the bulge and click (snaps to a half circle), or type the bulge.';
-const HALF_CIRCLE_PX = 8;
+const HINT_CENTER = 'Click the centre of the arc. Arcs follow the face you start on.';
+const HINT_START = 'Click the start of the arc (sets the radius), or type the radius.';
+const HINT_ANGLE = 'Move to sweep the arc (snaps every 15°) and click, or type the angle in degrees. Type 12s to set the segments.';
+const SNAP_DEGREES = 15;
+const SNAP_TOLERANCE = 2; // degrees
 
+/** Arc from a centre, a start point (radius) and a swept angle. */
 export function createArcTool(ctx: ToolContext): Tool {
   const { inference, feedback } = ctx;
   const preview = new PreviewLines(ctx.viewport);
-  let segments = 12;
-  let start: THREE.Vector3 | null = null;
-  let end: THREE.Vector3 | null = null;
+  let center: THREE.Vector3 | null = null;
   let plane: Plane | null = null;
-  let bulge = 0;
+  let start: THREE.Vector3 | null = null;
   let cursor: THREE.Vector3 | null = null;
+  /** Swept angle in radians, tracked continuously so arcs can pass 180°. */
+  let angle = 0;
+  let lastRaw = 0;
+  /** The angle shown (snapped), which a click commits. */
+  let shownAngle = 0;
+  let segments: number | null = null;
 
   const reset = () => {
-    start = null;
-    end = null;
+    center = null;
     plane = null;
-    bulge = 0;
+    start = null;
     cursor = null;
+    angle = 0;
+    lastRaw = 0;
+    shownAngle = 0;
     preview.clear();
     feedback.clear();
     ctx.setMeasurement('');
-    ctx.setHint(HINT_START);
+    ctx.setHint(HINT_CENTER);
   };
 
-  const commit = (b: number) => {
-    if (!start || !end) return;
-    const pts = arcPoints(start, end, plane!.normal, b, segments);
-    ctx.doc.run('Arc', () => drawSegments(ctx.doc.model, pts.slice(1).map((p, i) => [pts[i], p] as [THREE.Vector3, THREE.Vector3])));
-    inference.remember(start);
-    inference.remember(end);
+  const points = (a: number) => arcFromCenter(center!, plane!.normal, start!, a, segments ?? arcSegments(a));
+
+  const commit = (a: number) => {
+    if (!center || !start || Math.abs(a) < 1e-6) return;
+    const s = space(ctx);
+    const pts = points(a).map(s.toLocal);
+    ctx.doc.run('Arc', () => drawSegments(s.model, pts.slice(1).map((p, i) => [pts[i], p] as [THREE.Vector3, THREE.Vector3])));
+    inference.remember(center);
+    inference.remember(s.toWorld(pts[0]));
+    inference.remember(s.toWorld(pts[pts.length - 1]));
     reset();
   };
 
-  const showArc = (b: number) => {
-    const pts = arcPoints(start!, end!, plane!.normal, b, segments);
-    preview.set(pts.slice(1).map((p, i) => [pts[i], p] as [THREE.Vector3, THREE.Vector3]));
-    ctx.setMeasurement(formatLength(Math.abs(b)));
+  /** Angle of `p` around the centre, measured from the start direction. */
+  const rawAngle = (p: THREE.Vector3) => {
+    const n = plane!.normal;
+    const u = start!.clone().sub(center!);
+    const d = p.clone().sub(center!);
+    d.addScaledVector(n, -d.dot(n));
+    return Math.atan2(new THREE.Vector3().crossVectors(u, d).dot(n), u.dot(d));
   };
 
   return {
     id: 'arc',
     label: 'Arc',
     shortcut: 'A',
-    hint: HINT_START,
+    hint: HINT_CENTER,
     cursor: 'crosshair',
 
     pointerMove(e) {
-      if (!start) {
+      if (!center) {
         feedback.show(inference.infer(e, null));
         return;
       }
-      const hit = pointInPlane(ctx, e, plane!, end ? null : start);
+      const hit = pointInPlane(ctx, e, plane!, center);
       feedback.show(hit?.inferred ?? null);
       if (!hit) return;
-      if (!end) {
+      if (!start) {
         cursor = hit.point;
-        preview.set([[start, cursor]]);
-        ctx.setMeasurement(formatLength(start.distanceTo(cursor)));
+        preview.set([[center, cursor]], theme.preview);
+        ctx.setMeasurement(formatLength(center.distanceTo(cursor)));
         return;
       }
-      const mid = start.clone().lerp(end, 0.5);
-      bulge = hit.point.clone().sub(mid).dot(bulgeDirection(start, end, plane!.normal));
-      // Snap to a half circle.
-      const half = (start.distanceTo(end) / 2) * Math.sign(bulge || 1);
-      const halfApex = mid.clone().addScaledVector(bulgeDirection(start, end, plane!.normal), half);
-      const screen = ctx.viewport.toScreen(halfApex);
-      if (screen && screen.distanceTo({ x: e.clientX, y: e.clientY } as THREE.Vector2) < HALF_CIRCLE_PX) {
-        bulge = half;
-        ctx.setHint(`Half circle. ${HINT_BULGE}`);
-      }
-      showArc(bulge);
+      // Unwrap so the sweep keeps growing past ±180°.
+      const raw = rawAngle(hit.point);
+      let delta = raw - lastRaw;
+      if (delta > Math.PI) delta -= 2 * Math.PI;
+      if (delta < -Math.PI) delta += 2 * Math.PI;
+      lastRaw = raw;
+      angle = THREE.MathUtils.clamp(angle + delta, -2 * Math.PI, 2 * Math.PI);
+      let degrees = THREE.MathUtils.radToDeg(angle);
+      const snapped = Math.round(degrees / SNAP_DEGREES) * SNAP_DEGREES;
+      if (Math.abs(degrees - snapped) < SNAP_TOLERANCE) degrees = snapped;
+      const shown = THREE.MathUtils.degToRad(degrees);
+      shownAngle = shown;
+      const pts = points(shown);
+      preview.set([
+        [center, pts[0]],
+        [center, pts[pts.length - 1]],
+        ...pts.slice(1).map((p, i) => [pts[i], p] as [THREE.Vector3, THREE.Vector3]),
+      ]);
+      ctx.setMeasurement(`${Math.round(degrees * 10) / 10}°`);
     },
 
     pointerDown(e) {
-      if (!start) {
+      if (!center) {
         const p = inference.infer(e, null);
         if (!p) return;
-        start = p.point.clone();
+        center = p.point.clone();
         plane = planeOfStart(ctx, e, p);
-        ctx.setHint(HINT_END);
-      } else if (!end) {
-        if (!cursor || cursor.distanceTo(start) < EPS) return;
-        end = cursor.clone();
-        ctx.setHint(HINT_BULGE);
+        ctx.setHint(HINT_START);
+      } else if (!start) {
+        if (!cursor || cursor.distanceTo(center) < EPS) return;
+        start = cursor.clone();
+        angle = 0;
+        lastRaw = 0;
+        ctx.setHint(HINT_ANGLE);
       } else {
-        commit(bulge);
+        commit(shownAngle);
       }
     },
 
@@ -105,20 +132,24 @@ export function createArcTool(ctx: ToolContext): Tool {
         segments = n;
         return true;
       }
-      const length = parseLength(text);
-      if (!start || length === null) return false;
-      if (!end) {
-        if (!cursor || cursor.distanceTo(start) < EPS) return false;
-        end = start.clone().add(cursor.clone().sub(start).setLength(Math.abs(length)));
-        ctx.setHint(HINT_BULGE);
+      if (center && !start) {
+        const radius = parseLength(text);
+        if (radius === null || !cursor || cursor.distanceTo(center) < EPS) return false;
+        start = center.clone().add(cursor.clone().sub(center).setLength(Math.abs(radius)));
+        angle = 0;
+        lastRaw = 0;
+        ctx.setHint(HINT_ANGLE);
         return true;
       }
-      commit(length * (bulge < 0 ? -1 : 1));
+      const degrees = Number(text.replace(',', '.'));
+      if (!start || !Number.isFinite(degrees)) return false;
+      // Typed angles sweep the way the cursor was going.
+      commit(THREE.MathUtils.degToRad(Math.abs(degrees)) * (angle < 0 ? -1 : 1) * Math.sign(degrees || 1));
       return true;
     },
 
     keyDown(e) {
-      if (e.key === 'Escape' && start) {
+      if (e.key === 'Escape' && center) {
         reset();
         return true;
       }

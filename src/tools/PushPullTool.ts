@@ -4,12 +4,13 @@ import type { Id, ModelEdit } from '../kernel/Model';
 import { closestBetweenSegments } from '../kernel/math';
 import { pushPull } from '../kernel/pushPull';
 import type { Tool, ToolContext } from './Tool';
+import { worldFacePlane } from './space';
 
 const HINT_START = 'Click a face to push or pull it.';
 const HINT_DRAG = 'Move to set the distance and click, or type a distance and press Enter.';
 
 export function createPushPullTool(ctx: ToolContext): Tool {
-  const model = ctx.doc.model;
+  const model = () => ctx.doc.context.model;
   let face: { id: Id; anchor: THREE.Vector3; normal: THREE.Vector3; vertices: Set<Id> } | null = null;
   let preview: ModelEdit | null = null;
   let distance = 0;
@@ -46,7 +47,8 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     revertPreview();
     distance = d;
     ctx.setMeasurement(formatLength(Math.abs(d)));
-    const { edit } = model.edit(() => pushPull(model, face!.id, d));
+    const m = model();
+    const { edit } = m.edit(() => pushPull(m, face!.id, d));
     preview = edit.empty ? null : edit;
   };
 
@@ -54,7 +56,8 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     if (!face) return;
     const id = face.id;
     revertPreview();
-    ctx.doc.run('Push/Pull', () => pushPull(model, id, d));
+    const m = model();
+    ctx.doc.run('Push/Pull', () => pushPull(m, id, d));
     reset();
   };
 
@@ -68,14 +71,17 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     pointerMove(e) {
       if (!face) {
         const hit = ctx.picker.face(e.clientX, e.clientY);
-        ctx.renderer.setHover(hit && { faces: [hit.id], edges: [] });
+        ctx.renderer.setHover(hit && ctx.picker.isContext(hit.placement) ? { faces: [hit.id], edges: [] } : null);
         return;
       }
       // Snap the distance to the height of an existing point (not the preview's own).
       const raw = distanceAt(e);
       if (Math.abs(raw) > 1e-6) direction = Math.sign(raw);
       const { anchor, normal, vertices } = face;
-      const pick = ctx.picker.pick(e.clientX, e.clientY, { edges: false, vertexFilter: (v) => vertices.has(v) });
+      const pick = ctx.picker.pick(e.clientX, e.clientY, {
+        edges: false,
+        vertexFilter: (v, placement) => !ctx.picker.isContext(placement) || vertices.has(v),
+      });
       if (pick.kind === 'vertex' || pick.kind === 'origin' || pick.kind === 'guide-point' || pick.kind === 'intersection') {
         const d = pick.point.clone().sub(anchor).dot(normal);
         const onNormal = anchor.clone().addScaledVector(normal, d);
@@ -93,18 +99,16 @@ export function createPushPullTool(ctx: ToolContext): Tool {
         return;
       }
       const hit = ctx.picker.face(e.clientX, e.clientY);
-      if (!hit) return;
+      // Only faces of the model being edited (not inside groups).
+      if (!hit || !ctx.picker.isContext(hit.placement)) return;
+      const m = model();
+      const own = new Set(m.faceVertices(m.face(hit.id)));
       face = {
         id: hit.id,
         anchor: hit.point,
-        normal: model.face(hit.id).normal.clone(),
+        normal: worldFacePlane(hit.placement, hit.id).normal,
         // Points to snap to: everything except the face itself, which moves.
-        vertices: new Set(
-          model
-            .allVertices()
-            .map((v) => v.id)
-            .filter((v) => !model.faceVertices(model.face(hit.id)).includes(v)),
-        ),
+        vertices: new Set(m.allVertices().map((v) => v.id).filter((v) => !own.has(v))),
       };
       ctx.renderer.setHover(null);
       ctx.setHint(HINT_DRAG);

@@ -5,6 +5,8 @@ import { DIR_EPS, EPS, onPlane, planeFromPointNormal, type Plane } from '../kern
 import type { InferredPoint } from './inference';
 import { PreviewLines } from './overlay';
 import type { Tool, ToolContext } from './Tool';
+import { space } from './space';
+import { planeOfStart } from './planeOfStart';
 
 const HINT_START = 'Click the first corner. Rectangles follow the face you start on.';
 const HINT_NEXT = 'Click the opposite corner, or type width;height and press Enter.';
@@ -55,7 +57,8 @@ export function createRectangleTool(ctx: ToolContext): Tool {
   const commit = (du: number, dv: number) => {
     if (!corner || Math.abs(du) < EPS || Math.abs(dv) < EPS) return;
     const points = corners(du, dv);
-    ctx.doc.run('Rectangle', () => drawPolygon(ctx.doc.model, points));
+    const s = space(ctx);
+    ctx.doc.run('Rectangle', () => drawPolygon(s.model, points.map(s.toLocal)));
     for (const p of points) inference.remember(p);
     reset();
   };
@@ -125,12 +128,9 @@ export function createRectangleTool(ctx: ToolContext): Tool {
       }
       const p = inference.infer(e, null);
       if (!p) return;
-      const model = ctx.doc.model;
-      const face = ctx.picker.face(e.clientX, e.clientY);
-      const onFace = face && onPlane(model.facePlane(model.face(face.id)), p.point);
       corner = p.point.clone();
       inference.remember(corner);
-      frame = frameFor(corner, onFace ? model.face(face.id).normal : new THREE.Vector3(0, 0, 1));
+      frame = frameFor(corner, planeOfStart(ctx, e, p).normal);
       size = { du: 0, dv: 0 };
       ctx.setHint(HINT_NEXT);
     },

@@ -9,7 +9,7 @@ export function createEraserTool(ctx: ToolContext): Tool {
   type Target = { kind: 'edges' | 'guides'; id: Id };
   const targetAt = (e: PointerEvent): Target | null => {
     const pick = ctx.picker.pick(e.clientX, e.clientY, { vertices: false });
-    if (pick.kind === 'edge' || pick.kind === 'midpoint') return { kind: 'edges', id: pick.id };
+    if ((pick.kind === 'edge' || pick.kind === 'midpoint') && ctx.picker.isContext(pick.placement)) return { kind: 'edges', id: pick.id };
     if (pick.kind === 'guide' || pick.kind === 'guide-point') return { kind: 'guides', id: pick.id };
     return null;
   };
@@ -51,9 +51,10 @@ export function createEraserTool(ctx: ToolContext): Tool {
       const edges = [...marked.edges];
       const guides = [...marked.guides];
       if (edges.length + guides.length > 0) {
-        const model = ctx.doc.model;
+        const root = ctx.doc.model;
+        const model = ctx.doc.context.model;
         ctx.doc.run('Erase', () => {
-          for (const id of guides) model.removeGuide(id);
+          for (const id of guides) root.removeGuide(id);
           eraseEdges(model, edges);
         });
       }

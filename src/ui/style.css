@@ -35,6 +35,8 @@ body {
 .app {
   display: grid;
   grid-template-rows: auto 1fr auto;
+  /* Never wider than the window: the toolbar wraps instead. */
+  grid-template-columns: minmax(0, 1fr);
   height: 100%;
 }
 
@@ -52,6 +54,19 @@ body {
   font-weight: 600;
   letter-spacing: 0.01em;
   padding-right: 8px;
+}
+
+.doc-name {
+  max-width: 220px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+  color: var(--ink-muted);
+}
+
+.doc-name[data-dirty='true']::after {
+  content: ' •';
+  color: var(--ink);
 }
 
 .group {
@@ -403,4 +418,63 @@ input:focus-visible {
   border-style: dashed;
   background: rgb(79 154 90 / 0.06);
   border-color: #4f9a5a;
+}
+
+.crumbs,
+.group-actions {
+  position: absolute;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  box-shadow: 0 1px 2px rgb(0 0 0 / 0.05), 0 6px 18px rgb(0 0 0 / 0.07);
+  font-size: 12px;
+  z-index: 2;
+}
+
+.crumbs[hidden],
+.group-actions[hidden] {
+  display: none;
+}
+
+.crumbs {
+  top: 12px;
+  left: 12px;
+  padding-left: 12px;
+}
+
+.crumbs .sep {
+  color: var(--ink-muted);
+}
+
+.group-actions {
+  bottom: 14px;
+  left: 50%;
+  transform: translateX(-50%);
+  white-space: nowrap;
+}
+
+.group-actions .label {
+  padding: 0 8px 0 10px;
+  color: var(--ink-muted);
+}
+
+.pill-button {
+  height: 28px;
+  padding: 0 12px;
+  border-radius: 999px;
+  color: var(--ink);
+}
+
+.pill-button:hover {
+  background: var(--hover);
+}
+
+.pill-button.crumb {
+  padding: 0 4px;
+  height: 22px;
+  color: var(--ink-muted);
 }

@@ -57,6 +57,11 @@ export class History {
     return this.redoStack.at(-1)?.label;
   }
 
+  /** The most recent undoable step; identifies the current state for "saved" tracking. */
+  get head(): Transaction | undefined {
+    return this.undoStack.at(-1);
+  }
+
   get inTransaction(): boolean {
     return this.open !== null;
   }

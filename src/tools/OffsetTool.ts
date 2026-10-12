@@ -6,12 +6,12 @@ import { EPS, planeFrame, pointInPolygon, projectOnSegment, to2D } from '../kern
 import { offsetPolygon } from '../kernel/shapes';
 import { PreviewLines } from './overlay';
 import type { Tool, ToolContext } from './Tool';
+import { space } from './space';
 
 const HINT_START = 'Click a face to offset its outline.';
 const HINT_DRAG = 'Move inwards or outwards and click, or type a distance.';
 
 export function createOffsetTool(ctx: ToolContext): Tool {
-  const model = ctx.doc.model;
   const preview = new PreviewLines(ctx.viewport);
   let face: { id: Id; outline: THREE.Vector3[]; normal: THREE.Vector3 } | null = null;
   let distance = 0;
@@ -28,7 +28,8 @@ export function createOffsetTool(ctx: ToolContext): Tool {
   const commit = (d: number) => {
     if (!face || Math.abs(d) < EPS) return;
     const points = offsetPolygon(face.outline, face.normal, d);
-    ctx.doc.run('Offset', () => drawPolygon(model, points));
+    const s = space(ctx);
+    ctx.doc.run('Offset', () => drawPolygon(s.model, points.map(s.toLocal)));
     reset();
   };
 
@@ -57,7 +58,7 @@ export function createOffsetTool(ctx: ToolContext): Tool {
     pointerMove(e) {
       if (!face) {
         const hit = ctx.picker.face(e.clientX, e.clientY);
-        ctx.renderer.setHover(hit && { faces: [hit.id], edges: [] });
+        ctx.renderer.setHover(hit && ctx.picker.isContext(hit.placement) ? { faces: [hit.id], edges: [] } : null);
         return;
       }
       const d = distanceAt(e);
@@ -74,9 +75,11 @@ export function createOffsetTool(ctx: ToolContext): Tool {
         return;
       }
       const hit = ctx.picker.face(e.clientX, e.clientY);
-      if (!hit) return;
+      if (!hit || !ctx.picker.isContext(hit.placement)) return;
+      const s = space(ctx);
+      const model = s.model;
       const f = model.face(hit.id);
-      face = { id: f.id, outline: f.outer.map((v) => model.position(v).clone()), normal: f.normal.clone() };
+      face = { id: f.id, outline: f.outer.map((v) => s.toWorld(model.position(v))), normal: s.vectorToWorld(f.normal).normalize() };
       ctx.renderer.setHover(null);
       ctx.setHint(HINT_DRAG);
     },

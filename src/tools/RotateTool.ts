@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import type { ModelEdit } from '../kernel/Model';
 import { DIR_EPS, onPlane } from '../kernel/math';
 import { copyEntities, transformVertices } from '../kernel/transform';
 import { theme } from '../viewport/theme';
@@ -7,6 +6,9 @@ import { parseArray } from './MoveTool';
 import { PreviewLines } from './overlay';
 import { highlightOf, targetVertices, targetsAt, type Targets } from './targets';
 import type { Tool, ToolContext } from './Tool';
+import type { Operation } from '../core/history';
+import { space, worldFacePlane } from './space';
+import { previewEdit } from './preview';
 
 const HINT_CENTER = 'Click the centre of rotation. The protractor follows the face under the cursor; arrow keys lock it to an axis.';
 const HINT_REFERENCE = 'Click a point to set the start angle.';
@@ -35,7 +37,6 @@ function protractorColor(normal: THREE.Vector3): number {
 }
 
 export function createRotateTool(ctx: ToolContext): Tool {
-  const model = ctx.doc.model;
   const { inference, feedback } = ctx;
   const protractor = new PreviewLines(ctx.viewport);
   const arms = new PreviewLines(ctx.viewport);
@@ -47,16 +48,28 @@ export function createRotateTool(ctx: ToolContext): Tool {
   let reference: THREE.Vector3 | null = null;
   let angle = 0;
   let copy = false;
-  let preview: ModelEdit | null = null;
+  let preview: Operation | null = null;
   let lastEvent: PointerEvent | null = null;
   let lastCopy: { targets: Targets; center: THREE.Vector3; normal: THREE.Vector3; angle: number } | null = null;
 
+  /** Rotates (or copies) targets about a world-space axis. */
   const perform = (t: Targets, c: THREE.Vector3, n: THREE.Vector3, a: number, asCopy: boolean, count = 1) => {
+    const s = space(ctx);
+    const model = s.model;
     if (!asCopy) {
-      transformVertices(model, targetVertices(ctx, t), rotationAbout(c, n, a));
+      const m = s.matrixToLocal(rotationAbout(c, n, a));
+      for (const id of t.instances) model.setInstanceMatrix(id, m.clone().multiply(new THREE.Matrix4().fromArray(model.instance(id).matrix)));
+      transformVertices(model, targetVertices(ctx, t), m);
       return;
     }
-    for (let i = 1; i <= count; i++) copyEntities(model, t.faces, t.edges, rotationAbout(c, n, a * i));
+    for (let i = 1; i <= count; i++) {
+      const m = s.matrixToLocal(rotationAbout(c, n, a * i));
+      for (const id of t.instances) {
+        const inst = model.instance(id);
+        model.addInstance(inst.definition, m.clone().multiply(new THREE.Matrix4().fromArray(inst.matrix)));
+      }
+      copyEntities(model, t.faces, t.edges, m);
+    }
   };
 
   const revertPreview = () => {
@@ -110,8 +123,8 @@ export function createRotateTool(ctx: ToolContext): Tool {
       const p = inference.infer(e, null);
       feedback.show(p);
       if (!p) return protractor.clear();
-      const face = p.pick.kind === 'face' ? model.face(p.pick.id) : null;
-      normal = lockedNormal ?? face?.normal.clone() ?? new THREE.Vector3(0, 0, 1);
+      const facePlane = p.pick.kind === 'face' ? worldFacePlane(p.pick.placement, p.pick.id) : null;
+      normal = lockedNormal ?? facePlane?.normal ?? new THREE.Vector3(0, 0, 1);
       drawProtractor(p.point, normal);
       return;
     }
@@ -146,14 +159,14 @@ export function createRotateTool(ctx: ToolContext): Tool {
     ctx.setMeasurement(`${Math.round(degrees * 10) / 10}°`);
     if (targets && Math.abs(angle) > 1e-9) {
       const [t, c, n, a] = [targets, center, normal, angle];
-      preview = model.edit(() => perform(t, c, n, a, copy)).edit;
+      preview = previewEdit(ctx, () => perform(t, c, n, a, copy));
     }
   };
 
   const commit = (a: number) => {
     if (!targets || !center || Math.abs(a) < 1e-9) return reset();
     const [t, c, n] = [targets, center.clone(), normal.clone()];
-    const asCopy = copy && t.faces.length + t.edges.length > 0;
+    const asCopy = copy && t.faces.length + t.edges.length + t.instances.length > 0;
     revertPreview();
     ctx.doc.run(asCopy ? 'Rotate Copy' : 'Rotate', () => perform(t, c, n, a, asCopy));
     lastCopy = asCopy ? { targets: t, center: c, normal: n, angle: a } : null;

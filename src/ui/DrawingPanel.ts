@@ -1,6 +1,6 @@
 import { Download, createElement } from 'lucide';
 import { Emitter } from '../core/emitter';
-import type { Model } from '../kernel/Model';
+import type { Document } from '../document';
 import { computeDrawing } from '../drawing/project';
 import { drawingToSvg } from '../drawing/svg';
 import { DEFAULT_VIEW_OPTIONS, viewSetup, type ViewKind, type ViewOptions, type ViewSetup } from '../drawing/views';
@@ -50,7 +50,7 @@ export class DrawingPanel {
   private view = { x: 0, y: 0, zoom: 1 };
   private exportButton!: HTMLButtonElement;
 
-  constructor(private readonly model: Model) {
+  constructor(private readonly doc: Document) {
     const header = el('div', 'drawings-header');
     const tabs = el('div', 'group segmented');
     for (const [kind, label] of TABS) {
@@ -73,7 +73,7 @@ export class DrawingPanel {
     this.el.append(header, this.controls, this.stage);
     this.bindStage();
 
-    model.changed.on(() => this.schedule());
+    doc.geometryChanged.on(() => this.schedule());
     this.setKind('plan');
   }
 
@@ -181,11 +181,13 @@ export class DrawingPanel {
   }
 
   private update(): void {
-    const bounds = this.model.bounds();
+    const bounds = this.doc.bounds();
     this.setup = viewSetup(this.kind, this.options, bounds);
     this.viewChanged.emit(this.setup);
 
-    const isEmpty = this.model.edgeCount === 0;
+    // Groups and components are drawn like any other geometry.
+    const flat = this.doc.flatten();
+    const isEmpty = flat.edgeCount === 0;
     this.empty.hidden = !isEmpty;
     this.sheet.hidden = isEmpty;
     if (isEmpty) {
@@ -195,7 +197,7 @@ export class DrawingPanel {
     }
 
     const start = performance.now();
-    const drawing = computeDrawing(this.model, this.setup);
+    const drawing = computeDrawing(flat, this.setup);
     this.svg = drawingToSvg(drawing, this.setup, { scale: this.scale });
     this.sheet.innerHTML = this.svg;
     const ms = Math.max(1, Math.round(performance.now() - start));

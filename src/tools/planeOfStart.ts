@@ -2,14 +2,14 @@ import * as THREE from 'three';
 import { onPlane, planeFromPointNormal, type Plane } from '../kernel/math';
 import type { InferredPoint } from './inference';
 import type { ToolContext } from './Tool';
+import { worldFacePlane } from './space';
 
 /** Drawing plane for a shape started at `p`: the face under it, else horizontal. */
 export function planeOfStart(ctx: ToolContext, e: PointerEvent, p: InferredPoint): Plane {
-  const model = ctx.doc.model;
   const hit = ctx.picker.face(e.clientX, e.clientY);
   if (hit) {
-    const face = model.face(hit.id);
-    if (onPlane(model.facePlane(face), p.point)) return planeFromPointNormal(p.point, face.normal);
+    const plane = worldFacePlane(hit.placement, hit.id);
+    if (onPlane(plane, p.point)) return planeFromPointNormal(p.point, plane.normal);
   }
   return planeFromPointNormal(p.point, new THREE.Vector3(0, 0, 1));
 }

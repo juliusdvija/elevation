@@ -30,44 +30,29 @@ export function circlePoints(
   });
 }
 
-/** Direction from the chord's midpoint towards a positive bulge. */
-export function bulgeDirection(a: THREE.Vector3, b: THREE.Vector3, normal: THREE.Vector3): THREE.Vector3 {
-  return new THREE.Vector3().crossVectors(normal, new THREE.Vector3().subVectors(b, a)).normalize();
+/**
+ * Points along a circular arc around `center` in the plane with `normal`,
+ * starting at `start` and sweeping `angle` radians (counter-clockwise around
+ * the normal when positive). Includes both ends.
+ */
+export function arcFromCenter(
+  center: THREE.Vector3,
+  normal: THREE.Vector3,
+  start: THREE.Vector3,
+  angle: number,
+  segments: number,
+): THREE.Vector3[] {
+  const n = normal.clone().normalize();
+  const radial = start.clone().sub(center);
+  radial.addScaledVector(n, -radial.dot(n));
+  return Array.from({ length: segments + 1 }, (_, i) =>
+    i === 0 ? start.clone() : center.clone().add(radial.clone().applyAxisAngle(n, (angle * i) / segments)),
+  );
 }
 
-/**
- * Points along a circular arc from `a` to `b` in the plane with `normal`,
- * bulging by `bulge` (the sagitta) towards `bulgeDirection`. Includes both
- * ends. A bulge of zero gives the straight chord.
- */
-export function arcPoints(a: THREE.Vector3, b: THREE.Vector3, normal: THREE.Vector3, bulge: number, segments: number): THREE.Vector3[] {
-  const chord = a.distanceTo(b);
-  if (Math.abs(bulge) < 1e-6 || chord < 1e-6) return [a.clone(), b.clone()];
-  const perp = bulgeDirection(a, b, normal);
-  const mid = a.clone().lerp(b, 0.5);
-  const h = Math.abs(bulge);
-  const side = Math.sign(bulge);
-  const radius = (chord * chord) / (8 * h) + h / 2;
-  const center = mid.clone().addScaledVector(perp, side * (h - radius));
-
-  const [u, w] = basis(normal, a.clone().sub(center));
-  const angle = (p: THREE.Vector3) => {
-    const d = p.clone().sub(center);
-    return Math.atan2(d.dot(w), d.dot(u));
-  };
-  const end = angle(b);
-  const apex = angle(mid.clone().addScaledVector(perp, side * h));
-  // Sweep from 0 to `end` the way that passes through the apex.
-  const ccw = ((end % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-  const apexCcw = ((apex % (2 * Math.PI)) + 2 * Math.PI) % (2 * Math.PI);
-  const sweep = apexCcw < ccw ? ccw : ccw - 2 * Math.PI;
-
-  return Array.from({ length: segments + 1 }, (_, i) => {
-    if (i === 0) return a.clone();
-    if (i === segments) return b.clone();
-    const t = (i / segments) * sweep;
-    return center.clone().addScaledVector(u, Math.cos(t) * radius).addScaledVector(w, Math.sin(t) * radius);
-  });
+/** Segments for an arc: one per 15° (24 for a full circle), at least two. */
+export function arcSegments(angle: number): number {
+  return Math.max(2, Math.ceil(Math.abs(angle) / (Math.PI / 12) - 1e-9));
 }
 
 /**

@@ -36,8 +36,19 @@ export type Guide =
   | { readonly id: Id; readonly kind: 'line'; readonly point: THREE.Vector3; readonly direction: THREE.Vector3 }
   | { readonly id: Id; readonly kind: 'point'; readonly point: THREE.Vector3 };
 
-type Table = 'vertices' | 'edges' | 'faces' | 'guides';
-type Entity = Vertex | Edge | Face | Guide;
+/**
+ * A placed group or component: a definition (by id, owned by the document)
+ * and a column-major 4x4 transform from the definition's coordinates into
+ * this model's.
+ */
+export interface Instance {
+  readonly id: Id;
+  readonly definition: number;
+  readonly matrix: readonly number[];
+}
+
+type Table = 'vertices' | 'edges' | 'faces' | 'guides' | 'instances';
+type Entity = Vertex | Edge | Face | Guide | Instance;
 
 interface JournalEntry {
   table: Table;
@@ -53,6 +64,16 @@ export function pairKey(a: Id, b: Id): string {
 /** Vertex pairs (edges) of a closed loop. */
 export function loopPairs(loop: readonly Id[]): [Id, Id][] {
   return loop.map((v, i) => [v, loop[(i + 1) % loop.length]]);
+}
+
+/** Plain-data form of a model, as stored in files. */
+export interface ModelData {
+  nextId: number;
+  vertices: [Id, number, number, number][];
+  edges: [Id, Id, Id][];
+  faces: { id: Id; outer: Id[]; holes: Id[][]; normal: [number, number, number] }[];
+  guides: ({ id: Id; kind: 'line'; point: [number, number, number]; direction: [number, number, number] } | { id: Id; kind: 'point'; point: [number, number, number] })[];
+  instances?: { id: Id; definition: number; matrix: number[] }[];
 }
 
 /**
@@ -92,6 +113,7 @@ export class Model {
   private readonly edges = new Map<Id, Edge>();
   private readonly faces = new Map<Id, Face>();
   private readonly guides = new Map<Id, Guide>();
+  private readonly instances = new Map<Id, Instance>();
 
   private readonly vertexEdges = new Map<Id, Set<Id>>();
   private readonly edgeByPair = new Map<string, Id>();
@@ -155,6 +177,20 @@ export class Model {
 
   allFaces(): Face[] {
     return [...this.faces.values()];
+  }
+
+  allInstances(): Instance[] {
+    return [...this.instances.values()];
+  }
+
+  instance(id: Id): Instance {
+    const i = this.instances.get(id);
+    if (!i) throw new Error(`No instance ${id}`);
+    return i;
+  }
+
+  hasInstance(id: Id): boolean {
+    return this.instances.has(id);
   }
 
   allGuides(): Guide[] {
@@ -241,6 +277,54 @@ export class Model {
     return box;
   }
 
+  // ------------------------------------------------------------ persistence
+
+  toData(): ModelData {
+    const byId = <T extends { id: Id }>(list: T[]) => [...list].sort((a, b) => a.id - b.id);
+    return {
+      nextId: this.nextId,
+      vertices: byId(this.allVertices()).map((v) => [v.id, v.position.x, v.position.y, v.position.z]),
+      edges: byId(this.allEdges()).map((e) => [e.id, e.a, e.b]),
+      faces: byId(this.allFaces()).map((f) => ({
+        id: f.id,
+        outer: [...f.outer],
+        holes: f.holes.map((h) => [...h]),
+        normal: f.normal.toArray() as [number, number, number],
+      })),
+      instances: byId(this.allInstances()).map((i) => ({ id: i.id, definition: i.definition, matrix: [...i.matrix] })),
+      guides: byId(this.allGuides()).map((g) =>
+        g.kind === 'line'
+          ? { id: g.id, kind: 'line' as const, point: g.point.toArray() as [number, number, number], direction: g.direction.toArray() as [number, number, number] }
+          : { id: g.id, kind: 'point' as const, point: g.point.toArray() as [number, number, number] },
+      ),
+    };
+  }
+
+  /** Replaces the whole model with `data` (not undoable; clear history after). */
+  load(data: ModelData): void {
+    if (this.journal) throw new Error('Cannot load during an edit');
+    for (const table of ['faces', 'edges', 'guides', 'instances', 'vertices'] as const) {
+      for (const id of [...this.table(table).keys()]) this.set(table, id, undefined);
+    }
+    for (const [id, x, y, z] of data.vertices) this.set('vertices', id, { id, position: new THREE.Vector3(x, y, z) });
+    for (const [id, a, b] of data.edges) this.set('edges', id, { id, a, b });
+    for (const f of data.faces) {
+      this.set('faces', f.id, { id: f.id, outer: [...f.outer], holes: f.holes.map((h) => [...h]), normal: new THREE.Vector3(...f.normal) });
+    }
+    for (const g of data.guides ?? []) {
+      this.set(
+        'guides',
+        g.id,
+        g.kind === 'line'
+          ? { id: g.id, kind: 'line', point: new THREE.Vector3(...g.point), direction: new THREE.Vector3(...g.direction) }
+          : { id: g.id, kind: 'point', point: new THREE.Vector3(...g.point) },
+      );
+    }
+    for (const i of data.instances ?? []) this.set('instances', i.id, { id: i.id, definition: i.definition, matrix: [...i.matrix] });
+    this.nextId = Math.max(data.nextId, this.nextId);
+    this.changed.emit();
+  }
+
   // ------------------------------------------------------------- mutations
 
   /**
@@ -249,19 +333,33 @@ export class Model {
    */
   edit<T>(fn: () => T): { result: T; edit: ModelEdit } {
     if (this.journal) return { result: fn(), edit: new ModelEdit(this, []) };
-
-    const journal = new Map<string, { table: Table; id: Id; before: Entity | undefined }>();
-    this.journal = journal;
+    this.beginJournal();
     let result: T;
     try {
       result = fn();
     } catch (error) {
-      for (const entry of journal.values()) this.restore(entry.table, entry.id, entry.before);
+      this.abortJournal();
       throw error;
-    } finally {
-      this.journal = null;
     }
+    return { result, edit: this.endJournal() };
+  }
 
+  /** Whether changes are being recorded (inside `edit` or a document step). */
+  get journaling(): boolean {
+    return this.journal !== null;
+  }
+
+  /** Starts recording changes. Pair with `endJournal` or `abortJournal`. */
+  beginJournal(): void {
+    if (this.journal) throw new Error('Already recording');
+    this.journal = new Map();
+  }
+
+  /** Stops recording and returns the changes made since `beginJournal`. */
+  endJournal(): ModelEdit {
+    const journal = this.journal;
+    if (!journal) throw new Error('Not recording');
+    this.journal = null;
     const entries: JournalEntry[] = [];
     for (const { table, id, before } of journal.values()) {
       const after = this.table(table).get(id);
@@ -269,7 +367,35 @@ export class Model {
     }
     const edit = new ModelEdit(this, entries);
     if (!edit.empty) this.changed.emit();
-    return { result, edit };
+    return edit;
+  }
+
+  /** Stops recording and undoes everything recorded. */
+  abortJournal(): void {
+    const journal = this.journal;
+    if (!journal) return;
+    this.journal = null;
+    for (const entry of journal.values()) this.restore(entry.table, entry.id, entry.before);
+  }
+
+  addInstance(definition: number, matrix: THREE.Matrix4): Id {
+    const id = this.nextId++;
+    this.write('instances', id, { id, definition, matrix: matrix.toArray() });
+    return id;
+  }
+
+  setInstanceMatrix(id: Id, matrix: THREE.Matrix4): void {
+    const i = this.instance(id);
+    this.write('instances', id, { ...i, matrix: matrix.toArray() });
+  }
+
+  setInstanceDefinition(id: Id, definition: number): void {
+    const i = this.instance(id);
+    this.write('instances', id, { ...i, definition });
+  }
+
+  removeInstance(id: Id): void {
+    this.write('instances', id, undefined);
   }
 
   addVertex(position: THREE.Vector3): Id {
@@ -348,7 +474,7 @@ export class Model {
   }
 
   private table(table: Table): Map<Id, Entity> {
-    const tables = { vertices: this.vertices, edges: this.edges, faces: this.faces, guides: this.guides };
+    const tables = { vertices: this.vertices, edges: this.edges, faces: this.faces, guides: this.guides, instances: this.instances };
     return tables[table] as Map<Id, Entity>;
   }
 
