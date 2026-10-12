@@ -8,6 +8,8 @@ import { Selection } from './tools/Selection';
 import { SnapMarker } from './tools/overlay';
 import { Inference } from './tools/inference';
 import { InferenceFeedback } from './tools/feedback';
+import { createDimensionTool } from './tools/DimensionTool';
+import { DimensionRenderer } from './viewport/DimensionRenderer';
 import { createTapeMeasureTool } from './tools/TapeMeasureTool';
 import { createMoveTool } from './tools/MoveTool';
 import { createRotateTool } from './tools/RotateTool';
@@ -41,6 +43,7 @@ const toolInfo = [
   { id: 'offset', label: 'Offset', shortcut: 'F' },
   { id: 'eraser', label: 'Eraser', shortcut: 'E' },
   { id: 'tape', label: 'Tape Measure', shortcut: 'T' },
+  { id: 'dimension', label: 'Dimension', shortcut: 'D' },
   { id: 'orbit', label: 'Orbit', shortcut: 'O' },
   { id: 'pan', label: 'Pan', shortcut: 'H' },
 ];
@@ -50,6 +53,7 @@ const doc = new Document();
 const { history, model } = doc;
 const viewport = new Viewport(shell.viewport);
 const renderer = new ModelRenderer(doc, viewport);
+new DimensionRenderer(doc, viewport);
 const navigator = new Navigator(viewport);
 const picker = new Picker(doc, viewport, renderer);
 const selection = new Selection();
@@ -95,6 +99,7 @@ for (const create of [
   createOffsetTool,
   createEraserTool,
   createTapeMeasureTool,
+  createDimensionTool,
   createOrbitTool,
   createPanTool,
 ]) {

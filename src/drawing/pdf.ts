@@ -46,9 +46,15 @@ function contentStream(sheet: Sheet): string {
     } else {
       const font = p.bold ? '/F2' : '/F1';
       const w = textWidth(p.text, p.size, p.bold, p.letterSpacing ?? 0);
-      const x = p.anchor === 'middle' ? p.x - w / 2 : p.anchor === 'end' ? p.x - w : p.x;
+      const shift = p.anchor === 'middle' ? -w / 2 : p.anchor === 'end' ? -w : 0;
+      const rad = ((p.rotate ?? 0) * Math.PI) / 180;
+      const c = Math.cos(rad);
+      const sn = Math.sin(rad);
+      const x = p.x + shift * c;
+      const y = p.y + shift * sn;
+      // Sheet y runs down, PDF y up: a clockwise sheet rotation is a negative PDF angle.
       ops.push(
-        `BT ${rgb(p.color)} rg ${font} ${fmt(p.size * k)} Tf ${fmt((p.letterSpacing ?? 0) * k)} Tc ${X(x)} ${Y(p.y)} Td ${pdfString(p.text)} Tj ET`,
+        `BT ${rgb(p.color)} rg ${font} ${fmt(p.size * k)} Tf ${fmt((p.letterSpacing ?? 0) * k)} Tc ${fmt(c)} ${fmt(-sn)} ${fmt(sn)} ${fmt(c)} ${X(x)} ${Y(y)} Tm ${pdfString(p.text)} Tj ET`,
       );
     }
   }

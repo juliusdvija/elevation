@@ -110,3 +110,32 @@ describe('drawing settings', () => {
     expect(copy.drawingSettings.levels.map((l) => l.name)).toEqual(['Ground floor', 'First floor']);
   });
 });
+
+describe('dimensions', () => {
+  it('appear on the views they are parallel to, in SVG and PDF', () => {
+    const doc = house();
+    const next = structuredClone(doc.drawingSettings);
+    next.dimensions.push({ id: 'dim-1', a: [0, 0, 0], b: [8000, 0, 0], offset: [0, -1500, 0] });
+    doc.updateDrawingSettings('Dimension', next);
+    const by = (kind: 'front' | 'right') => buildSheets(doc, [{ kind }], { scale: 100 })[0];
+    const front = sheetToSvg(by('front').sheet);
+    const right = sheetToSvg(by('right').sheet);
+    expect(front).toContain('>8000<');
+    expect(right).not.toContain('>8000<');
+    const plan = buildSheets(doc, [{ kind: 'plan', level: 'level-0' }], { scale: 100 })[0];
+    expect(sheetToSvg(plan.sheet)).toContain('>8000<');
+    const pdf = sheetsToPdf([by('front').sheet]);
+    expect(new TextDecoder('latin1').decode(pdf)).toContain('(8000) Tj');
+  });
+
+  it('survive saving and undo', () => {
+    const doc = house();
+    const next = structuredClone(doc.drawingSettings);
+    next.dimensions.push({ id: 'dim-1', a: [0, 0, 0], b: [8000, 0, 0], offset: [0, -1500, 0] });
+    doc.updateDrawingSettings('Dimension', next);
+    const file = parse(serialize(toFile(doc.model.toData(), undefined, [], doc.drawingSettings)));
+    expect(file.drawing?.dimensions).toHaveLength(1);
+    doc.history.undo();
+    expect(doc.drawingSettings.dimensions).toHaveLength(0);
+  });
+});

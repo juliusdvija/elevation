@@ -33,6 +33,7 @@ export function sheetToSvg(sheet: Sheet): string {
         `fill="${p.color}"`,
         p.anchor && p.anchor !== 'start' ? `text-anchor="${p.anchor}"` : '',
         p.letterSpacing ? `letter-spacing="${fmt(p.letterSpacing)}"` : '',
+        p.rotate ? `transform="rotate(${fmt(p.rotate)} ${fmt(p.x)} ${fmt(p.y)})"` : '',
       ];
       out.push(`<text ${attrs.filter(Boolean).join(' ')}>${escape(p.text)}</text>`);
     }

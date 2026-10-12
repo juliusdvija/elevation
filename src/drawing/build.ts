@@ -3,7 +3,8 @@ import type { Document } from '../document';
 import type { Model } from '../kernel/Model';
 import { computeDrawing } from './project';
 import { sortedLevels, type DrawingSettings, type ViewRef } from './settings';
-import { layoutSheet, type Paper, type SectionMarker, type Sheet } from './sheet';
+import { layoutSheet, type DimensionMarker, type Paper, type SectionMarker, type Sheet } from './sheet';
+import { dimensionShape, parallelToView } from './dimensions';
 import { viewSetup, type ViewSetup } from './views';
 
 export interface BuildOptions {
@@ -21,6 +22,28 @@ function sectionMarkers(settings: DrawingSettings, bounds: THREE.Box3): SectionM
   });
 }
 
+/** Dimensions that lie parallel to a view, in its drawing coordinates. */
+function dimensionMarkers(settings: DrawingSettings, setup: ViewSetup): DimensionMarker[] {
+  const uv = (p: THREE.Vector3) => new THREE.Vector2(p.dot(setup.u), p.dot(setup.v));
+  let floor = -Infinity;
+  let ceiling = Infinity;
+  if (setup.ref.kind === 'plan') {
+    // A plan shows the dimensions of its own storey.
+    const levels = sortedLevels(settings);
+    const i = levels.findIndex((l) => l.id === (setup.ref as { level: string }).level);
+    if (i >= 0) {
+      floor = levels[i].elevation;
+      ceiling = levels[i + 1]?.elevation ?? Infinity;
+    }
+  }
+  return settings.dimensions
+    .filter((d) => parallelToView(d, setup.w) && d.a[2] >= floor - 1 && d.a[2] < ceiling - 1)
+    .map((d) => {
+      const s = dimensionShape(d);
+      return { a: uv(s.a), b: uv(s.b), a2: uv(s.a2), b2: uv(s.b2), text: String(Math.round(s.length)) };
+    });
+}
+
 /** Builds finished sheets for several views, flattening the model only once. */
 export function buildSheets(
   doc: Document,
@@ -35,7 +58,7 @@ export function buildSheets(
   return refs.map((ref) => {
     const setup = viewSetup(ref, settings, bounds);
     const drawing = computeDrawing(flat, setup);
-    const sheet = layoutSheet(drawing, setup, { levels, sections: markers }, options);
+    const sheet = layoutSheet(drawing, setup, { levels, sections: markers, dimensions: dimensionMarkers(settings, setup) }, options);
     return { setup, sheet, empty: drawing.lines.length === 0 && drawing.cutLoops.length === 0 };
   });
 }

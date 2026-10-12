@@ -57,6 +57,8 @@ export type Primitive =
       color: string;
       anchor?: 'start' | 'middle' | 'end';
       letterSpacing?: number;
+      /** Degrees clockwise on the sheet, about (x, y). */
+      rotate?: number;
     };
 
 export interface Sheet {
@@ -80,7 +82,18 @@ export interface SectionMarker {
   look: THREE.Vector2;
 }
 
+/** A dimension in drawing (u, v) coordinates: the measured points and the ends of its line. */
+export interface DimensionMarker {
+  a: THREE.Vector2;
+  b: THREE.Vector2;
+  a2: THREE.Vector2;
+  b2: THREE.Vector2;
+  text: string;
+}
+
 export interface Annotations {
+  /** Dimensions parallel to this view. */
+  dimensions?: DimensionMarker[];
   /** Level markers on elevations and sections. */
   levels?: Level[];
   /** Section symbols on plans. */
@@ -135,6 +148,8 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
     b.min.y = Math.min(b.min.y, l.elevation);
     b.max.y = Math.max(b.max.y, l.elevation);
   }
+  const dimensions = annotations.dimensions ?? [];
+  for (const d of dimensions) for (const p of [d.a, d.b, d.a2, d.b2]) b.expandByPoint(p);
   const sections = setup.kind === 'plan' ? (annotations.sections ?? []) : [];
   const overhang = SECTION_OVERHANG * s;
   if (sections.length > 0) b.expandByScalar(overhang + 6 * s);
@@ -234,6 +249,37 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
       const label = a.clone().addScaledVector(along, -3.2).addScaledVector(lookPaper, 1.2);
       out.push({ type: 'text', x: label.x, y: label.y + 1.1, text: section.id, size: 3.2, bold: true, color: style.ink, anchor: 'middle' });
     }
+  }
+
+  // Dimensions: extension lines, the dimension line with slashes at the ends, the length above it.
+  for (const d of dimensions) {
+    const a = P(d.a.x, d.a.y);
+    const bb = P(d.b.x, d.b.y);
+    const a2 = P(d.a2.x, d.a2.y);
+    const b2 = P(d.b2.x, d.b2.y);
+    const along = b2.clone().sub(a2);
+    if (along.length() < 0.5) continue;
+    along.normalize();
+    const away = (from: THREE.Vector2, to: THREE.Vector2) => {
+      const v = to.clone().sub(from);
+      return v.length() < 1e-6 ? new THREE.Vector2() : v.normalize();
+    };
+    // Extension lines run from just off the measured point to a little past the dimension line.
+    for (const [from, to] of [[a, a2], [bb, b2]] as const) {
+      const dir = away(from, to);
+      out.push({ type: 'path', lines: [[from.clone().addScaledVector(dir, 1.2), to.clone().addScaledVector(dir, 1.8)]], stroke: style.annotation.color, width: style.annotation.width });
+    }
+    const ext = 1.2;
+    out.push({ type: 'path', lines: [[a2.clone().addScaledVector(along, -ext), b2.clone().addScaledVector(along, ext)]], stroke: style.ink, width: 0.18 });
+    const slash = new THREE.Vector2(along.x + along.y, along.y - along.x).normalize().multiplyScalar(1.1);
+    for (const end of [a2, b2]) out.push({ type: 'path', lines: [[end.clone().sub(slash), end.clone().add(slash)]], stroke: style.ink, width: 0.4 });
+    let angle = (Math.atan2(along.y, along.x) * 180) / Math.PI;
+    if (angle > 90) angle -= 180;
+    if (angle <= -90) angle += 180;
+    const rad = (angle * Math.PI) / 180;
+    const normal = new THREE.Vector2(Math.sin(rad), -Math.cos(rad)); // the side of the line the text sits on
+    const at = a2.clone().add(b2).multiplyScalar(0.5).addScaledVector(normal, 0.9);
+    out.push({ type: 'text', x: at.x, y: at.y, text: d.text, size: 2.2, color: style.ink, anchor: 'middle', rotate: angle });
   }
 
   // Title block and scale bar.

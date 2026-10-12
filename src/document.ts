@@ -336,7 +336,7 @@ export class Document {
     handle: FileSystemFileHandle | null,
     options: { unsaved?: boolean; definitions?: DefinitionData[]; drawing?: DrawingSettings } = {},
   ): void {
-    this.drawingSettings = structuredClone(options.drawing ?? DEFAULT_SETTINGS);
+    this.drawingSettings = { ...structuredClone(DEFAULT_SETTINGS), ...structuredClone(options.drawing ?? {}) };
     this.definitions.clear();
     this.nextDefinitionId = 1;
     for (const d of options.definitions ?? []) {

@@ -19,12 +19,22 @@ export interface SectionDef {
   position: number | null;
 }
 
+/** A dimension: the distance between two points, drawn on a line `offset` away from them. World mm. */
+export interface Dimension {
+  id: string;
+  a: [number, number, number];
+  b: [number, number, number];
+  offset: [number, number, number];
+}
+
 /** Drawing settings saved with the document. */
 export interface DrawingSettings {
   levels: Level[];
   /** Plan cut height above each level's floor (mm). */
   cutHeight: number;
   sections: SectionDef[];
+  /** Dimensions in the model; drawn in every view they lie parallel to. */
+  dimensions: Dimension[];
 }
 
 export const DEFAULT_SETTINGS: DrawingSettings = {
@@ -34,6 +44,7 @@ export const DEFAULT_SETTINGS: DrawingSettings = {
     { id: 'A', axis: 'y', position: null },
     { id: 'B', axis: 'x', position: null },
   ],
+  dimensions: [],
 };
 
 /** Which drawing: a plan of a level, an elevation, or a section. */

@@ -134,6 +134,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 | 20 | Tussenlaag van papier-primitieven voor SVG en PDF | Eén opmaak, twee identieke uitvoerformaten. |
 | 21 | Eigen PDF-schrijver i.p.v. een library | Onze tekeningen zijn lijnen, vlakken en tekst: exacte vectoren, geen afhankelijkheden, klein bestand. |
 | 22 | Tekeninginstellingen undo-baar via de history | Bouwlagen en doorsneden wijzigen voelt als elke andere bewerking (en markeert het bestand als gewijzigd). |
+| 23 | Maten (twee punten + afstand) horen bij de tekeninginstellingen, in wereldcoördinaten | Eén opslagplek met undo en bestandsformaat erbij; getekend in 3D (`DimensionRenderer`) en in elk aanzicht waaraan de maat evenwijdig is (`drawing/dimensions.ts`); een plattegrond toont de maten van zijn eigen bouwlaag. Delete in de maattool verwijdert de maat onder de cursor. |
 
 ---
 
@@ -142,5 +143,5 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Een volume wegduwen terwijl er iets aan vastzit laat dat deel open achter (zoals SketchUp).
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten hebben nog geen eigen assen/naam-UI; nog geen componentenoverzicht.
-- Tekeningen: nog geen maatvoering of meerdere tekeningen per blad; tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- Tekeningen: maten zijn handmatig (geen automatische maatketens) en er zijn nog geen meerdere tekeningen per blad; tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
 - Prestaties: kernel-bewerkingen en tekeningen zijn O(n²) en rekenen alles opnieuw; prima voor gebouwen van normale omvang, niet voor zeer grote modellen.

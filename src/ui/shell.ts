@@ -18,6 +18,7 @@ import {
   PenLine,
   RectangleHorizontal,
   Ruler,
+  RulerDimensionLine,
   Redo2,
   Rotate3d,
   Undo2,
@@ -58,6 +59,7 @@ const TOOL_ICONS: Record<string, IconNode> = {
   offset: SquareDashed,
   eraser: Eraser,
   tape: Ruler,
+  dimension: RulerDimensionLine,
   orbit: Rotate3d,
   pan: Hand,
 };
