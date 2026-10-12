@@ -8,6 +8,7 @@ import { Selection } from './tools/Selection';
 import { SnapMarker } from './tools/overlay';
 import { Inference } from './tools/inference';
 import { InferenceFeedback } from './tools/feedback';
+import { createFigureTool } from './tools/FigureTool';
 import { createDimensionTool } from './tools/DimensionTool';
 import { DimensionRenderer } from './viewport/DimensionRenderer';
 import { createTapeMeasureTool } from './tools/TapeMeasureTool';
@@ -44,6 +45,7 @@ const toolInfo = [
   { id: 'eraser', label: 'Eraser', shortcut: 'E' },
   { id: 'tape', label: 'Tape Measure', shortcut: 'T' },
   { id: 'dimension', label: 'Dimension', shortcut: 'D' },
+  { id: 'figure', label: 'Scale Figure', shortcut: 'N' },
   { id: 'orbit', label: 'Orbit', shortcut: 'O' },
   { id: 'pan', label: 'Pan', shortcut: 'H' },
 ];
@@ -100,6 +102,7 @@ for (const create of [
   createEraserTool,
   createTapeMeasureTool,
   createDimensionTool,
+  createFigureTool,
   createOrbitTool,
   createPanTool,
 ]) {

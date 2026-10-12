@@ -4,9 +4,12 @@ import { History, type Operation, type Transaction } from './core/history';
 import { Model, type Id, type ModelData, type ModelEdit } from './kernel/Model';
 import { removeBareEdges, eraseFaces } from './kernel/cleanup';
 import { copyBetweenModels } from './kernel/transform';
+import { drawPolygon } from './kernel/draw';
+import { figureOutline } from './kernel/figure';
 import { DEFAULT_SETTINGS, type DrawingSettings } from './drawing/settings';
 
 const UNTITLED = 'Untitled';
+const FIGURE_NAME = 'Scale figure';
 
 /** A group or component: geometry with its own coordinates, placed by instances. */
 export interface Definition {
@@ -256,6 +259,21 @@ export class Document {
     for (const id of instances) source.removeInstance(id);
     removeBareEdges(source, looseBefore);
     return source.addInstance(def.id, new THREE.Matrix4());
+  }
+
+  /**
+   * Puts a scale figure (a flat person, shared component) into the current
+   * context. `world` places it in world space. Call inside `run`. Returns the instance.
+   */
+  placeFigure(world: THREE.Matrix4): Id {
+    let def = [...this.definitions.values()].find((d) => d.kind === 'component' && d.name === FIGURE_NAME);
+    if (!def) {
+      const geometry = new Model();
+      geometry.edit(() => drawPolygon(geometry, figureOutline()));
+      def = this.addDefinition('component', FIGURE_NAME, geometry);
+    }
+    const ctx = this.context;
+    return ctx.model.addInstance(def.id, world.clone().premultiply(ctx.inverse));
   }
 
   /** Replaces an instance in the current context by its contents. Call inside `run`. */

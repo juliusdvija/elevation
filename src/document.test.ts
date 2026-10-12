@@ -145,3 +145,19 @@ describe('saving groups', () => {
     expect(drawing.cutLoops).toHaveLength(1);
   });
 });
+
+describe('scale figure', () => {
+  it('is one shared component placed in the current context', () => {
+    const doc = new Document();
+    const a = doc.run('Figure', () => doc.placeFigure(new THREE.Matrix4().makeTranslation(1000, 0, 0)));
+    const b = doc.run('Figure', () => doc.placeFigure(new THREE.Matrix4().makeTranslation(3000, 0, 0)));
+    expect(doc.model.instance(a).definition).toBe(doc.model.instance(b).definition);
+    expect(doc.definitions.size).toBe(1);
+    const bounds = doc.flatten().bounds();
+    expect(bounds.max.z).toBeCloseTo(1785);
+    expect(bounds.min.x).toBeLessThan(1000);
+    expect(bounds.max.x).toBeGreaterThan(3000);
+    doc.history.undo();
+    expect(doc.model.allInstances().length).toBe(1);
+  });
+});

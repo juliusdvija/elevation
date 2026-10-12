@@ -19,6 +19,7 @@ import {
   RectangleHorizontal,
   Ruler,
   RulerDimensionLine,
+  PersonStanding,
   Redo2,
   Rotate3d,
   Undo2,
@@ -60,6 +61,7 @@ const TOOL_ICONS: Record<string, IconNode> = {
   eraser: Eraser,
   tape: Ruler,
   dimension: RulerDimensionLine,
+  figure: PersonStanding,
   orbit: Rotate3d,
   pan: Hand,
 };
