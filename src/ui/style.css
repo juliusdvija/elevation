@@ -650,3 +650,8 @@ input:focus-visible {
   font-size: 10px;
   font-weight: 600;
 }
+
+.pill-button[aria-pressed='true'] {
+  background: var(--ink);
+  color: var(--surface);
+}

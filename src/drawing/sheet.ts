@@ -94,6 +94,8 @@ export interface DimensionMarker {
 export interface Annotations {
   /** Dimensions parallel to this view. */
   dimensions?: DimensionMarker[];
+  /** Also dimension the drawing itself: overall size, and the cut walls in a chain. */
+  autoDimensions?: boolean;
   /** Level markers on elevations and sections. */
   levels?: Level[];
   /** Section symbols on plans. */
@@ -137,6 +139,30 @@ function formatLevel(mm: number): string {
   return `${rounded >= 0 ? '+' : '−'}${Math.abs(rounded)}`;
 }
 
+/** Overall width and height of a drawing, and a chain along its cut walls. Offsets are paper mm times the scale. */
+function autoDimensionMarkers(drawing: Drawing, b: THREE.Box2, s: number): DimensionMarker[] {
+  const db = drawing.bounds;
+  if (db.isEmpty() || (db.max.x - db.min.x < 1 && db.max.y - db.min.y < 1)) return [];
+  const out: DimensionMarker[] = [];
+  const V = (x: number, y: number) => new THREE.Vector2(x, y);
+  const text = (mm: number) => String(Math.round(mm));
+  const bottom = b.min.y;
+  const left = db.min.x;
+  const width = db.max.x - db.min.x;
+  const height = db.max.y - db.min.y;
+  if (width > 1) out.push({ a: V(db.min.x, bottom), b: V(db.max.x, bottom), a2: V(db.min.x, bottom - 15 * s), b2: V(db.max.x, bottom - 15 * s), text: text(width) });
+  if (height > 1) out.push({ a: V(left, db.min.y), b: V(left, db.max.y), a2: V(left - 9 * s, db.min.y), b2: V(left - 9 * s, db.max.y), text: text(height) });
+  // Chain: the distinct positions of the cut walls along the width.
+  const xs = [...new Set(drawing.cutLoops.flat().map((p) => Math.round(p.x)))].sort((p, q) => p - q);
+  const stops = xs.filter((x, i) => i === 0 || x - xs[i - 1] >= 40);
+  if (stops.length >= 3 && stops.length <= 14) {
+    for (let i = 1; i < stops.length; i++) {
+      out.push({ a: V(stops[i - 1], bottom), b: V(stops[i], bottom), a2: V(stops[i - 1], bottom - 8 * s), b2: V(stops[i], bottom - 8 * s), text: text(stops[i] - stops[i - 1]) });
+    }
+  }
+  return out;
+}
+
 /** Lays out a drawing with its annotations, title and scale bar on a sheet. */
 export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Annotations, options: SheetOptions): Sheet {
   const style = options.style ?? MINIMAL;
@@ -148,7 +174,8 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
     b.min.y = Math.min(b.min.y, l.elevation);
     b.max.y = Math.max(b.max.y, l.elevation);
   }
-  const dimensions = annotations.dimensions ?? [];
+  const dimensions = [...(annotations.dimensions ?? [])];
+  if (annotations.autoDimensions) dimensions.push(...autoDimensionMarkers(drawing, b, s));
   for (const d of dimensions) for (const p of [d.a, d.b, d.a2, d.b2]) b.expandByPoint(p);
   const sections = setup.kind === 'plan' ? (annotations.sections ?? []) : [];
   const overhang = SECTION_OVERHANG * s;

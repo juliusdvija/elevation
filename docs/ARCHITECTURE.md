@@ -138,6 +138,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 | 24 | Schaalfiguur = gedeeld component met een vlak silhouet (`kernel/figure.ts`, tool N) | Gedraagt zich als elk component (verplaatsen, roteren, tekeningen); draait bij plaatsen naar de camera. Eén definitie voor alle figuren. |
 | 25 | "Face me" is een vlag op de definitie; de draaiing zit in `placements()`, niet in de opgeslagen matrix | Renderer, picker, snappen en bounds gebruiken allemaal `placements()`, dus alles blijft consistent terwijl de camera draait; er komt geen undo-stap of wijzigingsvlag bij. Tekeningen draaien de figuur per aanzicht naar de kijker (plattegrond: zoals opgeslagen). Een nieuw document begint met een schaalfiguur op de origin (`reset()`, zonder undo-stap). |
 | 26 | Na Push/Pull worden openingen in een voorheen gesloten model gesloten (`kernel/close.ts`) | Wat op een doorgeduwd vlak stond blijft anders als open koker achter. Alleen als het model eerst gesloten was; vlakke lussen van open randen krijgen een deksel; eerst geprobeerd op een kopie en alleen overgenomen als het aantal kapotte randen daalt zonder driewegverbindingen. |
+| 27 | Automatische maatvoering is een tekeninginstelling, geen opgeslagen maten | Totale breedte/hoogte plus een maatketen langs de gesneden muren (`autoDimensions`), live berekend per tekening en meegeschaald; handmatige maten (besluit 23) blijven er los van bestaan. |
 
 ---
 
@@ -145,6 +146,6 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 - Een volume wegduwen terwijl er iets aan vastzit: het deel dat blijft staan wordt nu dichtgemaakt als het model eerst gesloten was (besluit 26). In de solids-fuzz faalt nog ~22% van de reeksen van 30 stappen, vooral door randen met drie vlakken waar volumes elkaar raken.
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
-- Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); nog geen eigen assen en geen componentenoverzicht.
-- Tekeningen: maten zijn handmatig (geen automatische maatketens) en er zijn nog geen meerdere tekeningen per blad; tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
+- Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), en er zijn nog geen meerdere tekeningen per blad; tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
 - Prestaties: kernel-bewerkingen en tekeningen zijn O(n²) en rekenen alles opnieuw; prima voor gebouwen van normale omvang, niet voor zeer grote modellen.

@@ -138,4 +138,19 @@ describe('dimensions', () => {
     doc.history.undo();
     expect(doc.drawingSettings.dimensions).toHaveLength(0);
   });
+
+  it('adds overall size and a wall chain when auto dimensions are on', () => {
+    const doc = house();
+    const base = (kind: 'front') => sheetToSvg(buildSheets(doc, [{ kind }], { scale: 100 })[0].sheet);
+    expect(base('front')).not.toContain('>8000<');
+    const next = structuredClone(doc.drawingSettings);
+    next.autoDimensions = true;
+    doc.updateDrawingSettings('Auto', next);
+    const front = base('front');
+    expect(front).toContain('>8000<'); // width
+    expect(front).toContain('>6000<'); // height
+    const plan = sheetToSvg(buildSheets(doc, [{ kind: 'plan', level: 'level-0' }], { scale: 100 })[0].sheet);
+    expect(plan).toContain('>8000<');
+    expect(plan).toContain('>6000<');
+  });
 });

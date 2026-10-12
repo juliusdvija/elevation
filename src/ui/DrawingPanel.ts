@@ -281,6 +281,11 @@ export class DrawingPanel {
       this.paper = paper.value as Paper;
       this.schedule();
     });
+    const auto = el('button', 'pill-button', 'Auto dims');
+    auto.type = 'button';
+    auto.title = 'Dimension every drawing: overall size and a chain along the cut walls';
+    auto.setAttribute('aria-pressed', String(s.autoDimensions));
+    auto.addEventListener('click', () => this.commit('Auto Dimensions', (n) => (n.autoDimensions = !n.autoDimensions)));
     const exportButton = iconButton(Download, 'Export');
     exportButton.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -288,7 +293,7 @@ export class DrawingPanel {
     });
     const exportWrap = el('div', 'export-wrap');
     exportWrap.append(exportButton, this.exportMenu);
-    this.controls.append(el('div', 'spacer'), this.status, field('Scale', scale), field('Paper', paper), exportWrap);
+    this.controls.append(el('div', 'spacer'), this.status, auto, field('Scale', scale), field('Paper', paper), exportWrap);
   }
 
   private renderLevelsEditor(): void {

@@ -61,7 +61,7 @@ export function buildSheets(
     // Scale figures face the viewer of each elevation and section; in plans they stay as stored.
     const viewer = faceMe && setup.kind !== 'plan' ? setup.w.clone().multiplyScalar(-1e6) : null;
     const drawing = computeDrawing(faceMe ? doc.flatten(viewer) : flat, setup);
-    const sheet = layoutSheet(drawing, setup, { levels, sections: markers, dimensions: dimensionMarkers(settings, setup) }, options);
+    const sheet = layoutSheet(drawing, setup, { levels, sections: markers, dimensions: dimensionMarkers(settings, setup), autoDimensions: settings.autoDimensions }, options);
     return { setup, sheet, empty: drawing.lines.length === 0 && drawing.cutLoops.length === 0 };
   });
 }

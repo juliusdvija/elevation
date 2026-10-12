@@ -35,6 +35,8 @@ export interface DrawingSettings {
   sections: SectionDef[];
   /** Dimensions in the model; drawn in every view they lie parallel to. */
   dimensions: Dimension[];
+  /** Add overall dimensions (and a chain along cut walls) to every drawing. */
+  autoDimensions: boolean;
 }
 
 export const DEFAULT_SETTINGS: DrawingSettings = {
@@ -45,6 +47,7 @@ export const DEFAULT_SETTINGS: DrawingSettings = {
     { id: 'B', axis: 'x', position: null },
   ],
   dimensions: [],
+  autoDimensions: false,
 };
 
 /** Which drawing: a plan of a level, an elevation, or a section. */
