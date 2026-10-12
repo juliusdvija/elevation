@@ -178,4 +178,18 @@ describe('scale figure', () => {
     expect(right.max.y - right.min.y).toBeGreaterThan(300);
     expect(parse(serialize(toFile(doc.model.toData(), undefined, doc.definitionsInUse()))).definitions?.[0].faceMe).toBe(true);
   });
+
+  it('renames a component with undo, and the name is saved', () => {
+    const doc = new Document();
+    doc.reset();
+    const id = [...doc.definitions.keys()][0];
+    doc.renameDefinition(id, '  Person  ');
+    expect(doc.definition(id).name).toBe('Person');
+    expect(doc.dirty).toBe(true);
+    doc.renameDefinition(id, '   ');
+    expect(doc.definition(id).name).toBe('Person');
+    expect(doc.definitionsInUse()[0].name).toBe('Person');
+    doc.history.undo();
+    expect(doc.definition(id).name).toBe('Scale figure');
+  });
 });

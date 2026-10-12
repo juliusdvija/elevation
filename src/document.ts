@@ -71,6 +71,8 @@ export class Document {
   readonly definitions = new Map<number, Definition>();
   /** Fires when levels, plan cut height or sections change. */
   readonly settingsChanged = new Emitter<void>();
+  /** A group or component was renamed. */
+  readonly namesChanged = new Emitter<void>();
   drawingSettings: DrawingSettings = structuredClone(DEFAULT_SETTINGS);
 
   name = UNTITLED;
@@ -135,6 +137,26 @@ export class Document {
     let n = 1;
     while (taken.has(`${base} ${n}`)) n++;
     return `${base} ${n}`;
+  }
+
+  /** Renames a group or component as one undoable step. Blank names are ignored. */
+  renameDefinition(id: number, name: string): void {
+    const def = this.definition(id);
+    const next = name.trim();
+    if (!next || next === def.name) return;
+    const before = def.name;
+    this.history.transact('Rename', (tx) =>
+      tx.run({
+        apply: () => {
+          def.name = next;
+          this.namesChanged.emit();
+        },
+        revert: () => {
+          def.name = before;
+          this.namesChanged.emit();
+        },
+      }),
+    );
   }
 
   /** Changes the drawing settings as one undoable step. */

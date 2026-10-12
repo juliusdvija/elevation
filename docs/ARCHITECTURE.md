@@ -145,6 +145,6 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 - Een volume wegduwen terwijl er iets aan vastzit: het deel dat blijft staan wordt nu dichtgemaakt als het model eerst gesloten was (besluit 26). In de solids-fuzz faalt nog ~22% van de reeksen van 30 stappen, vooral door randen met drie vlakken waar volumes elkaar raken.
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
-- Componenten hebben nog geen eigen assen/naam-UI; nog geen componentenoverzicht.
+- Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); nog geen eigen assen en geen componentenoverzicht.
 - Tekeningen: maten zijn handmatig (geen automatische maatketens) en er zijn nog geen meerdere tekeningen per blad; tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
 - Prestaties: kernel-bewerkingen en tekeningen zijn O(n²) en rekenen alles opnieuw; prima voor gebouwen van normale omvang, niet voor zeer grote modellen.

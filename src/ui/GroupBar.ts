@@ -35,6 +35,7 @@ export class GroupBar {
     container.append(this.crumbs, this.actions);
     doc.contextChanged.on(() => this.render());
     doc.geometryChanged.on(() => this.render());
+    doc.namesChanged.on(() => this.render());
     selection.changed.on(() => this.render());
     this.render();
   }
@@ -91,7 +92,14 @@ export class GroupBar {
       if (model.hasInstance(id)) {
         const def = this.doc.definition(model.instance(id).definition);
         const shared = def.kind === 'component' ? ` · ${this.doc.instanceCount(def.id)} in model` : '';
-        this.actions.append(Object.assign(document.createElement('span'), { className: 'label', textContent: `${def.name}${shared}` }));
+        const name = Object.assign(document.createElement('input'), { className: 'name-input', value: def.name, title: 'Rename', spellcheck: false });
+        name.size = Math.max(6, def.name.length);
+        name.addEventListener('change', () => this.doc.renameDefinition(def.id, name.value));
+        name.addEventListener('keydown', (e) => {
+          e.stopPropagation(); // typing a name must not trigger tool shortcuts
+          if (e.key === 'Enter' || e.key === 'Escape') name.blur();
+        });
+        this.actions.append(name, Object.assign(document.createElement('span'), { className: 'label', textContent: shared.replace(' · ', '') }));
       }
       const edit = button('Edit', 'Edit inside (double-click)');
       edit.addEventListener('click', () => this.commands.edit());
