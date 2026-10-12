@@ -83,7 +83,7 @@ export function createRectangleTool(ctx: ToolContext): Tool {
       if (aligned) result = { point: aligned.point, kind: 'from-point', pick, guides: aligned.guides };
       else {
         const hit = ray.intersectPlane(new THREE.Plane(plane.normal.clone(), -plane.d), new THREE.Vector3());
-        const grid = hit && inference.gridPoint(hit, px);
+        const grid = hit && inference.gridPoint(hit, plane, px);
         if (grid) result = { point: grid, kind: 'grid', pick, guides: [] };
         else if (hit) result = { point: hit, kind: 'face', label: '', pick, guides: [] };
       }

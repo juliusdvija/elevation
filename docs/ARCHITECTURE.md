@@ -95,7 +95,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 - Elke tool krijgt pointer- en toetsenbordinvoer via `ToolManager`; de middelste muisknop is altijd navigatie.
 - **Picker**: wat ligt onder de cursor (vertex, origin, hulppunt, kruispunt, midden, rand, hulplijn, vlak, grond), met schermafstanden in pixels en verborgen geometrie uitgesloten. Elke hit draagt zijn **plaatsing** mee.
-- **Inference**: snapt op geometrie, rode/groene/blauwe as, parallel/loodrecht aan een referentierand, uitlijning met onthouden punten (ook over hoogteverschillen), en het grondraster. Shift en pijltjestoetsen vergrendelen een richting. Richtingen die "op de kop" gezien worden, worden overgeslagen.
+- **Inference**: snapt op geometrie, rode/groene/blauwe as, parallel/loodrecht aan een referentierand, uitlijning met onthouden punten (ook over hoogteverschillen), en het 3D-wereldraster van 1 m (`tools/grid.ts`). Shift en pijltjestoetsen vergrendelen een richting. Richtingen die "op de kop" gezien worden, worden overgeslagen.
 - **Maatvak**: getypte lengtes, `b;h`, graden, `3x` / `/3` (arrays), `24s` (segmenten).
 
 ---
@@ -128,7 +128,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 | 14 | Gedeelde groepen uniek maken bij bewerken | Gedrag zoals SketchUp; componenten blijven bewust gekoppeld. |
 | 15 | `.elev` als JSON met versienummer | Leesbaar, diff-baar, uitbreidbaar. |
 | 16 | Boog via middelpunt + straal + hoek | Voorkeur van de gebruiker; past bij hoe architecten maatvoeren. |
-| 17 | Raster-snap op 1 m op de grond, uitschakelbaar | Snel op hele maten tekenen; schakelt zichzelf uit bij ver uitzoomen. |
+| 17 | Raster-snap op een 3D-wereldraster van 1 m vanaf de origin, uitschakelbaar | Op elk vlak (grond, wand, dak, schuin) snappen twee wereldcoördinaten op hele meters; langs elke richting snapt een lijn waar hij een rastervlak kruist; Push/Pull landt op hele meters. Het 3D-raster wordt niet getekend (alleen het grondraster); het werkt puur als snap. Schakelt zichzelf uit als de cellen op het scherm te klein worden. |
 | 18 | Plattegrond per bouwlaag, getekend tot de eigen vloer | Lagere verdiepingen schemeren niet door; terrassen op vloerhoogte blijven zichtbaar. |
 | 19 | Doorsneden als vaste objecten met een positie in mm | Een doorsnede blijft staan als het model groeit, en kan in plattegronden gemarkeerd worden. |
 | 20 | Tussenlaag van papier-primitieven voor SVG en PDF | Eén opmaak, twee identieke uitvoerformaten. |

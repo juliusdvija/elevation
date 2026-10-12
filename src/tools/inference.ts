@@ -3,6 +3,8 @@ import { theme } from '../viewport/theme';
 import type { Pick, Picker } from './Picker';
 import type { Viewport } from '../viewport/Viewport';
 import { worldEdge, worldFacePlane } from './space';
+import { gridCrossingsOnLine, gridPointInPlane, gridSteps } from './grid';
+import type { Plane } from '../kernel/math';
 import type { SnapKind } from './overlay';
 import { alignmentInPlane, closestOnLineToRay, intersectLines, projectOnLine, type Line3 } from './lines';
 
@@ -175,7 +177,7 @@ export class Inference {
       const plane = pick.kind === 'face' ? worldFacePlane(pick.placement, pick.id) : { normal: new THREE.Vector3(0, 0, 1), d: 0 };
       const aligned = this.alignInPlane(ray, plane, px, from ? [from] : []);
       if (aligned) return { point: aligned.point, kind: 'from-point', pick, guides: aligned.guides };
-      const grid = this.gridPoint(pick.point, px);
+      const grid = this.gridPoint(pick.point, plane, px);
       if (grid) return { point: grid, kind: 'grid', pick, guides: [] };
       return { point: pick.point, kind: pick.kind, pick, guides: [] };
     }
@@ -249,28 +251,25 @@ export class Inference {
     return best;
   }
 
-  /** Nearest ground-grid intersection to a point on the ground, when close on screen. */
-  gridPoint(point: THREE.Vector3, px: (p: THREE.Vector3) => number): THREE.Vector3 | null {
-    if (!this.gridSnap || Math.abs(point.z) > 1e-3) return null;
-    const g = new THREE.Vector3(
-      Math.round(point.x / GRID_SPACING) * GRID_SPACING,
-      Math.round(point.y / GRID_SPACING) * GRID_SPACING,
-      0,
-    );
-    if (!this.gridVisible(g)) return null;
+  /**
+   * Nearest world-grid point (whole metres from the origin) in a plane, when
+   * close on screen. Works on any face: the ground, walls, roofs, slopes.
+   */
+  gridPoint(point: THREE.Vector3, plane: Plane, px: (p: THREE.Vector3) => number): THREE.Vector3 | null {
+    if (!this.gridSnap) return null;
+    const g = gridPointInPlane(point, plane, GRID_SPACING);
+    if (!this.gridVisible(g, gridSteps(plane, GRID_SPACING))) return null;
     return px(g) < GRID_RADIUS ? g : null;
   }
 
-  /** Where a line on the ground crosses a grid line, near `point`. */
+  /** Where a line crosses a world-grid plane (x, y or z at whole metres), near `point`. */
   private gridOnLine(line: Line3, point: THREE.Vector3, px: (p: THREE.Vector3) => number): THREE.Vector3 | null {
-    if (!this.gridSnap || Math.abs(line.point.z) > 1e-3 || Math.abs(line.direction.z) > 1e-9) return null;
-    if (!this.gridVisible(point)) return null;
+    if (!this.gridSnap) return null;
     let best: { point: THREE.Vector3; d: number } | null = null;
-    for (const axis of ['x', 'y'] as const) {
-      if (Math.abs(line.direction[axis]) < 1e-9) continue;
-      const target = Math.round(point[axis] / GRID_SPACING) * GRID_SPACING;
-      const t = (target - line.point[axis]) / line.direction[axis];
-      const q = line.point.clone().addScaledVector(line.direction, t);
+    for (const q of gridCrossingsOnLine(line, point, GRID_SPACING)) {
+      // Steps along the line between neighbouring crossings must be visible.
+      const step = line.direction.clone().multiplyScalar(GRID_SPACING / Math.max(...[line.direction.x, line.direction.y, line.direction.z].map(Math.abs)));
+      if (!this.gridVisible(q, [step])) continue;
       const d = px(q);
       if (d < GRID_RADIUS && (!best || d < best.d)) best = { point: q, d };
     }
@@ -278,11 +277,13 @@ export class Inference {
   }
 
   /** Grid snapping only makes sense while grid cells are comfortably larger than the snap radius. */
-  private gridVisible(near: THREE.Vector3): boolean {
+  private gridVisible(near: THREE.Vector3, steps: THREE.Vector3[]): boolean {
     const a = this.viewport.toScreen(near);
-    const b = this.viewport.toScreen(near.clone().add(new THREE.Vector3(GRID_SPACING, 0, 0)));
-    const c = this.viewport.toScreen(near.clone().add(new THREE.Vector3(0, GRID_SPACING, 0)));
-    return !!a && !!b && !!c && Math.min(a.distanceTo(b), a.distanceTo(c)) > GRID_RADIUS * 3;
+    if (!a) return false;
+    return steps.every((step) => {
+      const b = this.viewport.toScreen(near.clone().add(step));
+      return !!b && a.distanceTo(b) > GRID_RADIUS * 3;
+    });
   }
 
   /** Axis directions, then directions relative to the reference edge and start face. */
