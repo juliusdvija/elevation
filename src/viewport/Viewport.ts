@@ -14,19 +14,21 @@ export class Viewport {
   readonly scene = new THREE.Scene();
   /** Model geometry lives here; helpers (grid, axes) do not. */
   readonly content = new THREE.Group();
+  /** Tool feedback (rubber bands, previews), drawn on top. */
+  readonly overlay = new THREE.Group();
   readonly rig = new CameraRig();
 
   private readonly raycaster = new THREE.Raycaster();
   private dirty = true;
 
   constructor(readonly container: HTMLElement) {
-    this.renderer = new THREE.WebGLRenderer({ antialias: true, logarithmicDepthBuffer: true });
+    this.renderer = new THREE.WebGLRenderer({ antialias: true });
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.domElement.classList.add('viewport-canvas');
     container.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(theme.background);
-    this.scene.add(createGrid(), createAxes(), this.content);
+    this.scene.add(createGrid(), createAxes(), this.content, this.overlay);
 
     const hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 2.4);
     hemisphere.position.copy(WORLD_UP);
@@ -81,6 +83,20 @@ export class Viewport {
 
   contentBounds(): THREE.Box3 {
     return new THREE.Box3().setFromObject(this.content);
+  }
+
+  /** Client-space position of a world point, or null when behind the camera. */
+  toScreen(point: THREE.Vector3): THREE.Vector2 | null {
+    const p = point.clone().project(this.rig.camera);
+    if (p.z > 1 || p.z < -1) return null;
+    const rect = this.canvas.getBoundingClientRect();
+    return new THREE.Vector2(rect.left + ((p.x + 1) / 2) * rect.width, rect.top + ((1 - p.y) / 2) * rect.height);
+  }
+
+  /** World-space ray under a client-space position. */
+  ray(clientX: number, clientY: number): THREE.Ray {
+    this.raycaster.setFromCamera(this.ndc(clientX, clientY), this.rig.camera);
+    return this.raycaster.ray.clone();
   }
 
   private resize(): void {

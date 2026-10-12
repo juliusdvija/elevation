@@ -23,6 +23,8 @@ export type HistoryEvent =
 export interface TransactionScope {
   /** Applies the operation immediately and records it for undo. */
   run(op: Operation): void;
+  /** Records an operation whose effect has already been applied. */
+  record(op: Operation): void;
 }
 
 /**
@@ -66,14 +68,14 @@ export class History {
   transact<T>(label: string, fn: (scope: TransactionScope) => T): T {
     if (this.open) {
       const ops = this.open.ops;
-      return fn({ run: (op) => runOp(op, ops) });
+      return fn({ run: (op) => runOp(op, ops), record: (op) => ops.push(op) });
     }
 
     const open = { label, ops: [] as Operation[] };
     this.open = open;
     let result: T;
     try {
-      result = fn({ run: (op) => runOp(op, open.ops) });
+      result = fn({ run: (op) => runOp(op, open.ops), record: (op) => open.ops.push(op) });
     } catch (error) {
       for (const op of [...open.ops].reverse()) op.revert();
       throw error;

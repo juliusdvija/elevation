@@ -1,4 +1,18 @@
-import { Box, Expand, Hand, MousePointer2, Redo2, Rotate3d, Undo2, createElement, type IconNode } from 'lucide';
+import {
+  ArrowUpFromLine,
+  Box,
+  Eraser,
+  Expand,
+  Hand,
+  MousePointer2,
+  PenLine,
+  RectangleHorizontal,
+  Redo2,
+  Rotate3d,
+  Undo2,
+  createElement,
+  type IconNode,
+} from 'lucide';
 import type { StandardView } from '../viewport/CameraRig';
 
 export interface ShellElements {
@@ -16,6 +30,10 @@ export interface ShellElements {
 
 const TOOL_ICONS: Record<string, IconNode> = {
   select: MousePointer2,
+  line: PenLine,
+  rectangle: RectangleHorizontal,
+  pushpull: ArrowUpFromLine,
+  eraser: Eraser,
   orbit: Rotate3d,
   pan: Hand,
 };
@@ -57,6 +75,7 @@ export function buildShell(
   const toolGroup = el('div', 'group');
   const toolButtons = new Map<string, HTMLButtonElement>();
   for (const tool of tools) {
+    if (tool.id === 'orbit') toolGroup.append(el('span', 'divider'));
     const button = iconButton(TOOL_ICONS[tool.id] ?? Box, `${tool.label} (${tool.shortcut})`);
     toolButtons.set(tool.id, button);
     toolGroup.append(button);
@@ -73,7 +92,7 @@ export function buildShell(
 
   const projection = el('button', 'text-button projection', 'Perspective');
   projection.type = 'button';
-  projection.title = 'Toggle perspective / parallel projection (P)';
+  projection.title = 'Toggle perspective / parallel projection';
   const zoomExtents = iconButton(Expand, 'Zoom extents (Shift+Z)');
   const cameraGroup = el('div', 'group');
   cameraGroup.append(projection, zoomExtents);
@@ -92,7 +111,8 @@ export function buildShell(
   const measureWrap = el('label', 'measurements');
   measureWrap.append(el('span', undefined, 'Measurements'));
   const measurements = el('input');
-  measurements.disabled = true;
+  measurements.readOnly = true;
+  measurements.tabIndex = -1;
   measurements.spellcheck = false;
   measureWrap.append(measurements);
   statusbar.append(hint, measureWrap);

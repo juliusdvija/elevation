@@ -1,15 +1,5 @@
 import type { Tool, ToolContext } from './Tool';
 
-export function createSelectTool(): Tool {
-  return {
-    id: 'select',
-    label: 'Select',
-    shortcut: 'Space',
-    hint: 'Select objects. Middle-drag to orbit, Shift + middle-drag to pan, scroll to zoom.',
-    cursor: 'default',
-  };
-}
-
 export function createOrbitTool(ctx: ToolContext): Tool {
   return {
     id: 'orbit',

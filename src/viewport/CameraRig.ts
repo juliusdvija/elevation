@@ -24,8 +24,8 @@ const STANDARD_VIEWS: Record<StandardView, { dir: THREE.Vector3; topUp?: THREE.V
  * camera and keeps both in sync; `camera` is whichever is active.
  */
 export class CameraRig {
-  readonly perspective = new THREE.PerspectiveCamera(FOV, 1, 1, 1e8);
-  readonly orthographic = new THREE.OrthographicCamera(-1, 1, 1, -1, -1e7, 1e7);
+  readonly perspective = new THREE.PerspectiveCamera(FOV, 1, 1, 1e6);
+  readonly orthographic = new THREE.OrthographicCamera(-1, 1, 1, -1, -1e6, 1e6);
 
   readonly position = new THREE.Vector3(9000, -14000, 8000);
   readonly target = new THREE.Vector3(0, 0, 1000);
@@ -192,8 +192,17 @@ export class CameraRig {
       camera.lookAt(this.target);
     }
 
+    // Clip planes scale with the view distance to keep depth precision for
+    // edges drawn on faces (polygon offset needs a linear-ish depth buffer).
+    const distance = this.distance;
     this.perspective.aspect = this.aspect;
+    this.perspective.near = THREE.MathUtils.clamp(distance / 1000, 1, 1e4);
+    this.perspective.far = Math.max(distance * 1000, 1e6);
     this.perspective.updateProjectionMatrix();
+
+    const depth = Math.max(distance * 50, 1e6);
+    this.orthographic.near = -depth;
+    this.orthographic.far = depth;
 
     const halfH = this.orthoHeight / 2;
     const halfW = halfH * this.aspect;

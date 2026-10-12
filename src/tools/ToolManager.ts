@@ -51,6 +51,11 @@ export class ToolManager {
     this.changed.emit(tool);
   }
 
+  /** Abandons whatever the active tool is doing. */
+  cancel(): void {
+    this.current?.cancel?.();
+  }
+
   /** Gives the active tool first refusal, then matches tool shortcuts. */
   keyDown(e: KeyboardEvent): boolean {
     if (this.current?.keyDown?.(e)) return true;

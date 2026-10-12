@@ -62,6 +62,13 @@ body {
   flex-shrink: 0;
 }
 
+.divider {
+  width: 1px;
+  height: 20px;
+  margin: 0 6px;
+  background: var(--line);
+}
+
 .spacer {
   flex: 1;
 }
@@ -178,3 +185,51 @@ input:focus-visible {
   font: 12px var(--mono);
   color: var(--ink);
 }
+
+.measurements input[data-typed='true'] {
+  border-color: var(--ink);
+}
+
+.snap-marker {
+  position: absolute;
+  top: 0;
+  left: 0;
+  pointer-events: none;
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  --snap: #3f72c9;
+}
+
+.snap-marker[hidden] {
+  display: none;
+}
+
+.snap-marker i {
+  width: 10px;
+  height: 10px;
+  margin: -5px 0 0 -5px;
+  border: 2px solid var(--snap);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.snap-marker span:not(:empty) {
+  margin: 18px 0 0 4px;
+  padding: 2px 6px;
+  border-radius: 4px;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  color: var(--ink);
+  font-size: 11px;
+  white-space: nowrap;
+}
+
+.snap-marker[data-kind='vertex'] { --snap: #2e9d4a; }
+.snap-marker[data-kind='midpoint'] { --snap: #1aa3b8; }
+.snap-marker[data-kind='edge'] { --snap: #d2564c; }
+.snap-marker[data-kind='face'] { --snap: #3f72c9; }
+.snap-marker[data-kind='ground'] { --snap: #8a8780; }
+.snap-marker[data-kind='axis-x'] { --snap: #d2564c; }
+.snap-marker[data-kind='axis-y'] { --snap: #4f9a5a; }
+.snap-marker[data-kind='axis-z'] { --snap: #3f72c9; }

@@ -10,4 +10,7 @@ export const theme = {
   face: 0xfbfaf7,
   faceBack: 0xb9c3cf,
   edge: 0x1d1d1b,
+  selection: 0x2f6fde,
+  hover: 0x6f9be8,
+  preview: 0x1d1d1b,
 } as const;
