@@ -1,3 +1,4 @@
+import { createLogo } from './logo';
 import {
   ArrowUpFromLine,
   Circle,
@@ -100,7 +101,8 @@ export function buildShell(
   const root = el('div', 'app');
 
   const toolbar = el('header', 'toolbar');
-  const brand = el('div', 'brand', 'Elevation');
+  const brand = el('div', 'brand');
+  brand.append(createLogo(24), el('span', undefined, 'Elevation'));
   const docName = el('div', 'doc-name');
   const newDoc = iconButton(FilePlus, 'New');
   const openDoc = iconButton(FolderOpen, 'Open… (⌘O)');
