@@ -4,9 +4,10 @@ import { loopPairs } from './Model';
 import { healEdges, removeBareEdges } from './cleanup';
 import { settle } from './transform';
 import { insertSegment } from './draw';
-import { faceInteriorPoint, setFaceNormal, updateFaces } from './faces';
-import { pointInsideSolid } from './solid';
-import { EPS, canonicalPlane, planeFrame, pointInPolygon, projectOnSegment, to2D, distanceToPlane, isParallel, isPerpendicular, planeFromPointNormal, samePlane } from './math';
+import { faceInteriorPoint, rebuildPlane, setFaceNormal, updateFaces, type RegionDecision } from './faces';
+import { insideTester } from './solid';
+import { intersectFaces } from './intersect';
+import { EPS, canonicalPlane, planeFrame, pointInPolygon, projectOnSegment, to2D, distanceToPlane, isParallel, isPerpendicular, planeFromPointNormal, samePlane, type Plane } from './math';
 
 /**
  * Push/Pull a face by `distance` along its normal (negative pushes in).
@@ -19,7 +20,7 @@ import { EPS, canonicalPlane, planeFrame, pointInPolygon, projectOnSegment, to2D
 export function pushPull(model: Model, faceId: Id, distance: number): boolean {
   if (Math.abs(distance) < EPS || !model.hasFace(faceId)) return false;
   const face = model.face(faceId);
-  if (canMoveFace(model, face)) return moveFace(model, face, distance);
+  if (canMoveFace(model, face) && !sweepMeetsOtherGeometry(model, face, distance)) return moveFace(model, face, distance);
   extrude(model, face, distance);
   return true;
 }
@@ -32,6 +33,23 @@ function neighbours(model: Model, face: Face): Face[][] {
       .filter((f) => f !== face.id)
       .map((f) => model.face(f)),
   );
+}
+
+/**
+ * Whether sweeping the face over `distance` would run into geometry that is
+ * not attached to it. Then the face is extruded (with the boolean pass)
+ * rather than just moved.
+ */
+function sweepMeetsOtherGeometry(model: Model, face: Face, distance: number): boolean {
+  const offset = face.normal.clone().multiplyScalar(distance);
+  const points = model.faceVertices(face).map((v) => model.position(v));
+  const box = new THREE.Box3().setFromPoints([...points, ...points.map((p) => p.clone().add(offset))]).expandByScalar(-EPS);
+  const own = new Set<Id>([face.id]);
+  for (const v of model.faceVertices(face)) for (const f of model.facesAtVertex(v)) own.add(f);
+  return model.allFaces().some((f) => {
+    if (own.has(f.id)) return false;
+    return box.intersectsBox(new THREE.Box3().setFromPoints(model.faceLoops(f).flat().map((v) => model.position(v))));
+  });
 }
 
 function canMoveFace(model: Model, face: Face): boolean {
@@ -83,8 +101,10 @@ function extrude(model: Model, face: Face, distance: number): void {
   // Probe for material just ahead of and behind the face, along the travel direction.
   const dir = n.clone().multiplyScalar(sign);
   const sample = faceInteriorPoint(model, face);
-  const ahead = sample !== null && pointInsideSolid(model, sample.clone().addScaledVector(dir, 1));
-  const behind = sample !== null && pointInsideSolid(model, sample.clone().addScaledVector(dir, -1));
+  // The solid as it was, for classifying faces after the edit.
+  const oldInside = insideTester(model);
+  const ahead = sample !== null && oldInside(sample.clone().addScaledVector(dir, 1));
+  const behind = sample !== null && oldInside(sample.clone().addScaledVector(dir, -1));
   // Moving into material cuts a recess; otherwise material is added.
   const cutting = ahead;
 
@@ -195,8 +215,27 @@ function extrude(model: Model, face: Face, distance: number): void {
     else setFaceNormal(model, f.id, desired);
   }
 
+  // Where the sweep runs into other geometry, intersect and keep only true boundaries.
+  const affected = booleanPass(model, {
+    sweep: (p) => !!sideContaining(p) || inCap(p),
+    inPrism: (p) => {
+      const t = p.clone().sub(model.position(face.outer[0]).clone()).dot(n) / distance;
+      if (Math.abs(n.dot(p) - n.dot(base[0][0])) < EPS || t <= 0 || t >= 1) return false;
+      const q = to2D(baseFrame, p.clone().addScaledVector(n, -distance * t));
+      return pointInPolygon(q, baseOuter) && !baseHoles.some((h) => pointInPolygon(q, h));
+    },
+    prismBox: new THREE.Box3().setFromPoints(base.flat().flatMap((p) => [p, p.clone().add(offset)])),
+    planes: [
+      ...sides.map((side) => side.plane),
+      canonicalPlane(planeFromPointNormal(base[0][0].clone().add(offset), n)),
+      canonicalPlane(planeFromPointNormal(base[0][0], n)),
+    ],
+    oldInside,
+    cutting,
+  });
+
   // Merge new walls that continue an existing coplanar wall.
-  const edges = new Set<Id>();
+  const edges = new Set<Id>(affected);
   for (const loop of base) {
     for (const p of loop) {
       for (const point of [p, p.clone().add(offset)]) {
@@ -207,6 +246,87 @@ function extrude(model: Model, face: Face, distance: number): void {
   }
   healEdges(model, edges);
   removeBareEdges(model, looseBefore);
+}
+
+const PROBE = 0.5; // mm off a face to test for material on each side
+
+/**
+ * Makes a push/pull a proper boolean when its sweep meets other geometry:
+ * intersects the swept faces with the faces they cross, then keeps a face
+ * only where it separates material (behind) from empty space (in front),
+ * flipping or dropping the rest. Material is the old solid plus the prism
+ * (adding) or minus it (cutting). Returns edges worth healing.
+ */
+function booleanPass(
+  model: Model,
+  opts: {
+    sweep: (p: THREE.Vector3) => boolean;
+    inPrism: (p: THREE.Vector3) => boolean;
+    prismBox: THREE.Box3;
+    planes: Plane[];
+    oldInside: (p: THREE.Vector3) => boolean;
+    cutting: boolean;
+  },
+): Set<Id> {
+  const { sweep, inPrism, prismBox, oldInside, cutting } = opts;
+  const box = prismBox.clone().expandByScalar(EPS * 10);
+  const boxOf = (f: Face) => new THREE.Box3().setFromPoints(model.faceLoops(f).flat().map((v) => model.position(v)));
+  const sweepFaces: Id[] = [];
+  const others: Id[] = [];
+  for (const f of model.allFaces()) {
+    if (!box.intersectsBox(boxOf(f))) continue;
+    const p = faceInteriorPoint(model, f);
+    if (p && sweep(p)) sweepFaces.push(f.id);
+    else others.push(f.id);
+  }
+
+  const material = (p: THREE.Vector3) => (cutting ? oldInside(p) && !inPrism(p) : oldInside(p) || inPrism(p));
+  /**
+   * Whether a face belongs at `p`: where material ends there must be one,
+   * pointing away from it; where the old solid had a boundary that is now
+   * inside or outside, none; anything else (loose faces) keeps the default.
+   */
+  const decide: RegionDecision = (p, normal) => {
+    if (!box.containsPoint(p)) return undefined;
+    const front = p.clone().addScaledVector(normal, PROBE);
+    const back = p.clone().addScaledVector(normal, -PROBE);
+    const behind = material(back);
+    if (behind !== material(front)) return behind ? normal.clone() : normal.clone().negate();
+    // No boundary here now: drop faces the sweep made, and old boundaries
+    // that ended up inside or outside; leave loose faces alone.
+    if (sweep(p) || inPrism(p) || oldInside(back) !== oldInside(front)) return null;
+    return undefined;
+  };
+
+  const swallowed = model.allVertices().some((v) => inPrism(v.position));
+  const { edges, planes: cutPlanes } = intersectFaces(model, sweepFaces, others, decide);
+  if (edges.size === 0 && !swallowed) return new Set();
+
+  // Recompute the faces of every plane the sweep touches from the material.
+  const done = [...cutPlanes];
+  for (const plane of opts.planes) {
+    if (done.some((q) => samePlane(q, plane))) continue;
+    done.push(plane);
+    rebuildPlane(model, plane, new Set(), decide);
+  }
+
+  // Faces in other planes: keep, flip or drop by the same rule.
+  const affected = new Set<Id>(edges);
+  for (const f of model.allFaces()) {
+    if (!box.intersectsBox(boxOf(f))) continue;
+    const p = faceInteriorPoint(model, f);
+    if (!p) continue;
+    const verdict = decide(p, f.normal);
+    if (verdict === undefined) continue;
+    if (verdict === null) {
+      for (const e of model.faceEdges(f)) affected.add(e);
+      model.removeFace(f.id);
+    } else if (verdict.dot(f.normal) < 0) {
+      setFaceNormal(model, f.id, verdict);
+    }
+  }
+  for (const f of model.allFaces()) if (box.intersectsBox(boxOf(f))) for (const e of model.faceEdges(f)) affected.add(e);
+  return affected;
 }
 
 /** Signed distance along `face`'s normal from its plane to `point`. */

@@ -8,6 +8,7 @@ import {
   onPlane,
   planeFrame,
   planeFromPoints,
+  to3D,
   pointInPolygon,
   samePlane,
   signedArea,
@@ -210,7 +211,14 @@ interface Cycle {
  * loop creates a face). Other regions stay empty, so a deleted face does not
  * come back. Each old face's id goes to its largest successor.
  */
-export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySet<Id>): void {
+/**
+ * Optional per-region decision for `rebuildPlane`: given a point inside a
+ * region (world space) and the plane normal, return the normal the face
+ * there must have, null for no face, or undefined for the default rule.
+ */
+export type RegionDecision = (sample: THREE.Vector3, planeNormal: THREE.Vector3) => THREE.Vector3 | null | undefined;
+
+export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySet<Id>, decide?: RegionDecision): void {
   const plane = canonicalPlane(rawPlane);
   const frame = planeFrame(plane);
 
@@ -289,7 +297,7 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
 
   const oldPolygons = oldFaces.map((face) => ({ face, polygon: facePolygon(model, face, frame) }));
 
-  const candidates: { region: (typeof regions)[number]; owner: Face | undefined }[] = [];
+  const candidates: { region: (typeof regions)[number]; owner: Face | undefined; normal?: THREE.Vector3 }[] = [];
   for (const region of regions) {
     const sample = interiorPoint(
       region.poly,
@@ -301,6 +309,14 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
       const edge = model.edgeBetween(a, b);
       return edge !== undefined && newEdges.has(edge);
     });
+    if (decide) {
+      const verdict = decide(to3D(frame, sample), plane.normal);
+      if (verdict === null) continue;
+      if (verdict) {
+        candidates.push({ region, owner, normal: verdict });
+        continue;
+      }
+    }
     if (owner || closesNewLoop) candidates.push({ region, owner });
   }
 
@@ -315,7 +331,9 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
   const kept = new Set<Id>();
   for (const c of candidates) {
     const id = c.owner && heir.get(c.owner.id) === c ? c.owner.id : undefined;
-    const normal = c.owner
+    const normal = c.normal
+      ? c.normal.clone()
+      : c.owner
       ? c.owner.normal.clone()
       : (orientationFromNeighbours(model, [c.region.loop, ...c.region.holes.map((h) => h.loop)], plane) ?? defaultNormal(plane));
     const flip = normal.dot(plane.normal) < 0;

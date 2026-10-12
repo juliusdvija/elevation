@@ -213,6 +213,17 @@ const SOLID_COMPOUND_OPS: Op[] = [
       const y = r.grid(-6000, 6000, 500);
       const w = r.grid(500, 4000, 500);
       const h = r.grid(500, 4000, 500);
+      // Footprints may touch existing geometry on the ground but not overlap it
+      // (an overlapped footprint splits, and only part of it would be pulled).
+      const inside = (p: THREE.Vector3) => Math.abs(p.z) < 1e-3 && p.x > x + 1e-3 && p.x < x + w - 1e-3 && p.y > y + 1e-3 && p.y < y + h - 1e-3;
+      const crosses = m.allEdges().some((e) => {
+        const [a, b] = [m.position(e.a), m.position(e.b)];
+        if (Math.abs(a.z) > 1e-3 || Math.abs(b.z) > 1e-3) return false;
+        for (let t = 0; t <= 1; t += 0.05) if (inside(a.clone().lerp(b, t))) return true;
+        return false;
+      });
+      const covering = m.allFaces().some((f) => Math.abs(f.normal.z) > 0.999 && Math.abs(m.position(f.outer[0]).z) < 1e-3 && faceContainsPoint(m, f, v(x + w / 2, y + h / 2)));
+      if (crosses || covering) return null;
       drawPolygon(m, rect(x, y, x + w, y + h));
       const id = faceAt(m, v(x + w / 2, y + h / 2), v(0, 0, 1));
       if (id === undefined) return `block footprint ${x},${y} ${w}x${h} (covered)`;

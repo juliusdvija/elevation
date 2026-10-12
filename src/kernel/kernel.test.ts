@@ -5,7 +5,8 @@ import { drawPolygon, drawSegments } from './draw';
 import { eraseEdges, eraseFaces } from './cleanup';
 import { pushPull } from './pushPull';
 import { faceArea } from './faces';
-import { validateModel } from './validate';
+import { selfIntersections, validateModel } from './validate';
+import { copyEntities } from './transform';
 
 const v = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
 
@@ -165,8 +166,9 @@ describe('push/pull', () => {
 
     run(model, () => pushPull(model, top.id, -1200));
     expect(volume(model)).toBe(300_000_000);
-    // Cannot push through the bottom.
-    expect(model.edit(() => pushPull(model, top.id, -400)).result).toBe(false);
+    // Pushing past the bottom cuts the whole volume away.
+    expect(model.edit(() => pushPull(model, top.id, -400)).result).toBe(true);
+    expect(model.faceCount).toBe(0);
   });
 
   it('pulls a rectangle drawn on a box top into a bump', () => {
@@ -302,5 +304,54 @@ describe('consistency found by fuzzing', () => {
     run(model, () => pushPull(model, back.id, -2000));
     expect(model.faceCount).toBe(0);
     expect(model.edgeCount).toBe(0);
+  });
+});
+
+describe('push/pull through other geometry', () => {
+  const sound = (model: Model) => {
+    expect(validateModel(model, { orientation: true })).toEqual([]);
+    expect(selfIntersections(model)).toEqual([]);
+    expect(isClosedSolid(model)).toBe(true);
+  };
+
+  it('cuts a hole right through when pushed deeper than the solid', () => {
+    const model = new Model();
+    run(model, () => drawPolygon(model, rect(0, 0, 3000, 3000)));
+    run(model, () => pushPull(model, model.allFaces()[0].id, -1000));
+    run(model, () => drawPolygon(model, rect(1000, 1000, 2000, 2000, 1000)));
+    const inner = model.allFaces().find((f) => f.normal.z === 1 && Math.round(faceArea(model, f)) === 1_000_000)!;
+    run(model, () => pushPull(model, inner.id, -1500));
+    sound(model);
+    expect(volume(model)).toBe(9_000_000_000 - 1_000_000_000);
+    expect(model.bounds().min.z).toBe(0);
+  });
+
+  it('fuses a column pulled up through a slab above it', () => {
+    const model = new Model();
+    run(model, () => drawPolygon(model, rect(0, 0, 3000, 3000)));
+    run(model, () => pushPull(model, model.allFaces()[0].id, -1000));
+    // A slab floating above: a copy of the box, 2 m up.
+    run(model, () => copyEntities(model, model.allFaces().map((f) => f.id), [], new THREE.Matrix4().makeTranslation(0, 0, 2000)));
+    run(model, () => drawPolygon(model, rect(1000, 1000, 2000, 2000, 1000)));
+    const inner = model.allFaces().find((f) => f.normal.z === 1 && model.position(f.outer[0]).z === 1000 && Math.round(faceArea(model, f)) === 1_000_000)!;
+    run(model, () => pushPull(model, inner.id, 3000));
+    sound(model);
+    // Two slabs, the column between them (1 m) and above the top slab (1 m).
+    expect(volume(model)).toBe(2 * 9_000_000_000 + 2 * 1_000_000_000);
+  });
+
+  it('fuses a block pushed sideways into another block', () => {
+    const model = new Model();
+    run(model, () => drawPolygon(model, rect(0, 0, 3000, 3000)));
+    run(model, () => pushPull(model, model.allFaces()[0].id, -2000));
+    // A separate low block east of it, with a 1 m gap.
+    run(model, () => drawPolygon(model, rect(4000, 1000, 5000, 2000)));
+    const ground = model.allFaces().find((f) => f.normal.z === -1 && Math.round(faceArea(model, f)) === 1_000_000)!;
+    run(model, () => pushPull(model, ground.id, -1000));
+    // Push its west face 1.5 m: across the gap and 0.5 m into the big block.
+    const west = model.allFaces().find((f) => f.normal.x === -1 && model.position(f.outer[0]).x === 4000)!;
+    run(model, () => pushPull(model, west.id, 1500));
+    sound(model);
+    expect(volume(model)).toBe(18_000_000_000 + 2_000_000_000);
   });
 });

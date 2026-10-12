@@ -15,19 +15,30 @@ const RAY_DIRS = [
  * next to open geometry (a single face) does not count as inside.
  */
 export function pointInsideSolid(model: Model, p: THREE.Vector3): boolean {
-  const triangles = model.allFaces().map((face) => triangulateFace(model, face));
+  return insideTester(model)(p);
+}
+
+/**
+ * A point-in-solid test bound to the model as it is now, so it keeps
+ * answering for the old shape while the model is being edited.
+ */
+export function insideTester(model: Model): (p: THREE.Vector3) => boolean {
+  const triangles = model.allFaces().map((face) => triangulateFace(model, face).map((v) => v.clone()));
+  const boxes = triangles.map((tris) => new THREE.Box3().setFromPoints(tris));
   const hit = new THREE.Vector3();
-  return RAY_DIRS.every((dir) => {
-    const ray = new THREE.Ray(p, dir);
-    let crossings = 0;
-    for (const tris of triangles) {
-      for (let i = 0; i < tris.length; i += 3) {
-        if (ray.intersectTriangle(tris[i], tris[i + 1], tris[i + 2], false, hit)) {
-          crossings++;
-          break;
+  return (p) =>
+    RAY_DIRS.every((dir) => {
+      const ray = new THREE.Ray(p, dir);
+      let crossings = 0;
+      triangles.forEach((tris, f) => {
+        if (!ray.intersectsBox(boxes[f])) return;
+        for (let i = 0; i < tris.length; i += 3) {
+          if (ray.intersectTriangle(tris[i], tris[i + 1], tris[i + 2], false, hit)) {
+            crossings++;
+            break;
+          }
         }
-      }
-    }
-    return crossings % 2 === 1;
-  });
+      });
+      return crossings % 2 === 1;
+    });
 }
