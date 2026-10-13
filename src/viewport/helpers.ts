@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import { theme } from './theme';
+import { ThickLines } from './thickLines';
 
 const AXIS_LENGTH = 1_000_000; // 1 km
 
@@ -129,5 +130,43 @@ export class Ground {
     this.uniforms.radius.value = radius;
     this.group.position.set(center.x, center.y, 0);
     this.group.scale.set(radius, radius, 1);
+  }
+}
+
+/** An arrow with an N on the ground beside the model, pointing to true north (clockwise `angle` degrees from +Y). */
+export class NorthArrow {
+  readonly group = new THREE.Group();
+  private readonly lines = new ThickLines(theme.axisX, 2.5);
+
+  constructor() {
+    this.group.name = 'north';
+    (this.lines.material as THREE.Material).depthTest = false;
+    this.lines.renderOrder = 5;
+    this.group.add(this.lines);
+    this.group.visible = false;
+  }
+
+  /** Draws the arrow south of `bounds` (in model axes); null hides it. */
+  update(angle: number | null, bounds: THREE.Box3): void {
+    this.group.visible = angle !== null && !bounds.isEmpty();
+    if (angle === null || bounds.isEmpty()) return;
+    const size = bounds.getSize(new THREE.Vector3());
+    const length = Math.max(size.x, size.y) * 0.18 || 1000;
+    const a = (angle * Math.PI) / 180;
+    const north = new THREE.Vector2(Math.sin(a), Math.cos(a));
+    const side = new THREE.Vector2(north.y, -north.x);
+    const centre = bounds.getCenter(new THREE.Vector3());
+    const base = new THREE.Vector2(centre.x, bounds.min.y - length * 0.9);
+    const at = (along: number, across: number) => base.clone().addScaledVector(north, along).addScaledVector(side, across);
+    const segments: [THREE.Vector2, THREE.Vector2][] = [
+      [at(0, 0), at(length, 0)],
+      [at(length, 0), at(length * 0.8, length * 0.09)],
+      [at(length, 0), at(length * 0.8, -length * 0.09)],
+      // The letter N, above the tip.
+      [at(length * 1.12, -length * 0.07), at(length * 1.3, -length * 0.07)],
+      [at(length * 1.3, -length * 0.07), at(length * 1.12, length * 0.07)],
+      [at(length * 1.12, length * 0.07), at(length * 1.3, length * 0.07)],
+    ];
+    this.lines.setSegments(segments.flatMap(([p, q]) => [p.x, p.y, 0, q.x, q.y, 0]));
   }
 }

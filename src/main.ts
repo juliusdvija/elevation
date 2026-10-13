@@ -33,6 +33,7 @@ import { ScenesBar } from './ui/ScenesBar';
 import { InfoPanel } from './ui/InfoPanel';
 import { SunPanel } from './ui/SunPanel';
 import { DEFAULT_SUN } from './drawing/settings';
+import { resolveSun } from './drawing/sun';
 import { TagsPanel } from './ui/TagsPanel';
 import type { Scene } from './drawing/settings';
 import type { ToolContext } from './tools/Tool';
@@ -358,7 +359,11 @@ shell.sunToggle.addEventListener('click', () => {
   shell.sunToggle.setAttribute('aria-pressed', String(sunPanel.isVisible));
 });
 // The sun belongs to the document: the 3D view follows its settings, also after a file is opened.
-const syncSun = () => viewport.setSun(doc.drawingSettings.sun ?? DEFAULT_SUN);
+const syncSun = () => {
+  const sun = { ...DEFAULT_SUN, ...doc.drawingSettings.sun };
+  viewport.setSun(resolveSun(sun));
+  viewport.setNorth(sun.mode === 'place' ? sun.northAngle! : null);
+};
 doc.settingsChanged.on(syncSun);
 syncSun();
 const scenesBar = new ScenesBar(doc, { camera: () => cameraData(viewport.rig), flyTo });

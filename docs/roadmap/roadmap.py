@@ -2,7 +2,7 @@ import html, json, sys
 
 # status: done | doing | next | later
 DATA = {
-  "stats": [("216","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("53","design decisions logged")],
+  "stats": [("221","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("53","design decisions logged")],
   "phases": [
     {"name":"Engine","blurb":"A kernel that does not corrupt models, and stays fast.","items":[
       ("done","Solid-safe push/pull: refuse edits that would open a closed solid","f1fd617"),
@@ -86,11 +86,12 @@ DATA = {
       ("done","Endless flat ground that fades into the sky; the grid shows only when grid snap is on",""),
       ("done","Sun with sharp cast shadows on the model and the ground",""),
       ("done","Sun panel: shadows on/off, sun direction and height, saved with the document",""),
-      ("next","Time of day and date; link the 2D drawings' shading to the sun",""),
+      ("done","Real sun from place, date and time, with true north set on the model; north arrow on the ground",""),
+      ("next","Link the 2D drawings' shading and shadows to the sun; a play-the-day animation",""),
       ("next","Sky gradient and a softer horizon",""),
       ("later","Line weight setting and line styles (profile edges heavier)","")]},
   ],
-  "log":[("Now","Sun panel added (shadows switch, direction, height)."),("Just finished","Rayon-inspired drawing style: finer lines, solid thin cuts, hatched earth, new title block."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
+  "log":[("Now","Roadmap polish; picking the next feature to build."),("Just finished","Sun panel: shadows switch, sun direction and height, saved with the document."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Next best step: dimensions that stay attached to the geometry and follow it when it moves. They make the live drawings trustworthy for precise work, and radius and angle dimensions and schedules build on them.")],
 }
 
 def render(d):
@@ -111,7 +112,7 @@ def render(d):
     return TEMPLATE.replace("%%STATS%%",stats).replace("%%PHASES%%",phases).replace("%%LOG%%",log).replace("%%PCT%%",str(pct)).replace("%%DONE%%",str(done)).replace("%%TOTAL%%",str(total))
 
 TEMPLATE = """<title>Elevation Roadmap</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600&family=JetBrains+Mono:wght@400;500&display=swap">
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
 /* Layout: a status header, then one column per workstream; items carry a state chip and the commit that finished them. */
 :root{
@@ -144,7 +145,7 @@ h1{margin:0;font-size:26px;font-weight:600;letter-spacing:-.01em;text-wrap:balan
 .now h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:500}
 .now ul{margin:0;padding:0;list-style:none;display:grid;gap:6px}
 .now li{display:flex;flex-wrap:wrap;gap:4px 12px}
-.now li span{width:110px;font-family:var(--mono);font-size:12px;color:var(--accent);flex:none}
+.now li span{width:110px;font-family:var(--font);font-size:13px;font-weight:700;color:var(--fg);flex:none}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px}
 .phase{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .phase header{display:flex;justify-content:space-between;align-items:baseline;gap:12px}

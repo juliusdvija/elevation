@@ -45,14 +45,40 @@ export interface Scene {
   hidden?: string[];
 }
 
-/** The sun of the 3D view: shadows on or off, its compass direction (degrees clockwise from north, +Y) and its height above the horizon (degrees). */
+/**
+ * The sun of the 3D view. Shadows can be switched off. In 'manual' mode the sun stands at `azimuth` (compass degrees
+ * clockwise from the model's +Y) and `altitude` (degrees above the horizon). In 'place' mode it is worked out from a
+ * place on earth, a date and a time; `northAngle` is how far true north lies clockwise from the model's +Y.
+ */
 export interface SunSettings {
   shadows: boolean;
   azimuth: number;
   altitude: number;
+  mode?: 'manual' | 'place';
+  /** Degrees clockwise from the model's +Y to true north. */
+  northAngle?: number;
+  latitude?: number;
+  longitude?: number;
+  /** Hours the local clock is ahead of UTC, including daylight saving. */
+  utcOffset?: number;
+  /** Local date, yyyy-mm-dd. */
+  date?: string;
+  /** Local clock time, minutes since midnight. */
+  minutes?: number;
 }
 
-export const DEFAULT_SUN: SunSettings = { shadows: true, azimuth: 248, altitude: 51 };
+export const DEFAULT_SUN: SunSettings = {
+  shadows: true,
+  azimuth: 248,
+  altitude: 51,
+  mode: 'manual',
+  northAngle: 0,
+  latitude: 52.37,
+  longitude: 4.9,
+  utcOffset: 2,
+  date: '2026-06-21',
+  minutes: 840,
+};
 
 /** Drawing settings saved with the document. */
 export interface DrawingSettings {

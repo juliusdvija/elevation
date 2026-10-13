@@ -8,7 +8,7 @@ import { validateModel } from './kernel/validate';
 import { parse, serialize, toFile } from './io/format';
 import { computeDrawing } from './drawing/project';
 import { viewSetup } from './drawing/views';
-import { DEFAULT_SETTINGS } from './drawing/settings';
+import { DEFAULT_SETTINGS, DEFAULT_SUN } from './drawing/settings';
 
 const v = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
 const rect = (x0: number, y0: number, x1: number, y1: number, z = 0) => [v(x0, y0, z), v(x1, y0, z), v(x1, y1, z), v(x0, y1, z)];
@@ -197,15 +197,15 @@ describe('scale figure', () => {
 describe('sun', () => {
   it('is set without an undo step, is saved with the document, and defaults for older files', () => {
     const doc = new Document();
-    expect(doc.drawingSettings.sun).toEqual({ shadows: true, azimuth: 248, altitude: 51 });
-    doc.setSun({ shadows: false, azimuth: 90, altitude: 30 });
+    expect(doc.drawingSettings.sun).toEqual(DEFAULT_SUN);
+    doc.setSun({ ...DEFAULT_SUN, shadows: false, azimuth: 90, altitude: 30, mode: 'place', latitude: 40, date: '2026-12-21' });
     expect(doc.history.canUndo).toBe(false);
     const file = parse(serialize(toFile(doc.model.toData(), undefined, doc.definitionsInUse(), doc.drawingSettings)));
-    expect(file.drawing?.sun).toEqual({ shadows: false, azimuth: 90, altitude: 30 });
+    expect(file.drawing?.sun).toMatchObject({ shadows: false, azimuth: 90, altitude: 30, mode: 'place', latitude: 40, date: '2026-12-21' });
     const older = new Document();
     const { sun: _sun, ...without } = doc.drawingSettings;
     older.load(doc.model.toData(), 'old', null, { drawing: without as typeof doc.drawingSettings });
-    expect(older.drawingSettings.sun).toEqual({ shadows: true, azimuth: 248, altitude: 51 });
+    expect(older.drawingSettings.sun).toEqual(DEFAULT_SUN);
   });
 });
 

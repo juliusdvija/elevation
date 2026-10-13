@@ -1269,3 +1269,33 @@ input.swatch.custom {
   color: var(--ink-muted);
   font-variant-numeric: tabular-nums;
 }
+
+.sun-row[hidden],
+.sun-panel p[hidden] {
+  display: none;
+}
+
+.sun-mode {
+  display: flex;
+  gap: 6px;
+}
+
+.sun-mode .pill-button[aria-pressed='true'] {
+  background: var(--accent, #2f6fde);
+  color: #fff;
+}
+
+.sun-coordinates {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 4px;
+}
+
+.sun-coordinates input,
+.sun-row input[type='date'] {
+  width: 100%;
+  min-width: 0;
+  box-sizing: border-box;
+  font: inherit;
+  font-size: 12px;
+}

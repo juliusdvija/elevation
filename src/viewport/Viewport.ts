@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CameraRig, WORLD_UP } from './CameraRig';
-import { AdaptiveGrid, Ground, createAxes, niceSpacing } from './helpers';
+import { AdaptiveGrid, Ground, NorthArrow, createAxes, niceSpacing } from './helpers';
 import { theme } from './theme';
 import { DEFAULT_SUN, type SunSettings } from '../drawing/settings';
 
@@ -18,6 +18,8 @@ export interface SnapshotCamera {
  * Owns the WebGL renderer, the scene and the camera rig. Renders on demand:
  * call `requestRender()` after anything visible changes.
  */
+const SUN_INTENSITY = 2.4;
+
 export class Viewport {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -36,7 +38,9 @@ export class Viewport {
   private readonly raycaster = new THREE.Raycaster();
   private readonly adaptiveGrid = new AdaptiveGrid();
   private readonly ground = new Ground();
-  private readonly sun = new THREE.DirectionalLight(0xffffff, 2.4);
+  private readonly north = new NorthArrow();
+  private northAngle: number | null = null;
+  private readonly sun = new THREE.DirectionalLight(0xffffff, SUN_INTENSITY);
   /** Whether the snap grid is drawn on the ground. */
   gridVisible = false;
   /** Whether the sun casts shadows. */
@@ -47,7 +51,16 @@ export class Viewport {
     const azimuth = (sun.azimuth * Math.PI) / 180;
     const altitude = (Math.min(90, Math.max(2, sun.altitude)) * Math.PI) / 180;
     this.sunDirection.set(Math.sin(azimuth) * Math.cos(altitude), Math.cos(azimuth) * Math.cos(altitude), Math.sin(altitude));
-    this.sun.castShadow = sun.shadows;
+    // Below the horizon there is no sunlight and no shadow; near it the light fades in.
+    const light = Math.min(1, Math.max(0, sun.altitude / 8));
+    this.sun.intensity = SUN_INTENSITY * light;
+    this.sun.castShadow = sun.shadows && light > 0;
+    this.requestRender();
+  }
+
+  /** Shows an arrow pointing to true north on the ground beside the model (null hides it). */
+  setNorth(angle: number | null): void {
+    this.northAngle = angle;
     this.requestRender();
   }
   private readonly helpers: THREE.Object3D[];
@@ -65,8 +78,8 @@ export class Viewport {
 
     this.scene.background = new THREE.Color(theme.background);
     const axes = createAxes();
-    this.helpers = [this.ground.group, this.adaptiveGrid.group, axes, this.overlay];
-    this.scene.add(this.ground.group, this.adaptiveGrid.group, axes, this.content, this.overlay);
+    this.helpers = [this.ground.group, this.adaptiveGrid.group, axes, this.north.group, this.overlay];
+    this.scene.add(this.ground.group, this.adaptiveGrid.group, axes, this.north.group, this.content, this.overlay);
 
     const hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 1.5);
     hemisphere.position.copy(WORLD_UP);
@@ -245,6 +258,7 @@ export class Viewport {
     this.adaptiveGrid.group.visible = this.gridVisible;
     if (this.gridVisible) this.adaptiveGrid.update(this.gridSpacingAt(this.rig.target), this.rig.target);
     this.ground.update(this.rig.target, Math.max(this.rig.perspective.far, 1e5) * 0.45);
+    this.north.update(this.northAngle, this.contentBounds());
     this.fitSun();
     this.renderer.render(this.scene, this.rig.camera);
   }
