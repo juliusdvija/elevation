@@ -113,16 +113,13 @@ def render(d):
 
 TEMPLATE = """<title>Elevation Roadmap</title>
 <style>
-/* Typography follows bobvanboekel.nl: Maison Neue, falling back to Helvetica Neue / Arial where the font cannot load. */
-@font-face{font-family:maisonNeue;src:url(https://bobvanboekel.nl/_next/static/immutable/media/MaisonNeue_Light-s.p.36yhntup0vpj6.ttf) format("truetype");font-weight:300;font-display:swap}
-@font-face{font-family:maisonNeue;src:url(https://bobvanboekel.nl/_next/static/immutable/media/MaisonNeue_Book-s.p.0wxz7g_buw-5b.ttf) format("truetype");font-weight:400;font-display:swap}
-@font-face{font-family:maisonNeue;src:url(https://bobvanboekel.nl/_next/static/immutable/media/MaisonNeue_Bold-s.p.3m_onx_5zbmcp.ttf) format("truetype");font-weight:700;font-display:swap}
+/* Typography follows bobvanboekel.nl: Maison Neue, used from the viewer's installed fonts, falling back to Helvetica Neue / Arial. */
 /* Layout: a status header, then one column per workstream; items carry a state chip and the commit that finished them. */
 :root{
   --bg:#f6f7f8; --surface:#ffffff; --fg:#1b2025; --muted:#66707a; --line:#dde1e5;
   --accent:#2f6fde; --done:#2e8b57; --doing:#c27a12; --next:#2f6fde; --later:#8a939c;
   --panel:#e9ebee; --head:#1f7a45; --done-bg:#e4f3ea; --doing-bg:#fbefd9; --next-bg:#e3ecfb; --later-bg:#eceef0;
-  --font:'maisonNeue','Helvetica Neue',Arial,sans-serif; --mono:var(--font);
+  --font:'Maison Neue','MaisonNeue','Helvetica Neue',Arial,sans-serif; --mono:var(--font);
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#13171b; --surface:#1b2026; --fg:#e7eaed; --muted:#98a1ab; --line:#2b323a;
