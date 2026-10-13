@@ -104,6 +104,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 ## 6. Bestanden (`src/io`)
 
 - Formaat **`.elev`**: leesbare JSON `{ format, version, units: 'mm', model, definitions, drawing, camera }`. Versie 2 voegde definities toe, **3** de tekeninginstellingen, **4** de bladen (`drawing.layouts`). Nieuwere versies worden geweigerd met een duidelijke melding.
+- **OBJ-import** (`io/obj.ts`, dialoog in `ui/ImportDialog.ts`): knop in de werkbalk of een .obj (met .mtl) op het venster slepen. Verliesgevend: alleen geometrie en kleuren (`Kd`) komen mee; teksturen, transparantie, normalen en groepen niet. Eenheid wordt geraden uit de afmetingen, Y-omhoog wordt Z-omhoog. Het resultaat wordt een groep in de huidige context, één undo-stap.
 - Opslaan via de **File System Access API** waar beschikbaar (schrijft terug naar hetzelfde bestand), anders download/bestandskiezer.
 - Een **herstelkopie** in `localStorage` vangt herladen op; het bestand blijft de echte opslag.
 
@@ -156,6 +157,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 | 37 | De standaardaanzichten zijn een echte 3D-kubus in CSS (isometrisch gedraaid) die bij hover openvouwt; Front is de wortel en beweegt niet | Elk vlak hangt aan de rand die hij deelt met zijn ouder en draait 90° naar 0° (Back hangt aan Left en volgt iets later), zodat het net plat in het vlak van Front komt te liggen, scheef getekend zoals de isometrie het laat zien. Alleen CSS-transformaties, geen JavaScript voor de animatie. Er is een `bottom`-aanzicht bijgekomen (van onderen, zoals een plafondplan: oost links). |
 
+| 38 | OBJ-import voegt driehoeken zelf samen (`buildModel`) en gebruikt `settle` alleen rond echte kruisingen | Driehoeken die een rand delen, in één vlak liggen en één kleur hebben, worden één vlak met buitenlus en gaten (de rand zonder partner in de groep). Dat is ~100× sneller dan `settle` over het hele model (24 s → 5 s voor 8.500 polygonen). T-aansluitingen worden met het ruimtelijk raster gesplitst, dubbele driehoeken vervallen. Vlakken van verschillende kleur blijven gescheiden, ook in `healEdges`. |
+
 ---
 
 ## 8. Bekende beperkingen
@@ -164,5 +167,6 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
 - Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- OBJ-import: bij bronnen met dubbele of elkaar rakende geometrie blijven enkele vlakken overlappen (validator: `overlapping-faces`), en open meshes blijven open; er is nog geen STL-, glTF- of DXF-import en geen export.
 - Verf: de wanden en bovenkant van een Push/Pull nemen de kleur van het getrokken vlak over; andere nieuwe vlakken zonder ouder zijn onbeschilderd. Schaduw, patronen/arceringen en texturen bestaan nog niet.
 - Prestaties (`npm run bench`, raster van huisjes): bij 4.000 vlakken kost een Push/Pull ~35 ms en een tekening 40–70 ms; bij 9.000 vlakken ~100 ms en 170–350 ms; een tekenstap in het model ~45 ms gemiddeld. Wat nog kwadratisch is: `rebuildPlane` scant per vlak alle randen en vlakken, de validator (`validateModel`, alleen voor tests en fuzz) kost bij 9.000 vlakken ~50 s, en tekeningen rekenen bij elke wijziging alles opnieuw.

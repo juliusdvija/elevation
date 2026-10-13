@@ -12,6 +12,7 @@ import {
   PaintBucket,
   Expand,
   FilePlus,
+  Import,
   FolderOpen,
   Grid3x3,
   Hand,
@@ -41,6 +42,7 @@ export interface ShellElements {
   docName: HTMLElement;
   newDoc: HTMLButtonElement;
   openDoc: HTMLButtonElement;
+  importDoc: HTMLButtonElement;
   saveDoc: HTMLButtonElement;
   toolButtons: Map<string, HTMLButtonElement>;
   viewButtons: Map<StandardView, HTMLButtonElement>;
@@ -99,9 +101,10 @@ export function buildShell(
   const docName = el('div', 'doc-name');
   const newDoc = iconButton(FilePlus, 'New');
   const openDoc = iconButton(FolderOpen, 'Open… (⌘O)');
+  const importDoc = iconButton(Import, 'Import an OBJ file…');
   const saveDoc = iconButton(Save, 'Save (⌘S)');
   const fileGroup = el('div', 'group');
-  fileGroup.append(newDoc, openDoc, saveDoc);
+  fileGroup.append(newDoc, openDoc, importDoc, saveDoc);
 
   const toolGroup = el('div', 'group');
   const toolButtons = new Map<string, HTMLButtonElement>();
@@ -185,5 +188,5 @@ export function buildShell(
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, componentsToggle, gridSnapToggle, docName, newDoc, openDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
 }

@@ -340,6 +340,15 @@ export class Document {
   }
 
   /**
+   * Puts a finished model (e.g. an imported file) into the current context as a new group.
+   * Call inside `run`. Returns the instance.
+   */
+  addGroupFromModel(model: Model, name: string): Id {
+    const def = this.addDefinition('group', name, model);
+    return this.context.model.addInstance(def.id, new THREE.Matrix4());
+  }
+
+  /**
    * Puts a scale figure (a flat person, shared component) into the current
    * context. `world` places it in world space. Call inside `run`. Returns the instance.
    */

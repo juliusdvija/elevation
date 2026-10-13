@@ -870,3 +870,69 @@ input.swatch.custom {
   border-color: var(--active);
   color: var(--active-ink);
 }
+
+.dialog-backdrop {
+  position: fixed;
+  inset: 0;
+  display: grid;
+  place-items: center;
+  background: rgba(29, 29, 27, 0.28);
+  z-index: 50;
+}
+
+.dialog {
+  width: min(420px, calc(100vw - 32px));
+  padding: 18px 20px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  background: var(--surface);
+  box-shadow: 0 12px 40px rgba(0, 0, 0, 0.18);
+  font: 13px var(--font);
+  color: var(--ink);
+}
+
+.dialog h2 {
+  margin: 0 0 6px;
+  font-size: 15px;
+}
+
+.dialog-summary,
+.dialog-note {
+  margin: 0 0 12px;
+  color: var(--ink-muted);
+}
+
+.dialog-note {
+  margin-top: 12px;
+  font-size: 12px;
+}
+
+.dialog-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 5px 0;
+}
+
+.dialog-row select {
+  min-width: 190px;
+}
+
+.dialog-buttons {
+  display: flex;
+  justify-content: flex-end;
+  gap: 8px;
+  margin-top: 14px;
+}
+
+.dialog-buttons .pill-button {
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.dialog-buttons .pill-button.primary {
+  background: var(--active);
+  border-color: var(--active);
+  color: var(--active-ink);
+}

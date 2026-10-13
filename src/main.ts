@@ -30,6 +30,8 @@ import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
 import { openDocument, saveDocument } from './io/files';
+import { buildModel } from './io/obj';
+import { askImportOptions, chooseObjFiles, readObjFiles } from './ui/ImportDialog';
 import { restoreAutosave, startAutosave } from './io/autosave';
 import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
 import { GroupBar } from './ui/GroupBar';
@@ -263,6 +265,40 @@ async function open() {
     window.alert((error as Error).message);
   }
 }
+
+/** Imports an OBJ (and its .mtl) as a group in the current context. Lossy: only geometry and colours come across. */
+async function importObj(files: File[] | null) {
+  if (!files) return;
+  try {
+    const source = await readObjFiles(files);
+    if (!source) {
+      window.alert('Choose a .obj file (and optionally its .mtl).');
+      return;
+    }
+    const choice = await askImportOptions(source);
+    if (!choice) return;
+    ctx.setHint(`Importing ${source.name}…`);
+    // Let the hint paint before the (synchronous) build starts.
+    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
+    const started = performance.now();
+    const imported = buildModel(choice.mesh, choice.options);
+    doc.run('Import', () => doc.addGroupFromModel(imported, choice.name));
+    navigator.zoomExtents();
+    ctx.setHint(`Imported ${choice.name}: ${imported.faceCount.toLocaleString()} faces in ${((performance.now() - started) / 1000).toFixed(1)} s.`);
+  } catch (error) {
+    ctx.setHint('Import failed.');
+    window.alert(`Could not import: ${(error as Error).message}`);
+  }
+}
+
+shell.importDoc.addEventListener('click', async () => importObj(await chooseObjFiles()));
+// Dropping an .obj (with its .mtl) on the window imports it too.
+window.addEventListener('dragover', (e) => e.preventDefault());
+window.addEventListener('drop', (e) => {
+  e.preventDefault();
+  const files = e.dataTransfer ? [...e.dataTransfer.files] : [];
+  if (files.some((f) => /\.obj$/i.test(f.name))) void importObj(files);
+});
 
 async function newDocument() {
   if (!(await confirmDiscard())) return;

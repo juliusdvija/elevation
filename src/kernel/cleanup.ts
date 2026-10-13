@@ -62,7 +62,8 @@ export function healEdges(model: Model, edges: Iterable<Id>): void {
   for (const id of edges) {
     if (!model.hasEdge(id)) continue;
     const faces = model.facesOfEdge(id).map((f) => model.face(f));
-    if (faces.length !== 2 || !coplanarSameSide(model, faces[0], faces[1])) continue;
+    // Faces of different paint stay apart: the edge between them is the edge of the paint.
+    if (faces.length !== 2 || faces[0].color !== faces[1].color || !coplanarSameSide(model, faces[0], faces[1])) continue;
     const edge = model.edge(id);
     const plane = model.facePlane(faces[0]);
     // Other edges between the same two faces end up inside the merged face.
