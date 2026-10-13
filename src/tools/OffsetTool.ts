@@ -3,7 +3,7 @@ import { formatLength, parseLength } from '../core/units';
 import { drawPolygon } from '../kernel/draw';
 import type { Id } from '../kernel/Model';
 import { EPS, planeFrame, pointInPolygon, projectOnSegment, to2D } from '../kernel/math';
-import { offsetPolygon } from '../kernel/shapes';
+import { offsetHolds, offsetPolygon } from '../kernel/shapes';
 import { PreviewLines } from './overlay';
 import type { Tool, ToolContext } from './Tool';
 import { space } from './space';
@@ -28,6 +28,7 @@ export function createOffsetTool(ctx: ToolContext): Tool {
   const commit = (d: number) => {
     if (!face || Math.abs(d) < EPS) return;
     const points = offsetPolygon(face.outline, face.normal, d);
+    if (!offsetHolds(points, face.normal, face.outline)) return; // collapsed: nothing to draw
     const s = space(ctx);
     ctx.doc.run('Offset', () => drawPolygon(s.model, points.map(s.toLocal)));
     reset();

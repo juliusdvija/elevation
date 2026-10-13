@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import type { Model } from './Model';
+import type { Id, Model } from './Model';
 import { triangulateFace } from './faces';
 
 // Oblique so rays are unlikely to graze edges of axis-aligned geometry.
@@ -20,10 +20,12 @@ export function pointInsideSolid(model: Model, p: THREE.Vector3): boolean {
 
 /**
  * A point-in-solid test bound to the model as it is now, so it keeps
- * answering for the old shape while the model is being edited.
+ * answering for the old shape while the model is being edited. `skip` leaves
+ * a face out: a loose face being pulled is not part of any solid, and a ray
+ * crossing it would flip the parity.
  */
-export function insideTester(model: Model): (p: THREE.Vector3) => boolean {
-  const triangles = model.allFaces().map((face) => triangulateFace(model, face).map((v) => v.clone()));
+export function insideTester(model: Model, skip?: Id): (p: THREE.Vector3) => boolean {
+  const triangles = model.allFaces().filter((face) => face.id !== skip).map((face) => triangulateFace(model, face).map((v) => v.clone()));
   const boxes = triangles.map((tris) => new THREE.Box3().setFromPoints(tris));
   const hit = new THREE.Vector3();
   return (p) =>

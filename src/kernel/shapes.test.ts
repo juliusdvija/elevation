@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { arcFromCenter, arcSegments, circlePoints, offsetPolygon } from './shapes';
+import { arcFromCenter, arcSegments, circlePoints, offsetHolds, offsetPolygon } from './shapes';
 
 const v = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
 const Z = v(0, 0, 1);
@@ -39,5 +39,19 @@ describe('shapes', () => {
       [100, 900, 0],
     ]);
     expect(round(offsetPolygon(square, Z, -100)[0])).toEqual([-100, -100, 0]);
+  });
+
+  it('drops vertices in the middle of a straight edge when offsetting', () => {
+    const square = [v(0, 0), v(1000, 0), v(1000, 400), v(1000, 600), v(1000, 1000), v(0, 1000)];
+    const inset = offsetPolygon(square, Z, 100);
+    expect(inset.map(round)).toEqual([[100, 100, 0], [900, 100, 0], [900, 900, 0], [100, 900, 0]]);
+  });
+
+  it('notices when an offset has collapsed or turned inside out', () => {
+    const strip = [v(0, 0), v(3400, 0), v(3400, 400), v(0, 400)];
+    expect(offsetHolds(offsetPolygon(strip, Z, 100), Z, strip)).toBe(true);
+    expect(offsetHolds(offsetPolygon(strip, Z, 200), Z, strip)).toBe(false);
+    expect(offsetHolds(offsetPolygon(strip, Z, 300), Z, strip)).toBe(false);
+    expect(offsetHolds(offsetPolygon(strip, Z, -300), Z, strip)).toBe(true);
   });
 });

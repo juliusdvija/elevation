@@ -34,7 +34,7 @@ export function pushPull(model: Model, faceId: Id, distance: number): boolean {
 function pushPullFace(model: Model, faceId: Id, distance: number, wasClosed: boolean): boolean {
   const face = model.face(faceId);
   let changed = true;
-  if (canMoveFace(model, face) && !sweepMeetsOtherGeometry(model, face, distance)) changed = moveFace(model, face, distance);
+  if (canMoveFace(model, face) && !passesNeighbourVertex(model, face, distance) && !sweepMeetsOtherGeometry(model, face, distance)) changed = moveFace(model, face, distance);
   else extrude(model, face, distance);
   // Whatever stood on the swept face is left open at the cut: put its cap back.
   if (changed) closeOpenings(model, wasClosed);
@@ -66,6 +66,26 @@ function sweepMeetsOtherGeometry(model: Model, face: Face, distance: number): bo
     if (own.has(f.id)) return false;
     return box.intersectsBox(new THREE.Box3().setFromPoints(model.faceLoops(f).flat().map((v) => model.position(v))));
   });
+}
+
+/**
+ * Whether moving the face forward by `distance` would carry one of its vertices past a
+ * vertex of an attached face (a wall standing ahead of it, or another solid's face meeting
+ * it at an edge): that edge would flip over, so the move needs the boolean extrusion.
+ */
+function passesNeighbourVertex(model: Model, face: Face, distance: number): boolean {
+  if (distance <= 0) return false; // pushing back stops at the nearest wall vertex instead
+  const plane = model.facePlane(face);
+  for (const v of model.faceVertices(face)) {
+    for (const f of model.facesAtVertex(v)) {
+      if (f === face.id) continue;
+      for (const w of model.faceVertices(model.face(f))) {
+        const ahead = distanceToPlane(plane, model.position(w));
+        if (ahead > EPS && ahead < distance - EPS) return true;
+      }
+    }
+  }
+  return false;
 }
 
 function canMoveFace(model: Model, face: Face): boolean {
@@ -118,7 +138,9 @@ function extrude(model: Model, face: Face, distance: number): void {
   const dir = n.clone().multiplyScalar(sign);
   const sample = faceInteriorPoint(model, face);
   // The solid as it was, for classifying faces after the edit.
-  const oldInside = insideTester(model);
+  // A face with an open rim (a footprint drawn beside a solid) is no part of the solid.
+  const loose = model.faceEdges(face).some((e) => model.facesOfEdge(e).length === 1);
+  const oldInside = insideTester(model, loose ? face.id : undefined);
   const ahead = sample !== null && oldInside(sample.clone().addScaledVector(dir, 1));
   const behind = sample !== null && oldInside(sample.clone().addScaledVector(dir, -1));
   // Moving into material cuts a recess; otherwise material is added.
@@ -172,6 +194,24 @@ function extrude(model: Model, face: Face, distance: number): void {
     });
   const againstWall = (p: THREE.Vector3, normal: THREE.Vector3) => inWallBefore(p, (w) => w.dot(normal) < -0.5);
 
+  // Faces already in the cap's plane facing the other way: a cap landing on one of them
+  // (pushing right through a wall) is back to back with it, even where splitting gave the
+  // piece a new id.
+  const capNormal = cutting ? dir.clone().negate() : dir;
+  const opposedBefore = model
+    .allFaces()
+    .filter((f) => isParallel(f.normal, n) && f.normal.dot(capNormal) < 0 && Math.abs(n.dot(model.position(f.outer[0])) - capPlaneD) < EPS)
+    .map((f) => {
+      const frame = planeFrame(model.facePlane(f));
+      const project = (loop: readonly Id[]) => loop.map((v) => to2D(frame, model.position(v)));
+      return { frame, outer: project(f.outer), holes: f.holes.map(project) };
+    });
+  const backToBack = (p: THREE.Vector3) =>
+    opposedBefore.some((w) => {
+      const q = to2D(w.frame, p);
+      return pointInPolygon(q, w.outer) && !w.holes.some((h) => pointInPolygon(q, h));
+    });
+
   const facesBefore = new Set(model.allFaces().map((f) => f.id));
   const looseBefore = new Set(model.allEdges().filter((e) => model.facesOfEdge(e.id).length === 0).map((e) => e.id));
   const created = new Set<Id>();
@@ -210,7 +250,7 @@ function extrude(model: Model, face: Face, distance: number): void {
       }
       // A cap landing back to back on an existing face (pushing right through,
       // or onto another solid) leaves nothing there.
-      if (facesBefore.has(f.id) && f.normal.dot(cap) < 0) model.removeFace(f.id);
+      if ((facesBefore.has(f.id) && f.normal.dot(cap) < 0) || backToBack(inside)) model.removeFace(f.id);
       else setFaceNormal(model, f.id, cap);
       continue;
     }

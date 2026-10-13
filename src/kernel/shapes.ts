@@ -57,7 +57,9 @@ export function arcSegments(angle: number): number {
 
 /**
  * Offsets a closed planar polygon (counter-clockwise around `normal`) by
- * `distance`: positive moves the outline inwards, negative outwards.
+ * `distance`: positive moves the outline inwards, negative outwards. Vertices
+ * in the middle of a straight run are dropped: they would land outside the
+ * trimmed offset line and leave a spike.
  */
 export function offsetPolygon(points: THREE.Vector3[], normal: THREE.Vector3, distance: number): THREE.Vector3[] {
   const n = normal.clone().normalize();
@@ -67,15 +69,35 @@ export function offsetPolygon(points: THREE.Vector3[], normal: THREE.Vector3, di
     const inward = new THREE.Vector3().crossVectors(n, d);
     return { point: p.clone().addScaledVector(inward, distance), dir: d };
   });
-  return points.map((_, i) => {
+  const result: THREE.Vector3[] = [];
+  for (let i = 0; i < count; i++) {
     const prev = lines[(i - 1 + count) % count];
     const next = lines[i];
     // Intersect the two offset lines within the plane.
     const cross = new THREE.Vector3().crossVectors(prev.dir, next.dir);
     const denom = cross.dot(n);
-    if (Math.abs(denom) < 1e-9) return next.point.clone();
+    if (Math.abs(denom) < 1e-9) {
+      if (prev.dir.dot(next.dir) > 0) continue; // straight on: not a corner
+      result.push(next.point.clone());
+      continue;
+    }
     const diff = next.point.clone().sub(prev.point);
     const t = new THREE.Vector3().crossVectors(diff, next.dir).dot(n) / denom;
-    return prev.point.clone().addScaledVector(prev.dir, t);
-  });
+    result.push(prev.point.clone().addScaledVector(prev.dir, t));
+  }
+  return result;
+}
+
+/**
+ * Whether an offset outline is still a polygon of the original orientation:
+ * offsetting further than half the width turns it inside out or collapses it
+ * to a line.
+ */
+export function offsetHolds(points: THREE.Vector3[], normal: THREE.Vector3, original: THREE.Vector3[]): boolean {
+  const area = (pts: THREE.Vector3[]) => {
+    const sum = new THREE.Vector3();
+    pts.forEach((p, i) => sum.add(new THREE.Vector3().crossVectors(p, pts[(i + 1) % pts.length])));
+    return sum.dot(normal.clone().normalize()) / 2;
+  };
+  return points.length >= 3 && area(points) * area(original) > 1 && Math.abs(area(points)) > 1;
 }

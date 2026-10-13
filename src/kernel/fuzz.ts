@@ -4,7 +4,7 @@ import { drawPolygon, drawSegments } from './draw';
 import { eraseEdges, eraseFaces } from './cleanup';
 import { pushPull } from './pushPull';
 import { copyEntities, transformVertices, verticesOf } from './transform';
-import { circlePoints, offsetPolygon } from './shapes';
+import { circlePoints, offsetHolds, offsetPolygon } from './shapes';
 import { faceArea, faceContainsPoint, faceInteriorPoint } from './faces';
 import { planeFrame } from './math';
 import { selfIntersections, snapshot, validateModel, type Problem } from './validate';
@@ -170,7 +170,10 @@ const OPS: Op[] = [
       const face = r.pick(m.allFaces());
       if (!face || faceArea(m, face) < 1_000_000) return null;
       const d = r.grid(-300, 300, 100) || 100;
-      drawPolygon(m, offsetPolygon(face.outer.map((x) => m.position(x).clone()), face.normal, d));
+      const outline = face.outer.map((x) => m.position(x).clone());
+      const shape = offsetPolygon(outline, face.normal, d);
+      if (!offsetHolds(shape, face.normal, outline)) return null; // collapsed
+      drawPolygon(m, shape);
       return `offset face ${face.id} by ${d}`;
     },
   },
@@ -288,7 +291,9 @@ const SOLID_COMPOUND_OPS: Op[] = [
       if (!face || face.holes.length > 0 || faceArea(m, face) < 1_000_000) return null;
       const inset = r.grid(100, 300, 100);
       const center = faceInteriorPoint(m, face);
-      const shape = offsetPolygon(face.outer.map((x) => m.position(x).clone()), face.normal, inset);
+      const outline = face.outer.map((x) => m.position(x).clone());
+      const shape = offsetPolygon(outline, face.normal, inset);
+      if (!offsetHolds(shape, face.normal, outline)) return null; // collapsed
       if (!shape.every((p) => faceContainsPoint(m, face, p))) return null; // inset must stay inside
       drawPolygon(m, shape);
       const id = center && faceAt(m, center, face.normal);
