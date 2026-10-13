@@ -298,7 +298,7 @@ export function loadExample(doc: Document): CameraData {
     lounger.add(compose(move(14000, -9500, -FL + 250), turn(Math.PI / 2)));
     const tree = part(buildTree(), 'Tree', 'tag-garden', 'component');
     tree.add(move(-1200, -2500, -FL));
-    tree.add(compose(move(15000, 3000, -FL), grow(1.5)));
+    tree.add(compose(move(15500, 3000, -FL), grow(1.3)));
     tree.add(compose(move(-1500, 7800, -FL), grow(1.2)));
 
     // The scale figure stands on the terrace.

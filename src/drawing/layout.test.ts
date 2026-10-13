@@ -61,7 +61,7 @@ describe('layouts', () => {
     const at = (l: Layout) => {
       const { sheet } = composeLayout(doc, l);
       // Everything after the page frame belongs to the viewport (or the page title, which stays put).
-      const xs = sheet.primitives.slice(1).flatMap((p) => (p.type === 'path' ? p.lines.flat().map((q) => q.x) : []));
+      const xs = sheet.primitives.slice(1).flatMap((p) => (p.type === 'path' ? p.lines.flat().filter((q) => q.y < sheet.height - 20).map((q) => q.x) : []));
       return Math.min(...xs);
     };
     const before = at(layout);

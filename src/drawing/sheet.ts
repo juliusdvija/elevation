@@ -21,19 +21,25 @@ export interface DrawingStyle {
   ink: string;
   muted: string;
   font: string;
+  /** Large cut masses (earth, trees) are drawn pale with a fine hatch, not solid; [above ground, below ground]. */
+  mass: { fill: string; hatch: string }[];
 }
 
 export const MINIMAL: DrawingStyle = {
   paper: '#fbfaf7',
   poche: '#1d1d1b',
-  cutWidth: 0.35,
-  near: { color: '#1d1d1b', width: 0.25 },
-  far: { color: '#aeaba3', width: 0.1 },
-  groundWidth: 0.5,
+  cutWidth: 0.3,
+  near: { color: '#26262a', width: 0.18 },
+  far: { color: '#b9b6ae', width: 0.08 },
+  groundWidth: 0.4,
   annotation: { color: '#8a8780', width: 0.13 },
   ink: '#1d1d1b',
   muted: '#8a8780',
   font: "Inter, ui-sans-serif, system-ui, -apple-system, 'Segoe UI', sans-serif",
+  mass: [
+    { fill: '#f1efe9', hatch: '#9a978f' },
+    { fill: '#ebe7de', hatch: '#b3aea3' },
+  ],
 };
 
 /** Paper-space primitives (mm, y down) that both SVG and PDF render. */
@@ -141,6 +147,7 @@ const TITLE_BLOCK = 16; // paper mm below the drawing for the title
 const DEPTH_STEPS = 5;
 const SHADOW_OPACITY = 0.22; // a cast shadow is about as dark as a face turned from the light
 const LEVEL_GUTTER = 34; // paper mm right of the drawing for level labels
+const SOLID_CUT = 3.5; // paper mm: cut regions thinner than this are solid, thicker ones hatched
 const SECTION_OVERHANG = 8; // paper mm a section line runs past the drawing
 
 /** Rough text width for layout (PDF has no layout engine). */
@@ -155,6 +162,74 @@ function mix(a: string, b: string, t: number): string {
 function formatLevel(mm: number): string {
   const rounded = Math.round(mm);
   return `${rounded >= 0 ? '+' : '−'}${Math.abs(rounded)}`;
+}
+
+/** The part of a loop at or above `y0` (Sutherland-Hodgman against one half-plane). */
+function clipLoopAbove(loop: THREE.Vector2[], y0 = 0): THREE.Vector2[] {
+  const out: THREE.Vector2[] = [];
+  loop.forEach((p, i) => {
+    const q = loop[(i + 1) % loop.length];
+    const pIn = p.y >= y0;
+    const qIn = q.y >= y0;
+    if (pIn) out.push(p);
+    if (pIn !== qIn) out.push(new THREE.Vector2(p.x + ((q.x - p.x) * (y0 - p.y)) / (q.y - p.y), y0));
+  });
+  return out;
+}
+
+/** An elevation without what lies below the ground line: fills and lines are cut off at height 0. */
+function clipAtGround(drawing: Drawing): Drawing {
+  const bounds = new THREE.Box2();
+  const fills = drawing.fills
+    .map((f) => ({ ...f, loops: f.loops.map((l) => clipLoopAbove(l)).filter((l) => l.length >= 3) }))
+    .filter((f) => f.loops.length > 0);
+  const lines = drawing.lines.flatMap((l) => {
+    if (l.a.y < 0 && l.b.y < 0) return [];
+    if (l.a.y >= 0 && l.b.y >= 0) return [l];
+    const [up, down] = l.a.y >= 0 ? [l.a, l.b] : [l.b, l.a];
+    const cut = new THREE.Vector2(up.x + ((down.x - up.x) * (0 - up.y)) / (down.y - up.y), 0);
+    return [{ ...l, a: up, b: cut }];
+  });
+  for (const l of lines) bounds.expandByPoint(l.a).expandByPoint(l.b);
+  for (const f of fills) for (const loop of f.loops) for (const p of loop) bounds.expandByPoint(p);
+  return { ...drawing, fills, lines, bounds };
+}
+
+const area = (loop: THREE.Vector2[]) => Math.abs(THREE.ShapeUtils.area(loop));
+const perimeter = (loop: THREE.Vector2[]) => loop.reduce((sum, p, i) => sum + p.distanceTo(loop[(i + 1) % loop.length]), 0);
+
+function insideLoop(p: THREE.Vector2, loop: THREE.Vector2[]): boolean {
+  let inside = false;
+  for (let i = 0, j = loop.length - 1; i < loop.length; j = i++) {
+    const a = loop[i];
+    const c = loop[j];
+    if (a.y > p.y !== c.y > p.y && p.x < ((c.x - a.x) * (p.y - a.y)) / (c.y - a.y) + a.x) inside = !inside;
+  }
+  return inside;
+}
+
+/** Groups section loops into regions: an outline with the holes directly inside it. */
+function cutRegions(loops: THREE.Vector2[][]): THREE.Vector2[][][] {
+  const depth = loops.map((loop, i) => loops.filter((other, j) => j !== i && insideLoop(loop[0], other)).length);
+  const regions: THREE.Vector2[][][] = [];
+  loops.forEach((loop, i) => {
+    if (depth[i] % 2 === 0) regions.push([loop]);
+  });
+  loops.forEach((loop, i) => {
+    if (depth[i] % 2 === 0) return;
+    // The innermost outline that holds it (one level up).
+    const owner = regions.find((r) => depth[loops.indexOf(r[0])] === depth[i] - 1 && insideLoop(loop[0], r[0]));
+    (owner ?? regions[0])?.push(loop);
+  });
+  return regions;
+}
+
+/** Fine diagonal lines across a box (paper mm), for hatching a large cut mass. */
+function diagonalHatch(box: THREE.Box2, spacing: number): THREE.Vector2[][] {
+  const lines: THREE.Vector2[][] = [];
+  const h = box.max.y - box.min.y;
+  for (let x = box.min.x - h; x < box.max.x; x += spacing) lines.push([new THREE.Vector2(x, box.max.y), new THREE.Vector2(x + h, box.min.y)]);
+  return lines;
 }
 
 /** Overall width and height of a drawing, and a chain along its cut walls. Offsets are paper mm times the scale. */
@@ -182,8 +257,10 @@ function autoDimensionMarkers(drawing: Drawing, b: THREE.Box2, s: number): Dimen
 }
 
 /** Lays out a drawing with its annotations, title and scale bar on a sheet. */
-export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Annotations, options: SheetOptions): Sheet {
+export function layoutSheet(input: Drawing, setup: ViewSetup, annotations: Annotations, options: SheetOptions): Sheet {
   const style = options.style ?? MINIMAL;
+  // An elevation stops at the ground line; a section keeps what is below it.
+  const drawing = setup.ground && setup.cut === null ? clipAtGround(input) : input;
   const s = options.scale;
   const b = drawing.bounds.isEmpty() ? new THREE.Box2(new THREE.Vector2(), new THREE.Vector2(1000, 1000)) : drawing.bounds.clone();
   if (setup.ground) b.min.y = Math.min(b.min.y, 0);
@@ -227,7 +304,8 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
   // Colour fills, far to near, one path per face (even-odd would punch holes where two overlap).
   // A hair of stroke in the fill colour hides the seams between neighbours.
   for (const fill of drawing.fills) {
-    const base = fill.color ?? style.paper;
+    // Colours are eased towards the paper so a coloured drawing stays calm; glass and white are left alone.
+    const base = fill.color ? mix(style.paper, fill.color, 0.9) : style.paper;
     // Shading darkens towards black; a fully lit face keeps its own colour.
     const color = fill.shade !== undefined && fill.shade < 1 ? mix('#000000', base, fill.shade) : base;
     const loops = fill.loops.map((loop) => loop.map((p) => P(p.x, p.y)));
@@ -267,9 +345,23 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
     });
   }
 
-  // Section poché and its outline.
+  // Section poché. Thin cut elements (walls, slabs) are solid; large masses (earth, trees) are pale with a fine hatch.
   if (drawing.cutLoops.length > 0) {
-    out.push({ type: 'path', lines: drawing.cutLoops.map((loop) => loop.map((p) => P(p.x, p.y))), closed: true, fill: style.poche, evenOdd: true });
+    const solid: THREE.Vector2[][] = [];
+    for (const region of cutRegions(drawing.cutLoops)) {
+      const paper = region.map((loop) => loop.map((p) => P(p.x, p.y)));
+      const thickness = (2 * (area(paper[0]) - paper.slice(1).reduce((sum, l) => sum + area(l), 0))) / paper.reduce((sum, l) => sum + perimeter(l), 0);
+      if (thickness <= SOLID_CUT) {
+        solid.push(...paper);
+        continue;
+      }
+      const below = region[0].every((p) => p.y <= 1e-6);
+      const tone = style.mass[below ? 1 : 0];
+      out.push({ type: 'path', lines: paper, closed: true, fill: tone.fill, evenOdd: true });
+      const box = new THREE.Box2().setFromPoints(paper[0]);
+      out.push({ type: 'path', lines: diagonalHatch(box, 1.3), stroke: tone.hatch, width: 0.07, clip: paper });
+    }
+    if (solid.length > 0) out.push({ type: 'path', lines: solid, closed: true, fill: style.poche, evenOdd: true });
   }
   if (drawing.cutSegments.length > 0) {
     out.push({ type: 'path', lines: drawing.cutSegments.map(([a, c]) => [P(a.x, a.y), P(c.x, c.y)]), stroke: style.poche, width: style.cutWidth });
@@ -294,9 +386,9 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
       type: 'path',
       lines: [[new THREE.Vector2(x - 1.4, y - 2.2), new THREE.Vector2(x + 1.4, y - 2.2), new THREE.Vector2(x, y)]],
       closed: true,
-      fill: style.ink,
+      fill: style.muted,
     });
-    out.push({ type: 'text', x: x + 3, y: y - 0.8, text: level.name, size: 2.2, bold: true, color: style.ink });
+    out.push({ type: 'text', x: x + 3, y: y - 0.8, text: level.name, size: 2, color: style.muted });
     out.push({ type: 'text', x: x + 3, y: y + 2.4, text: formatLevel(level.elevation), size: 2, color: style.muted });
   }
 
@@ -360,6 +452,7 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
 
   // Title block and scale bar.
   const ty = height - MARGIN - TITLE_BLOCK + 9;
+  out.push({ type: 'path', lines: [[new THREE.Vector2(MARGIN, ty - 6), new THREE.Vector2(width - MARGIN, ty - 6)]], stroke: style.annotation.color, width: 0.1 });
   out.push({ type: 'text', x: MARGIN, y: ty, text: setup.title.toUpperCase(), size: 3.2, bold: true, color: style.ink, letterSpacing: 0.3 });
   const subtitle = [setup.subtitle, scaleLabel(s)].filter(Boolean).join('  ·  ');
   out.push({ type: 'text', x: MARGIN, y: ty + 4.6, text: subtitle, size: 2.2, color: style.muted });

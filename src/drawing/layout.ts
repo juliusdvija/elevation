@@ -234,10 +234,19 @@ export function composeLayout(
     primitives.push(...northArrow(layout.north.x, layout.north.y, style.ink));
   }
 
-  const ty = height - FRAME - 5;
-  primitives.push({ type: 'text', x: FRAME + 4, y: ty, text: layout.name.toUpperCase(), size: 3.6, bold: true, color: style.ink, letterSpacing: 0.3 });
-  primitives.push({ type: 'text', x: width - FRAME - 4, y: ty, text: doc.name, size: 2.4, color: style.muted, anchor: 'end' });
+  // Title block: a fine rule, the sheet's name and project at the left, its number large and pale at the right.
+  const ty = height - FRAME - 6;
+  primitives.push({ type: 'path', lines: [[corner(FRAME, ty - 5.5), corner(width - FRAME, ty - 5.5)]], stroke: style.annotation.color, width: 0.1 });
+  primitives.push({ type: 'text', x: FRAME + 4, y: ty, text: layout.name.toUpperCase(), size: 3.2, bold: true, color: style.ink, letterSpacing: 0.3 });
+  primitives.push({ type: 'text', x: FRAME + 4, y: ty + 3.6, text: doc.name, size: 2.1, color: style.muted });
+  const number = 101 + Math.max(0, settings.layouts.findIndex((l) => l.id === layout.id));
+  primitives.push({ type: 'text', x: width - FRAME - 4, y: ty + 3.4, text: String(number), size: 8, bold: true, color: mixPale(style), anchor: 'end' });
   return { sheet: { width, height, background: style.paper, primitives, fits, font: style.font }, fits, rects };
+}
+
+/** A pale tone for large quiet text (a sheet number). */
+function mixPale(style: { paper: string; muted: string }): string {
+  return `#${new THREE.Color(style.paper).lerp(new THREE.Color(style.muted), 0.35).getHexString()}`;
 }
 
 /** A north arrow: a ring, a filled half-arrow pointing up the page, and an N. Centred at (x, y), 12 mm across. */

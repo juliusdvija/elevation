@@ -196,7 +196,7 @@ describe('colour fills', () => {
       paintFaces(doc.model, doc.model.allFaces().filter((f) => f.normal.y < -0.99).map((f) => f.id), '#b5654a');
     });
     const [{ sheet }] = buildSheets(doc, [{ kind: 'front' }], { scale: 100 });
-    const firstFill = sheet.primitives.findIndex((p) => p.type === 'path' && p.fill === '#b5654a');
+    const firstFill = sheet.primitives.findIndex((p) => p.type === 'path' && !!p.fill); // the colour is eased towards the paper
     const firstLine = sheet.primitives.findIndex((p) => p.type === 'path' && p.stroke && !p.fill);
     expect(firstFill).toBeGreaterThanOrEqual(0);
     expect(firstFill).toBeLessThan(firstLine);

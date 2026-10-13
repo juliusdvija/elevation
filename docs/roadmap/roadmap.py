@@ -58,8 +58,16 @@ DATA = {
       ("next","Hide the 'Ground floor +0' level markers on small-part drawings",""),
       ("later","Short guided tour over the example",""),
       ("later","Autosave history (go back to an earlier version)","")]},
+    {"name":"Drawing look","blurb":"Sleek, fine-lined drawings in the spirit of Rayon.","items":[
+      ("done","Thinner, more consistent linework; elevations stop at the ground line",""),
+      ("done","Calmer look: eased colours, solid thin cuts, pale hatched earth and large masses",""),
+      ("done","Title block: fine rule, sheet name and project, large pale sheet number",""),
+      ("next","Pale context in elevations: ground texture, person, trees as line drawings",""),
+      ("later","Callouts and enlarged detail views",""),
+      ("later","2D symbols (sprites) for furniture and people in plans and elevations",""),
+      ("later","Wish: parametric 2D symbols (a table that resizes, a door that swings)","")]},
   ],
-  "log":[("Now","Checking the villa in the app: sheet, scenes and drawings."),("Just finished","A sleek villa with a pool as the starting model. Book icon removed."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
+  "log":[("Now","Reviewing the new drawing look with you; next: pale context (ground, trees, people)."),("Just finished","Rayon-inspired drawing style: finer lines, solid thin cuts, hatched earth, new title block."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
 }
 
 def render(d):
