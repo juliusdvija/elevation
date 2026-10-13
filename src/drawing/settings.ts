@@ -57,6 +57,8 @@ export interface DrawingSettings {
   autoDimensions: boolean;
   /** Tint faces by orientation to a fixed light, and cast ground shadows in plans. */
   shading: boolean;
+  /** Faces meeting at less than this angle (degrees) shade smoothly and show no edge line between them, in 3D and in drawings (except as a silhouette); 0 is off (format 6). */
+  smoothAngle: number;
   /** Tags for groups and components (format 6). */
   tags: Tag[];
   /** Saved 3D views (format 5). */
@@ -75,6 +77,7 @@ export const DEFAULT_SETTINGS: DrawingSettings = {
   dimensions: [],
   autoDimensions: false,
   shading: false,
+  smoothAngle: 20,
   tags: [],
   scenes: [],
   layouts: [],

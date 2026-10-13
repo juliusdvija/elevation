@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import type { Document, Placement } from '../document';
 import type { Id } from '../kernel/Model';
-import { triangulateFace } from '../kernel/faces';
+import { faceArea, triangulateFace } from '../kernel/faces';
 import { theme } from './theme';
 import type { Viewport } from './Viewport';
 
@@ -22,6 +22,14 @@ export interface FaceRef {
 const EMPTY: Highlight = { faces: [], edges: [] };
 const GUIDE_REACH = 100_000; // guide lines are drawn 100 m each way
 const FADED_OPACITY = 0.3;
+
+/** The shading normal at a corner: the area-weighted mean of the normals of the faces there that are within the smoothing angle of this face's. */
+function smoothNormal(neighbours: { n: THREE.Vector3; weight: number }[] | undefined, own: THREE.Vector3, cosAngle: number): THREE.Vector3 {
+  if (!neighbours) return own;
+  const sum = new THREE.Vector3();
+  for (const { n, weight } of neighbours) if (n.dot(own) >= cosAngle) sum.addScaledVector(n, weight);
+  return sum.lengthSq() > 1e-12 ? sum.normalize() : own;
+}
 const PLAIN = new THREE.Color(theme.face);
 
 /** Whether `path` lies inside (or is) the context at `context`. */
@@ -55,6 +63,8 @@ export class ModelRenderer {
   private readonly hoverEdges: THREE.LineSegments;
   private readonly guideLines: THREE.LineSegments;
   private readonly guidePoints: THREE.Points;
+  /** Faces meeting at less than this angle (radians) shade smoothly and show no edge line between them; 0 turns it off. */
+  smoothAngle = THREE.MathUtils.degToRad(20);
   private selection = EMPTY;
   private hover = EMPTY;
 
@@ -158,6 +168,12 @@ export class ModelRenderer {
     return mesh === layer.glass ? layer.glassRefs[triangle] : layer.refs[triangle];
   }
 
+  /** Changes the smoothing angle (degrees; 0 is off) and redraws. */
+  setSmoothing(degrees: number): void {
+    this.smoothAngle = THREE.MathUtils.degToRad(degrees);
+    this.rebuild();
+  }
+
   setSelection(highlight: Highlight): void {
     this.selection = highlight;
     this.updateHighlight(this.selectionFaces, this.selectionEdges, highlight);
@@ -184,20 +200,43 @@ export class ModelRenderer {
       const target = within(placement.path, context) ? build.active : build.faded;
       const { model, matrix } = placement;
       const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
+      const worldNormal = new Map<Id, THREE.Vector3>();
+      const faceNormal = (f: { id: Id; normal: THREE.Vector3 }) => {
+        let n = worldNormal.get(f.id);
+        if (!n) worldNormal.set(f.id, (n = f.normal.clone().applyMatrix3(normalMatrix).normalize()));
+        return n;
+      };
+      // Between faces that meet at a shallow angle (the facets of a round) shading is smooth and the edge is not drawn.
+      const cosSmooth = Math.cos(this.smoothAngle);
+      const smoothing = this.smoothAngle > 0;
+      const keyOf = (p: THREE.Vector3) => `${Math.round(p.x * 1000)},${Math.round(p.y * 1000)},${Math.round(p.z * 1000)}`;
+      const around = new Map<string, { n: THREE.Vector3; weight: number }[]>();
+      if (smoothing) {
+        for (const face of model.allFaces()) {
+          const n = faceNormal(face);
+          const weight = Math.max(faceArea(model, face), 1e-6);
+          for (const id of model.faceVertices(face)) {
+            const key = keyOf(model.position(id));
+            (around.get(key) ?? around.set(key, []).get(key)!).push({ n, weight });
+          }
+        }
+      }
       for (const face of model.allFaces()) {
-        const triangles = triangulateFace(model, face).map((p) => p.clone().applyMatrix4(matrix));
-        const n = face.normal.clone().applyMatrix3(normalMatrix).normalize();
+        const local = triangulateFace(model, face);
+        const n = faceNormal(face);
         const paint = face.color ? new THREE.Color(face.color) : PLAIN;
         const glass = face.opacity !== undefined && face.opacity < 1;
         const sink = glass ? target.glass : target;
-        for (let i = 0; i < triangles.length; i += 3) {
-          let [a, b, c] = [triangles[i], triangles[i + 1], triangles[i + 2]];
+        for (let i = 0; i < local.length; i += 3) {
+          // Each corner as its position in the model (for finding the faces around it) and in the world.
+          let [a, b, c] = [local[i], local[i + 1], local[i + 2]].map((q) => ({ q, p: q.clone().applyMatrix4(matrix) }));
           // Wind triangles to match the face normal so front/back materials work.
-          const cross = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
+          const cross = new THREE.Vector3().subVectors(b.p, a.p).cross(new THREE.Vector3().subVectors(c.p, a.p));
           if (cross.dot(n) < 0) [b, c] = [c, b];
-          for (const p of [a, b, c]) {
+          for (const { q, p } of [a, b, c]) {
             sink.positions.push(p.x, p.y, p.z);
-            sink.normals.push(n.x, n.y, n.z);
+            const shade = smoothing ? smoothNormal(around.get(keyOf(q)), n, cosSmooth) : n;
+            sink.normals.push(shade.x, shade.y, shade.z);
             sink.colors.push(paint.r, paint.g, paint.b);
             if (glass) sink.colors.push(face.opacity!);
           }
@@ -205,6 +244,10 @@ export class ModelRenderer {
         }
       }
       for (const e of model.allEdges()) {
+        if (smoothing) {
+          const faces = model.facesOfEdge(e.id);
+          if (faces.length === 2 && faceNormal(model.face(faces[0])).dot(faceNormal(model.face(faces[1]))) >= cosSmooth) continue;
+        }
         const a = model.position(e.a).clone().applyMatrix4(matrix);
         const b = model.position(e.b).clone().applyMatrix4(matrix);
         target.edges.push(a.x, a.y, a.z, b.x, b.y, b.z);

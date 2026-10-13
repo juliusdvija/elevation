@@ -50,6 +50,8 @@ export interface DrawingFill {
 export interface DrawingOptions {
   /** Tint faces by their orientation to a fixed light, and cast shadows on the ground in plans. */
   shading?: boolean;
+  /** Leave out edges between faces that meet at less than this angle (degrees), unless they are a silhouette. */
+  smoothAngle?: number;
 }
 
 /** The way the light travels in the world: from above, in front (−y) and to the left (−x). */
@@ -303,11 +305,20 @@ function groundShadows(model: Model, setup: ViewSetup): THREE.Vector2[][] {
 }
 
 /** Visible pieces of every edge beyond the cut (hidden-line removal). */
-function projectEdges(model: Model, setup: ViewSetup, occluders: Occluder[]) {
+function projectEdges(model: Model, setup: ViewSetup, occluders: Occluder[], smoothAngle = 0) {
   const pieces: { a: THREE.Vector2; b: THREE.Vector2; w: number }[] = [];
   const cut = setup.cut;
 
+  const smoothCos = smoothAngle > 0 ? Math.cos((smoothAngle * Math.PI) / 180) : 2;
   for (const edge of model.allEdges()) {
+    // The facets of a round: no line between them, but the outline where it turns away from the viewer stays.
+    if (smoothCos <= 1) {
+      const faces = model.facesOfEdge(edge.id);
+      if (faces.length === 2) {
+        const [n1, n2] = faces.map((f) => model.face(f).normal);
+        if (n1.dot(n2) >= smoothCos && n1.dot(setup.w) * n2.dot(setup.w) > 0) continue;
+      }
+    }
     let A = toView(setup, model.position(edge.a));
     let B = toView(setup, model.position(edge.b));
 
@@ -476,7 +487,7 @@ export function mergeCollinear(pieces: { a: THREE.Vector2; b: THREE.Vector2; w: 
 /** Computes a hidden-line vector drawing of the model for one view. */
 export function computeDrawing(model: Model, setup: ViewSetup, options: DrawingOptions = {}): Drawing {
   const occluders = buildOccluders(model, setup);
-  const pieces = mergeCollinear(projectEdges(model, setup, occluders));
+  const pieces = mergeCollinear(projectEdges(model, setup, occluders, options.smoothAngle));
   const cutSegments = setup.cut === null ? [] : cutFaces(model, setup, setup.cut);
 
   const bounds = new THREE.Box2();

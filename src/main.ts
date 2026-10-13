@@ -104,6 +104,19 @@ const changeDisplay = () => {
     /* not remembered */
   }
 };
+// Smooth shading of rounded surfaces: a document setting, used by the 3D view and the drawings.
+const syncSmoothing = () => {
+  const degrees = doc.drawingSettings.smoothAngle ?? 20;
+  if (![...shell.smoothSelect.options].some((o) => o.value === String(degrees))) shell.smoothSelect.append(Object.assign(document.createElement('option'), { value: String(degrees), textContent: `Smooth: ${degrees}°` }));
+  shell.smoothSelect.value = String(degrees);
+  renderer.setSmoothing(degrees);
+};
+doc.settingsChanged.on(syncSmoothing);
+shell.smoothSelect.addEventListener('change', () => {
+  doc.updateDrawingSettings('Smoothing', { ...structuredClone(doc.drawingSettings), smoothAngle: Number(shell.smoothSelect.value) });
+});
+syncSmoothing();
+
 // Snap and grid spacing: automatic from the zoom, or a fixed step.
 const GRID_MODE_KEY = 'elevation.gridMode';
 try {

@@ -2,6 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { Model } from '../kernel/Model';
 import { drawPolygon } from '../kernel/draw';
+import { circlePoints } from '../kernel/shapes';
 import { pushPull } from '../kernel/pushPull';
 import { paintFaces } from '../kernel/cleanup';
 import { Document } from '../document';
@@ -403,6 +404,40 @@ describe('shading', () => {
       expect(scaleLabel(0.5)).toBe('2:1');
       expect(scaleLabel(0.1)).toBe('10:1');
       expect(DRAWING_SCALES).toContain(0.2);
+    });
+  });
+
+  describe('smooth surfaces', () => {
+    function cylinder(): Model {
+      const m = new Model();
+      m.edit(() => drawPolygon(m, circlePoints(v(0, 0), v(0, 0, 1), 10, 24)));
+      m.edit(() => {
+        const face = m.allFaces()[0];
+        pushPull(m, face.id, face.normal.z < 0 ? -20 : 20);
+      });
+      return m;
+    }
+
+    it('draws a cylinder as its outline and rim, without a line per facet', () => {
+      const m = cylinder();
+      const setup = viewSetup({ kind: 'front' }, DEFAULT_SETTINGS, m.bounds());
+      const faceted = computeDrawing(m, setup, { smoothAngle: 0 });
+      const smooth = computeDrawing(m, setup, { smoothAngle: 20 });
+      expect(faceted.lines.length).toBeGreaterThan(smooth.lines.length + 8);
+      // The two side outlines (silhouette) and the top and bottom rims are still there: same extent.
+      expect(smooth.bounds.min.x).toBeCloseTo(faceted.bounds.min.x, 6);
+      expect(smooth.bounds.max.x).toBeCloseTo(faceted.bounds.max.x, 6);
+      const verticals = smooth.lines.filter((l) => Math.abs(l.a.x - l.b.x) < 1e-6 && Math.abs(l.a.y - l.b.y) > 1);
+      expect(verticals.length).toBeGreaterThanOrEqual(2);
+      expect(verticals.every((l) => Math.abs(Math.abs(l.a.x) - 10) < 1e-6)).toBe(true);
+    });
+
+    it('keeps the sharp edges of a box whatever the smoothing', () => {
+      const m = new Model();
+      m.edit(() => drawPolygon(m, [v(0, 0), v(24, 0), v(24, 12), v(0, 12)]));
+      m.edit(() => pushPull(m, m.allFaces()[0].id, -8));
+      const setup = viewSetup({ kind: 'front' }, DEFAULT_SETTINGS, m.bounds());
+      expect(computeDrawing(m, setup, { smoothAngle: 35 }).lines).toHaveLength(computeDrawing(m, setup, { smoothAngle: 0 }).lines.length);
     });
   });
 });
