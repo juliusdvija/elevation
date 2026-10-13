@@ -714,3 +714,36 @@ input.swatch.custom {
   padding: 1px;
   background: var(--surface);
 }
+
+/* The standard views as an unfolded box: each face is a button. */
+.box-net {
+  display: grid;
+  grid-template-columns: repeat(4, 15px);
+  grid-template-rows: repeat(2, 15px);
+  gap: 2px;
+  padding: 0 2px;
+}
+
+.net-face {
+  padding: 0;
+  border: 1.5px solid var(--ink-muted);
+  border-radius: 3px;
+  background: var(--surface);
+  cursor: pointer;
+  transition: background-color 120ms ease, border-color 120ms ease;
+}
+
+.net-face:hover {
+  border-color: var(--ink);
+  background: var(--hover);
+}
+
+.net-face:active {
+  background: var(--active);
+  border-color: var(--active);
+}
+
+/* Front is the anchor of the net. */
+.net-face[aria-label^='Front'] {
+  background: var(--hover);
+}

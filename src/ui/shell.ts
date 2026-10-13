@@ -71,15 +71,6 @@ const TOOL_ICONS: Record<string, IconNode> = {
   pan: Hand,
 };
 
-const VIEWS: [StandardView, string][] = [
-  ['iso', 'Iso'],
-  ['top', 'Top'],
-  ['front', 'Front'],
-  ['right', 'Right'],
-  ['back', 'Back'],
-  ['left', 'Left'],
-];
-
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
   const node = document.createElement(tag);
   if (className) node.className = className;
@@ -121,14 +112,32 @@ export function buildShell(
     toolGroup.append(button);
   }
 
-  const viewGroup = el('div', 'group segmented');
+  // The views as an unfolded box seen from above: Top over Front, and Left, Front, Right, Back in a row.
+  const viewGroup = el('div', 'group');
   const viewButtons = new Map<StandardView, HTMLButtonElement>();
-  for (const [view, label] of VIEWS) {
-    const button = el('button', 'text-button', label);
+  const net = el('div', 'box-net');
+  net.setAttribute('role', 'group');
+  net.setAttribute('aria-label', 'Standard views');
+  const NET: [StandardView, string, number, number][] = [
+    ['top', 'Top', 2, 1],
+    ['left', 'Left', 1, 2],
+    ['front', 'Front', 2, 2],
+    ['right', 'Right', 3, 2],
+    ['back', 'Back', 4, 2],
+  ];
+  for (const [view, label, column, row] of NET) {
+    const button = el('button', 'net-face');
     button.type = 'button';
+    button.title = `${label} view`;
+    button.setAttribute('aria-label', `${label} view`);
+    button.style.gridColumn = String(column);
+    button.style.gridRow = String(row);
     viewButtons.set(view, button);
-    viewGroup.append(button);
+    net.append(button);
   }
+  const iso = iconButton(Box, 'Isometric view');
+  viewButtons.set('iso', iso);
+  viewGroup.append(iso, net);
 
   const projection = el('button', 'text-button projection', 'Perspective');
   projection.type = 'button';
