@@ -1236,3 +1236,11 @@ input.swatch.custom {
 .info-row input:disabled {
   opacity: 0.5;
 }
+
+/* The export menu in the toolbar opens to the right of its button, over the viewport. */
+.toolbar .export-menu {
+  left: 0;
+  right: auto;
+  z-index: 20;
+  white-space: nowrap;
+}

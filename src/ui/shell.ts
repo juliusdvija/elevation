@@ -53,6 +53,7 @@ export interface ShellElements {
   openDoc: HTMLButtonElement;
   importDoc: HTMLButtonElement;
   exportDoc: HTMLButtonElement;
+  exportMenu: HTMLDivElement;
   saveDoc: HTMLButtonElement;
   toolButtons: Map<string, HTMLButtonElement>;
   viewButtons: Map<StandardView, HTMLButtonElement>;
@@ -119,10 +120,14 @@ export function buildShell(
   const newDoc = iconButton(FilePlus, 'New');
   const openDoc = iconButton(FolderOpen, 'Open… (⌘O)');
   const importDoc = iconButton(Import, 'Import: OBJ, STL, glTF or a DXF underlay…');
-  const exportDoc = iconButton(FileOutput, 'Export as OBJ (metres, Y up, with colours)');
+  const exportDoc = iconButton(FileOutput, 'Export: STL for 3D printing, OBJ with colours');
+  const exportMenu = el('div', 'export-menu');
+  exportMenu.hidden = true;
+  const exportWrap = el('div', 'export-wrap');
+  exportWrap.append(exportDoc, exportMenu);
   const saveDoc = iconButton(Save, 'Save (⌘S)');
   const fileGroup = el('div', 'group');
-  fileGroup.append(newDoc, openDoc, importDoc, exportDoc, saveDoc);
+  fileGroup.append(newDoc, openDoc, importDoc, exportWrap, saveDoc);
 
   const toolGroup = el('div', 'group');
   const toolButtons = new Map<string, HTMLButtonElement>();
@@ -223,5 +228,5 @@ export function buildShell(
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
 }

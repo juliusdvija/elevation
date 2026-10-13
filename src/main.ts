@@ -37,7 +37,7 @@ import type { Scene } from './drawing/settings';
 import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
-import { displaySettings, setDisplaySettings, UNIT_INFO, type DisplayUnit } from './core/units';
+import { formatLength, displaySettings, setDisplaySettings, UNIT_INFO, type DisplayUnit } from './core/units';
 import { applyCamera, cameraData, openDocument, saveDocument } from './io/files';
 import { buildUnderlay } from './io/dxf';
 import type { ImportMessage, ImportRequest } from './io/importWorker';
@@ -45,6 +45,7 @@ import { ProgressDialog } from './ui/ProgressDialog';
 import { buildModel } from './io/obj';
 import { Model } from './kernel/Model';
 import { exportObj } from './io/objExport';
+import { exportStl } from './io/stlExport';
 import { askImportOptions, chooseObjFiles, isModelFile, readModelFiles } from './ui/ImportDialog';
 import { restoreAutosave, startAutosave } from './io/autosave';
 import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
@@ -504,7 +505,55 @@ function exportObjFile() {
   if (mtl) setTimeout(() => save(mtl, `${base}.mtl`), 300);
   ctx.setHint(`Exported ${base}.obj${mtl ? ' and .mtl' : ''}: Y up, metres.`);
 }
-shell.exportDoc.addEventListener('click', exportObjFile);
+/** Saves bytes or text as a file download. */
+function downloadFile(content: BlobPart, name: string, type: string) {
+  const link = document.createElement('a');
+  link.href = URL.createObjectURL(new Blob([content], { type }));
+  link.download = name;
+  link.click();
+  setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+}
+
+/** Exports the whole model as binary STL (millimetres, Z up) for 3D printing, and says whether it is watertight. */
+function exportStlFile() {
+  const base = doc.name.replace(/[\\/:*?"<>|]+/g, '-');
+  const flat = doc.flatten();
+  if (flat.faceCount === 0) {
+    ctx.setHint('Nothing to export yet.');
+    return;
+  }
+  const result = exportStl(flat, base);
+  downloadFile(result.data.slice().buffer, `${base}.stl`, 'model/stl');
+  const size = `${formatLength(result.size.x)} × ${formatLength(result.size.y)} × ${formatLength(result.size.z)}`;
+  ctx.setHint(
+    result.openEdges === 0
+      ? `Exported ${base}.stl: ${result.triangles.toLocaleString()} triangles, ${size}, watertight.`
+      : `Exported ${base}.stl (${size}), but ${result.openEdges} edges are open: a slicer may refuse it. Close the holes first.`,
+  );
+}
+
+// The export button opens a small menu.
+const exportItems: [string, string, () => void][] = [
+  ['STL', '3D printing: STL, in millimetres', exportStlFile],
+  ['OBJ', 'Model with colours: OBJ (metres, Y up)', exportObjFile],
+];
+for (const [, label, action] of exportItems) {
+  const item = document.createElement('button');
+  item.type = 'button';
+  item.className = 'menu-item';
+  item.textContent = label;
+  item.addEventListener('click', () => {
+    shell.exportMenu.hidden = true;
+    action();
+  });
+  shell.exportMenu.append(item);
+}
+shell.exportDoc.addEventListener('click', (e) => {
+  e.stopPropagation();
+  shell.exportMenu.hidden = !shell.exportMenu.hidden;
+});
+document.addEventListener('click', () => (shell.exportMenu.hidden = true));
+
 
 shell.importDoc.addEventListener('click', async () => importObj(await chooseObjFiles()));
 // Dropping an .obj (with its .mtl) on the window imports it too.
