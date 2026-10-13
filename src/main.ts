@@ -33,6 +33,7 @@ import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
 import { applyCamera, cameraData, openDocument, saveDocument } from './io/files';
 import { buildModel } from './io/obj';
+import { exportObj } from './io/objExport';
 import { askImportOptions, chooseObjFiles, readObjFiles } from './ui/ImportDialog';
 import { restoreAutosave, startAutosave } from './io/autosave';
 import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
@@ -327,6 +328,29 @@ async function importObj(files: File[] | null) {
     window.alert(`Could not import: ${(error as Error).message}`);
   }
 }
+
+/** Exports the whole model, groups flattened, as an OBJ (and a .mtl when anything is painted). */
+function exportObjFile() {
+  const base = doc.name.replace(/[\\/:*?"<>|]+/g, '-');
+  const flat = doc.flatten();
+  if (flat.faceCount === 0) {
+    ctx.setHint('Nothing to export yet.');
+    return;
+  }
+  const { obj, mtl } = exportObj(flat, base);
+  const save = (text: string, name: string) => {
+    const link = document.createElement('a');
+    link.href = URL.createObjectURL(new Blob([text], { type: 'text/plain' }));
+    link.download = name;
+    link.click();
+    setTimeout(() => URL.revokeObjectURL(link.href), 1000);
+  };
+  save(obj, `${base}.obj`);
+  // Browsers may ask before a second download; the .mtl follows after a beat.
+  if (mtl) setTimeout(() => save(mtl, `${base}.mtl`), 300);
+  ctx.setHint(`Exported ${base}.obj${mtl ? ' and .mtl' : ''}: Y up, metres.`);
+}
+shell.exportDoc.addEventListener('click', exportObjFile);
 
 shell.importDoc.addEventListener('click', async () => importObj(await chooseObjFiles()));
 // Dropping an .obj (with its .mtl) on the window imports it too.

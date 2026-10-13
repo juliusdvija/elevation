@@ -105,6 +105,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 - Formaat **`.elev`**: leesbare JSON `{ format, version, units: 'mm', model, definitions, drawing, camera }`. Versie 2 voegde definities toe, **3** de tekeninginstellingen, **4** de bladen (`drawing.layouts`), **5** de opgeslagen 3D-aanzichten (`drawing.scenes`). Nieuwere versies worden geweigerd met een duidelijke melding.
 - **OBJ-import** (`io/obj.ts`, dialoog in `ui/ImportDialog.ts`): knop in de werkbalk of een .obj (met .mtl) op het venster slepen. Verliesgevend: geometrie, kleuren (`Kd`) en doorzichtigheid (`d`/`Tr`) komen mee; teksturen, normalen en groepen niet. Eenheid wordt geraden uit de afmetingen, Y-omhoog wordt Z-omhoog. Het resultaat wordt een groep in de huidige context, één undo-stap.
+- **OBJ-export** (`io/objExport.ts`, knop in de werkbalk): het hele model met groepen platgeslagen, in meters en Y-omhoog, vlakken getrianguleerd met een platte normaal per vlak; kleur en glas gaan naar een .mtl dat de importer terugleest. Arcering is alleen voor tekeningen en gaat niet mee.
 - Opslaan via de **File System Access API** waar beschikbaar (schrijft terug naar hetzelfde bestand), anders download/bestandskiezer.
 - Een **herstelkopie** in `localStorage` vangt herladen op; het bestand blijft de echte opslag.
 
