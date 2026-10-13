@@ -52,14 +52,14 @@ DATA = {
       ("later","Print-size check: wall thickness and minimum features",""),
       ("later","Exploded views and numbered parts",""),]},
     {"name":"Getting started","blurb":"A first screen that shows what the app can do.","items":[
-      ("done","Example house on first visit: components, tags, scenes, two levels, dimensions, A2 sheet","f25b6c8"),
-      ("done","Example can be reopened from a button next to Open",""),
+      ("done","Starting model: a modern villa with pool, glazing, terrace, six tags, four scenes, A2 sheet",""),
+      ("done","The villa opens by default every time (New gives an empty document); your edits are kept",""),
       ("done","Drawing scale picks itself to fit small or large models",""),
       ("next","Hide the 'Ground floor +0' level markers on small-part drawings",""),
       ("later","Short guided tour over the example",""),
       ("later","Autosave history (go back to an earlier version)","")]},
   ],
-  "log":[("Now","Polishing the example house: sheet layout, shadows, labels."),("Just finished","An example house that opens on the first visit and uses most features. Bevel tool removed."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
+  "log":[("Now","Checking the villa in the app: sheet, scenes and drawings."),("Just finished","A sleek villa with a pool as the starting model. Book icon removed."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
 }
 
 def render(d):

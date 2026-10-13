@@ -47,7 +47,7 @@ import { exportObj } from './io/objExport';
 import { exportStl } from './io/stlExport';
 import { flattenFace, layoutParts, layoutToDxf, layoutToSvg } from './io/flatExport';
 import { askImportOptions, chooseObjFiles, isModelFile, readModelFiles } from './ui/ImportDialog';
-import { loadExample } from './example';
+import { EXAMPLE_NAME, loadExample } from './example';
 import { restoreAutosave, startAutosave } from './io/autosave';
 import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
 import { GroupBar } from './ui/GroupBar';
@@ -592,15 +592,6 @@ async function newDocument() {
   afterLoad();
 }
 
-async function openExample() {
-  if (!(await confirmDiscard())) return;
-  applyCamera(viewport.rig, loadExample(doc));
-  afterLoad();
-  viewport.rig.fit(doc.bounds());
-  ctx.setHint('This is an example: a small house. Look at the Drawings panel for its plan, section and sheet, and the scenes and tags below. Press New to start your own.');
-}
-
-shell.exampleDoc.addEventListener('click', () => openExample());
 shell.saveDoc.addEventListener('click', () => save());
 shell.openDoc.addEventListener('click', () => open());
 shell.newDoc.addEventListener('click', () => newDocument());
@@ -693,24 +684,16 @@ viewport.beforeRender = () => {
   scenesBar.refresh();
 };
 viewport.rig.setView('iso');
-/** True once per browser: the very first time, we show the example instead of an empty grid. */
-function isFirstVisit(): boolean {
-  try {
-    if (localStorage.getItem('elevation.visited')) return false;
-    localStorage.setItem('elevation.visited', '1');
-    return true;
-  } catch {
-    return false;
-  }
-}
 const recovered = restoreAutosave(doc, viewport.rig);
-if (recovered.restored) afterLoad();
-else if (isFirstVisit()) {
+// The villa is the starting model: it opens fresh from code each time, unless there is unsaved work to come back to
+// (or another file's recovery copy).
+if (recovered.restored && (recovered.unsaved || doc.name !== EXAMPLE_NAME)) afterLoad();
+else {
   applyCamera(viewport.rig, loadExample(doc));
   afterLoad();
   viewport.rig.fit(doc.bounds());
-  ctx.setHint('This is an example: a small house. Look at the Drawings panel for its plan, section and sheet, and the scenes and tags below. Press New to start your own.');
-} else doc.addDefaultFigure();
+  ctx.setHint('This villa is the starting model. Press New for an empty document; your edits to it are kept until you do.');
+}
 if (recovered.unsaved) ctx.setHint('Restored your unsaved work from last time. Save it to keep it in a file (⌘S).');
 startAutosave(doc, viewport.rig);
 syncTitle();
