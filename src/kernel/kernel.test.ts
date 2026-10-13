@@ -485,3 +485,26 @@ describe('paint', () => {
     expect(model.face(id).color).toBeUndefined();
   });
 });
+
+describe('thin features', () => {
+  it('raises and sinks features thinner than half a millimetre, and cuts through a thin shell', () => {
+    const model = new Model();
+    model.edit(() => drawPolygon(model, rect(0, 0, 50, 30)));
+    model.edit(() => pushPull(model, model.allFaces()[0].id, -20));
+    const exact = () => model.allFaces().reduce((sum, f) => sum + (faceArea(model, f) * f.normal.dot(model.position(f.outer[0]))) / 3, 0);
+    const base = exact();
+    const top = model.allFaces().find((f) => f.normal.z > 0.99)!;
+    // A 10 x 10 pad 0.3 mm high, then a 4 x 4 pocket in it 0.1 mm deep.
+    model.edit(() => drawPolygon(model, rect(10, 10, 20, 20, 20)));
+    const pad = model.allFaces().find((f) => f.normal.z > 0.99 && f.id !== top.id && faceArea(model, f) < 200)!;
+    model.edit(() => pushPull(model, pad.id, 0.3));
+    expect(isClosedSolid(model)).toBe(true);
+    expect(exact()).toBeCloseTo(base + 10 * 10 * 0.3, 3);
+    model.edit(() => drawPolygon(model, rect(13, 13, 17, 17, 20.3)));
+    const pocket = model.allFaces().find((f) => f.normal.z > 0.99 && Math.abs(model.position(f.outer[0]).z - 20.3) < 1e-9 && faceArea(model, f) < 20)!;
+    model.edit(() => pushPull(model, pocket.id, -0.1));
+    expect(isClosedSolid(model)).toBe(true);
+    expect(exact()).toBeCloseTo(base + 10 * 10 * 0.3 - 4 * 4 * 0.1, 3);
+    expect(validateModel(model, { orientation: true })).toEqual([]);
+  });
+});

@@ -192,11 +192,14 @@ function sweepInto(model: Model, profileId: Id, path: Id[], closed: boolean, was
   return true;
 }
 
-/** A polygon as triangles (a fan; swept faces are convex or nearly so), as a flat list of points. */
+/** A polygon as triangles (one flat list of points, three per triangle), also when it is concave. */
 function fan(points: THREE.Vector3[]): THREE.Vector3[][] {
+  if (points.length === 3) return [[...points]];
+  const frame = planeFrame(planeFromPointNormal(points[0], newellNormal(points).normalize()));
+  const flat = points.map((p) => to2D(frame, p));
   const out: THREE.Vector3[] = [];
-  for (let i = 1; i + 1 < points.length; i++) out.push(points[0], points[i], points[i + 1]);
-  return [out];
+  for (const [i, j, k] of THREE.ShapeUtils.triangulateShape(flat, [])) out.push(points[i], points[j], points[k]);
+  return out.length > 0 ? [out] : [];
 }
 
 /**

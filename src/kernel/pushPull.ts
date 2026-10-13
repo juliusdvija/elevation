@@ -141,8 +141,8 @@ function extrude(model: Model, face: Face, distance: number): void {
   // A face with an open rim (a footprint drawn beside a solid) is no part of the solid.
   const loose = model.faceEdges(face).some((e) => model.facesOfEdge(e).length === 1);
   const oldInside = insideTester(model, loose ? face.id : undefined);
-  const ahead = sample !== null && oldInside(sample.clone().addScaledVector(dir, 1));
-  const behind = sample !== null && oldInside(sample.clone().addScaledVector(dir, -1));
+  const ahead = sample !== null && oldInside(sample.clone().addScaledVector(dir, PROBE * 2));
+  const behind = sample !== null && oldInside(sample.clone().addScaledVector(dir, -PROBE * 2));
   // Moving into material cuts a recess; otherwise material is added.
   const cutting = ahead;
 
@@ -313,7 +313,8 @@ function extrude(model: Model, face: Face, distance: number): void {
   removeBareEdges(model, looseBefore);
 }
 
-const PROBE = 0.5; // mm off a face to test for material on each side
+/** How far (mm) off a face to test for material on each side: far above the tolerance, far below any feature of a small part. */
+export const PROBE = 0.02;
 
 /**
  * Makes a push/pull a proper boolean when its sweep meets other geometry:
