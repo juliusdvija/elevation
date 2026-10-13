@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Model } from '../kernel/Model';
 import { drawPolygon } from '../kernel/draw';
 import { pushPull } from '../kernel/pushPull';
-import { bevelEdges } from '../kernel/bevel';
+import { circlePoints } from '../kernel/shapes';
 import { faceArea } from '../kernel/faces';
 import { exportStl } from './stlExport';
 import { parseStl } from './mesh';
@@ -33,7 +33,9 @@ describe('STL export', () => {
 
   it('reads back through the importer as the same solid', () => {
     const m = part();
-    m.edit(() => bevelEdges(m, m.allEdges().filter((e) => m.position(e.a).z === 8 && m.position(e.b).z === 8).map((e) => e.id), { size: 2, round: true }));
+    // A round pocket in the top: curved walls make many small triangles.
+    m.edit(() => drawPolygon(m, circlePoints(v(12, 6, 8), v(0, 0, 1), 3, 16)));
+    m.edit(() => pushPull(m, m.allFaces().find((f) => f.holes.length === 0 && f.outer.length === 16)!.id, -3));
     const back = buildModel(parseStl(exportStl(m).data.buffer as ArrayBuffer), { scale: 1, yUp: false });
     expect(back.allEdges().every((e) => back.facesOfEdge(e.id).length === 2)).toBe(true);
     expect(volume(back)).toBeCloseTo(volume(m), 2);

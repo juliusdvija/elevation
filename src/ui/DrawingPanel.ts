@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { Download, Layers, LayoutGrid, Plus, Trash2, createElement, type IconNode } from 'lucide';
 import type { CameraData } from '../io/format';
 import { Emitter } from '../core/emitter';
@@ -291,6 +292,16 @@ export class DrawingPanel {
     const next = structuredClone(this.doc.drawingSettings);
     change(next);
     this.doc.updateDrawingSettings(label, next);
+  }
+
+  /** Picks the most enlarged scale at which the model's longest side fits on about 200 mm of paper (small parts get 2:1, houses 1:100). */
+  suggestScale(): void {
+    const size = this.doc.bounds().getSize(new THREE.Vector3());
+    const longest = Math.max(size.x, size.y, size.z);
+    if (longest <= 0) return;
+    this.scale = SCALES.find((s) => longest / s <= 200) ?? SCALES[SCALES.length - 1];
+    this.renderControls();
+    this.schedule();
   }
 
   private renderControls(): void {

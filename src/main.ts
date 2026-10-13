@@ -26,7 +26,6 @@ import { createRectangleTool } from './tools/RectangleTool';
 import { createPushPullTool } from './tools/PushPullTool';
 import { createEraserTool } from './tools/EraserTool';
 import { createFollowMeTool } from './tools/FollowMeTool';
-import { createBevelTool } from './tools/BevelTool';
 import { createScaleTool } from './tools/ScaleTool';
 import { createPaintTool, PaintState } from './tools/PaintTool';
 import { PaintPalette } from './ui/PaintPalette';
@@ -48,6 +47,7 @@ import { exportObj } from './io/objExport';
 import { exportStl } from './io/stlExport';
 import { flattenFace, layoutParts, layoutToDxf, layoutToSvg } from './io/flatExport';
 import { askImportOptions, chooseObjFiles, isModelFile, readModelFiles } from './ui/ImportDialog';
+import { loadExample } from './example';
 import { restoreAutosave, startAutosave } from './io/autosave';
 import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
 import { GroupBar } from './ui/GroupBar';
@@ -65,7 +65,6 @@ const toolInfo = [
   { id: 'offset', label: 'Offset', shortcut: 'F' },
   { id: 'followme', label: 'Follow Me', shortcut: 'W' },
   { id: 'scale', label: 'Scale', shortcut: 'S' },
-  { id: 'bevel', label: 'Round / Chamfer', shortcut: 'V' },
   { id: 'eraser', label: 'Eraser', shortcut: 'E' },
   { id: 'paint', label: 'Paint', shortcut: 'B' },
   { id: 'tape', label: 'Tape Measure', shortcut: 'T' },
@@ -176,7 +175,6 @@ for (const create of [
   createPushPullTool,
   createFollowMeTool,
   createScaleTool,
-  createBevelTool,
   createMoveTool,
   createRotateTool,
   createOffsetTool,
@@ -391,6 +389,7 @@ doc.changed.on(syncTitle);
 
 function afterLoad() {
   tools.cancel();
+  drawings.suggestScale();
   selection.clear();
   viewport.requestRender();
 }
@@ -593,6 +592,15 @@ async function newDocument() {
   afterLoad();
 }
 
+async function openExample() {
+  if (!(await confirmDiscard())) return;
+  applyCamera(viewport.rig, loadExample(doc));
+  afterLoad();
+  viewport.rig.fit(doc.bounds());
+  ctx.setHint('This is an example: a pill box in three parts. Open the Drawings panel to see its plan, section and sheet. Press New to start your own.');
+}
+
+shell.exampleDoc.addEventListener('click', () => openExample());
 shell.saveDoc.addEventListener('click', () => save());
 shell.openDoc.addEventListener('click', () => open());
 shell.newDoc.addEventListener('click', () => newDocument());
@@ -685,9 +693,24 @@ viewport.beforeRender = () => {
   scenesBar.refresh();
 };
 viewport.rig.setView('iso');
+/** True once per browser: the very first time, we show the example instead of an empty grid. */
+function isFirstVisit(): boolean {
+  try {
+    if (localStorage.getItem('elevation.visited')) return false;
+    localStorage.setItem('elevation.visited', '1');
+    return true;
+  } catch {
+    return false;
+  }
+}
 const recovered = restoreAutosave(doc, viewport.rig);
 if (recovered.restored) afterLoad();
-else doc.addDefaultFigure();
+else if (isFirstVisit()) {
+  applyCamera(viewport.rig, loadExample(doc));
+  afterLoad();
+  viewport.rig.fit(doc.bounds());
+  ctx.setHint('This is an example: a pill box in three parts. Open the Drawings panel to see its plan, section and sheet. Press New to start your own.');
+} else doc.addDefaultFigure();
 if (recovered.unsaved) ctx.setHint('Restored your unsaved work from last time. Save it to keep it in a file (⌘S).');
 startAutosave(doc, viewport.rig);
 syncTitle();

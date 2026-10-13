@@ -13,8 +13,8 @@ import {
   PaintBucket,
   Route,
   Scaling,
-  SquareRoundCorner,
   Expand,
+  BookOpen,
   FilePlus,
   FileOutput,
   Import,
@@ -50,6 +50,7 @@ export interface ShellElements {
   gridSnapToggle: HTMLButtonElement;
   docName: HTMLElement;
   newDoc: HTMLButtonElement;
+  exampleDoc: HTMLButtonElement;
   openDoc: HTMLButtonElement;
   importDoc: HTMLButtonElement;
   exportDoc: HTMLButtonElement;
@@ -78,7 +79,6 @@ const TOOL_ICONS: Record<string, IconNode> = {
   pushpull: ArrowUpFromLine,
   followme: Route,
   scale: Scaling,
-  bevel: SquareRoundCorner,
   move: Move,
   rotate: RotateCw,
   offset: SquareDashed,
@@ -119,6 +119,7 @@ export function buildShell(
   const docName = el('div', 'doc-name');
   const newDoc = iconButton(FilePlus, 'New');
   const openDoc = iconButton(FolderOpen, 'Open… (⌘O)');
+  const exampleDoc = iconButton(BookOpen, 'Open the example: a small pill box with drawings and a sheet');
   const importDoc = iconButton(Import, 'Import: OBJ, STL, glTF or a DXF underlay…');
   const exportDoc = iconButton(FileOutput, 'Export: STL for 3D printing, OBJ, flat SVG or DXF for laser cutting');
   const exportMenu = el('div', 'export-menu');
@@ -127,7 +128,7 @@ export function buildShell(
   exportWrap.append(exportDoc, exportMenu);
   const saveDoc = iconButton(Save, 'Save (⌘S)');
   const fileGroup = el('div', 'group');
-  fileGroup.append(newDoc, openDoc, importDoc, exportWrap, saveDoc);
+  fileGroup.append(newDoc, openDoc, exampleDoc, importDoc, exportWrap, saveDoc);
 
   const toolGroup = el('div', 'group');
   const toolButtons = new Map<string, HTMLButtonElement>();
@@ -228,5 +229,5 @@ export function buildShell(
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, exampleDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
 }
