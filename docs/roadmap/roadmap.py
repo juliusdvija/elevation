@@ -91,7 +91,7 @@ DATA = {
       ("next","Sky gradient and a softer horizon",""),
       ("later","Line weight setting and line styles (profile edges heavier)","")]},
   ],
-  "log":[("Now","Roadmap polish; picking the next feature to build."),("Just finished","Sun panel: shadows switch, sun direction and height, saved with the document."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Next best step: dimensions that stay attached to the geometry and follow it when it moves. They make the live drawings trustworthy for precise work, and radius and angle dimensions and schedules build on them.")],
+  "log":[("Now","Picking the next feature to build."),("Just finished","Real sun: set from place, date and time, with true north on the model and a north arrow on the ground."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Next best step: dimensions that stay attached to the geometry and follow it when it moves. They make the live drawings trustworthy for precise work, and radius and angle dimensions and schedules build on them.")],
 }
 
 def render(d):
