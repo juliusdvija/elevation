@@ -267,14 +267,18 @@ export class DrawingPanel {
     const port = this.port;
     const layout = this.currentLayout();
     if (!port || !layout) return;
-    const scene = nextScene(this.doc.drawingSettings.scenes, port.camera());
+    const camera = port.camera();
+    const near = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) < 1);
+    // Reuse a saved view when the camera is on one, so the sheet and the scenes bar share it.
+    const existing = this.doc.drawingSettings.scenes.find((s) => s.camera.ortho === camera.ortho && near(s.camera.position, camera.position) && near(s.camera.target, camera.target));
+    const scene = existing ?? nextScene(this.doc.drawingSettings.scenes, camera);
     // About a third of the page wide, in the shape of the 3D view on screen.
     const pageWidth = { A4: 297, A3: 420, A2: 594, A1: 841 }[layout.paper];
     const ratio = Math.min(1.1, Math.max(0.45, port.ratio()));
-    const withScene = { ...structuredClone(this.doc.drawingSettings), scenes: [...this.doc.drawingSettings.scenes, scene] };
+    const withScene = { ...structuredClone(this.doc.drawingSettings), scenes: existing ? this.doc.drawingSettings.scenes : [...this.doc.drawingSettings.scenes, scene] };
     const updated = addSceneViewport(this.doc, layout, scene, Math.round(pageWidth * 0.36), ratio, withScene);
     this.commit('Add 3D View to Sheet', (n) => {
-      n.scenes.push(scene);
+      if (!existing) n.scenes.push(scene);
       n.layouts[n.layouts.findIndex((l) => l.id === layout.id)] = updated;
     });
   }
@@ -506,8 +510,6 @@ export class DrawingPanel {
         remove.addEventListener('click', () => this.commit('Remove 3D View', (n) => {
           const target = n.layouts.find((l) => l.id === layout.id);
           if (target) target.viewports = target.viewports.filter((v) => v.id !== viewport.id);
-          // A scene no sheet shows any more is forgotten.
-          n.scenes = n.scenes.filter((sc) => n.layouts.some((l) => l.viewports.some((v) => isScene(v) && v.scene === sc.id)));
         }));
         row.append(name, field('width', width, 'mm'), update, field('x', x, 'mm'), field('y', y, 'mm'), remove);
         this.viewportsEditor.append(row);

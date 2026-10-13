@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import './ui/style.css';
 import { Document } from './document';
 import { Viewport } from './viewport/Viewport';
@@ -26,10 +27,11 @@ import { createPushPullTool } from './tools/PushPullTool';
 import { createEraserTool } from './tools/EraserTool';
 import { createPaintTool, PaintState } from './tools/PaintTool';
 import { PaintPalette } from './ui/PaintPalette';
+import { ScenesBar } from './ui/ScenesBar';
 import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
-import { cameraData, openDocument, saveDocument } from './io/files';
+import { applyCamera, cameraData, openDocument, saveDocument } from './io/files';
 import { buildModel } from './io/obj';
 import { askImportOptions, chooseObjFiles, readObjFiles } from './ui/ImportDialog';
 import { restoreAutosave, startAutosave } from './io/autosave';
@@ -202,6 +204,37 @@ const drawings = new DrawingPanel(doc, {
   snapshot: (camera, width, height) => viewport.snapshot(camera, width, height),
 });
 shell.workspace.append(drawings.el);
+
+// Saved views: a strip over the 3D view; clicking one flies the camera there.
+let flight = 0;
+function flyTo(camera: ReturnType<typeof cameraData>) {
+  cancelAnimationFrame(flight);
+  const rig = viewport.rig;
+  if (rig.isOrtho !== camera.ortho) rig.toggleProjection();
+  const from = { position: rig.position.clone(), target: rig.target.clone(), orthoHeight: rig.orthoHeight };
+  const to = { position: new THREE.Vector3(...camera.position), target: new THREE.Vector3(...camera.target), orthoHeight: camera.orthoHeight };
+  const started = performance.now();
+  const step = (now: number) => {
+    const t = Math.min(1, (now - started) / 450);
+    const k = t * t * (3 - 2 * t); // ease in and out
+    rig.position.lerpVectors(from.position, to.position, k);
+    rig.target.lerpVectors(from.target, to.target, k);
+    rig.orthoHeight = from.orthoHeight + (to.orthoHeight - from.orthoHeight) * k;
+    rig.update();
+    viewport.requestRender();
+    if (t < 1) flight = requestAnimationFrame(step);
+    else {
+      applyCamera(rig, camera); // land exactly on the saved view
+      viewport.requestRender();
+    }
+  };
+  flight = requestAnimationFrame(step);
+}
+// Taking over the camera cancels a flight in progress.
+for (const type of ['pointerdown', 'wheel'] as const) shell.viewport.addEventListener(type, () => cancelAnimationFrame(flight), { capture: true, passive: true });
+const scenesBar = new ScenesBar(doc, { camera: () => cameraData(viewport.rig), flyTo });
+shell.viewport.append(scenesBar.el);
+
 const cutPlane = new CutPlaneGizmo(viewport);
 drawings.viewChanged.on((setup) => cutPlane.show(setup, doc.bounds()));
 function syncDrawingsToggle() {
@@ -397,7 +430,10 @@ window.addEventListener('keydown', (e) => {
   }
 });
 
-viewport.beforeRender = () => doc.setViewer(viewport.rig.camera.position);
+viewport.beforeRender = () => {
+  doc.setViewer(viewport.rig.camera.position);
+  scenesBar.refresh();
+};
 viewport.rig.setView('iso');
 const recovered = restoreAutosave(doc, viewport.rig);
 if (recovered.restored) afterLoad();

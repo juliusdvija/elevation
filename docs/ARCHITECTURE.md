@@ -165,6 +165,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 | 41 | Een 3D-aanzicht op een blad is een `Scene` (naam + camera) die als JPEG-plaatje wordt gerenderd; het PDF-schrijven werkt nu op bytes | `Viewport.snapshot` rendert het model buiten beeld (render target met 4× MSAA, papierkleurige achtergrond, zonder raster, assen, selectie, hover en hulplijnen) en zet de camera daarna terug. Op het blad is het een `SceneViewport` naast de gewone tekeningen (zelfde kader, bijschrift, slepen, tidy, undo). Het plaatje is een primitief `image`: SVG `<image>` en een PDF-`XObject` met DCT (de JPEG-bytes ongewijzigd). Voorbeeld op 110 dpi, export op 220 dpi; renders worden gecachet op camera, grootte en modelversie en na een wijziging even hergebruikt zodat slepen soepel blijft. Een scene die geen blad meer toont, wordt vergeten. Het plaatje hangt van WebGL af, dus tests gebruiken een `ImageProvider`. |
 
+| 42 | Scenes zijn zelfstandige opgeslagen aanzichten (strip onder het 3D-beeld) die ook op bladen gebruikt worden | Een scene is niet meer afhankelijk van een blad: opslaan met "+ View", aanklikken vliegt de camera er in 450 ms heen (gladde in-en-uit), dubbelklik hernoemt, × verwijdert; alles via de tekeninginstellingen (undo, bestand). "3D view" op een blad hergebruikt een scene als de camera er al op staat. Een blad met een verwijderde scene toont een placeholder. De vlucht stopt zodra de gebruiker de camera overneemt. |
+
 ---
 
 ## 8. Bekende beperkingen
