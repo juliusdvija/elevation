@@ -1,4 +1,5 @@
 import type { Id, Model } from './Model';
+import { splitEdgeAt } from './draw';
 import { coplanarSameSide, faceArea, rebuildPlane } from './faces';
 import { DIR_EPS, EPS } from './math';
 
@@ -192,3 +193,26 @@ export function paintFaces(model: Model, faceIds: Iterable<Id>, color: string | 
     if (face.color !== color || face.opacity !== nextOpacity || face.hatch !== nextHatch) model.putFace({ ...face, color, opacity: nextOpacity, hatch: nextHatch });
   }
 }
+
+/**
+ * Splits every edge that has a vertex lying in its interior (a T-junction: the mesh was not conforming),
+ * so faces on both sides meet at the same points. Uses the model's spatial grid, so it stays fast.
+ */
+export function splitTJunctions(model: Model, progress: (fraction: number) => void = () => {}): void {
+  const queue = model.allVertices().map((v) => v.id);
+  const total = queue.length;
+  while (queue.length > 0) {
+    if (queue.length % 500 === 0) progress(1 - queue.length / total);
+    const id = queue.pop()!;
+    if (!model.hasVertex(id)) continue;
+    for (let guard = 0; guard < 8; guard++) {
+      const edge = model.findEdgeContaining(model.position(id));
+      if (edge === undefined) break;
+      // The vertex joins the edge: both halves of the edge may in turn contain other vertices.
+      splitEdgeAt(model, edge, id);
+    }
+  }
+  // Vertices no edge uses (merged away) only add noise.
+  for (const v of model.allVertices()) if (model.edgesAt(v.id).length === 0) model.removeVertex(v.id);
+}
+

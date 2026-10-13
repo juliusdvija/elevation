@@ -222,7 +222,26 @@ function editSelected() {
   const id = selectedInstance();
   if (id !== undefined) doc.enter(id);
 }
-new GroupBar(shell.viewport, doc, selection, { makeGroup, explode: explodeSelected, edit: editSelected });
+/** Union, subtract or intersect the two selected groups; the first one selected is the one kept in a subtraction. */
+function combineSelected(op: 'union' | 'subtract' | 'intersect') {
+  const [first, second] = [...selection.instances];
+  const result: { value: ReturnType<typeof doc.combineInstances> } = { value: { error: 'Select two groups or components.' } };
+  ctx.setHint('Working…');
+  doc.run({ union: 'Union', subtract: 'Subtract', intersect: 'Intersect' }[op], () => {
+    result.value = doc.combineInstances(op, first, second);
+  });
+  const outcome = result.value;
+  if ('error' in outcome) {
+    ctx.setHint(outcome.error);
+    return;
+  }
+  selection.clear();
+  selection.instances.add(outcome.instance);
+  selection.changed.emit();
+  ctx.setHint('Done. Undo (⌘Z) brings the two groups back.');
+}
+
+new GroupBar(shell.viewport, doc, selection, { makeGroup, explode: explodeSelected, edit: editSelected, combine: combineSelected });
 viewport.canvas.addEventListener('pointerleave', () => feedback.clear());
 
 // Grid snap, remembered per browser.

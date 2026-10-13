@@ -334,6 +334,8 @@ export function booleanPass(
     cutting: boolean;
     /** Rebuild the planes even when the sweep crosses nothing (it may only coincide with existing faces). */
     force?: boolean;
+    /** Where there is material in the result, when it is not simply the old solid plus or minus the prism (solid tools). */
+    material?: (p: THREE.Vector3) => boolean;
   },
 ): Set<Id> {
   const { sweep, inPrism, prismBox, oldInside, cutting } = opts;
@@ -348,7 +350,7 @@ export function booleanPass(
     else others.push(f.id);
   }
 
-  const material = (p: THREE.Vector3) => (cutting ? oldInside(p) && !inPrism(p) : oldInside(p) || inPrism(p));
+  const material = opts.material ?? ((p: THREE.Vector3) => (cutting ? oldInside(p) && !inPrism(p) : oldInside(p) || inPrism(p)));
   /**
    * Whether a face belongs at `p`: where material ends there must be one,
    * pointing away from it; where the old solid had a boundary that is now

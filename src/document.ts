@@ -1,4 +1,5 @@
 import { enclosedVolume } from './kernel/measure';
+import { combineSolids, type SolidOp } from './kernel/solidOps';
 import * as THREE from 'three';
 import { Emitter } from './core/emitter';
 import { History, type Operation, type Transaction } from './core/history';
@@ -423,6 +424,41 @@ export class Document {
       volume = enclosed === null || volume === null ? null : volume + enclosed * Math.abs(p.matrix.determinant());
     }
     return { bounds, volume };
+  }
+
+  /** A group or component of the edited model, with everything inside it, as one model in the edited model's coordinates. */
+  flattenInstance(instanceId: Id): Model {
+    const prefix = [...this.contextPath, instanceId];
+    const into = new Model();
+    const toContext = this.context.inverse;
+    into.edit(() => {
+      for (const p of this.placements()) {
+        if (p.path.length < prefix.length || !prefix.every((id, i) => p.path[i] === id)) continue;
+        copyBetweenModels(p.model, into, p.model.allFaces().map((f) => f.id), p.model.allEdges().map((e) => e.id), toContext.clone().multiply(p.matrix), false);
+      }
+    });
+    return into;
+  }
+
+  /**
+   * Combines two groups or components of the edited model with a solid operation (the first is the one kept in a
+   * subtraction) into a new group. Call inside `run`. Returns the new instance, or the reason it could not be done.
+   */
+  combineInstances(op: SolidOp, firstId: Id, secondId: Id): { instance: Id } | { error: string } {
+    const model = this.context.model;
+    if (!model.hasInstance(firstId) || !model.hasInstance(secondId)) return { error: 'Select two groups or components.' };
+    const a = this.flattenInstance(firstId);
+    const b = this.flattenInstance(secondId);
+    const solid = (m: Model) => m.faceCount > 0 && enclosedVolume(m, m.allFaces().map((f) => f.id)) !== null;
+    if (!solid(a) || !solid(b)) return { error: 'Both must be closed solids (no holes in their surface).' };
+    const result = combineSolids(a, b, op);
+    if (result.faceCount === 0) return { error: op === 'intersect' ? 'They do not overlap.' : 'Nothing is left.' };
+    const tag = model.instance(firstId).tag;
+    const names = { union: 'Union', subtract: 'Difference', intersect: 'Intersection' } as const;
+    model.removeInstance(firstId);
+    model.removeInstance(secondId);
+    const def = this.addDefinition('group', names[op], result);
+    return { instance: model.addInstance(def.id, new THREE.Matrix4(), tag) };
   }
 
   /** World-space bounds of everything. */

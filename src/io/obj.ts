@@ -2,7 +2,7 @@ import * as THREE from 'three';
 import { Model, type Id } from '../kernel/Model';
 import { newellNormal } from '../kernel/faces';
 import { EPS, closestBetweenSegments, planeFrame, planeFromPointNormal, pointInPolygon, to2D } from '../kernel/math';
-import { splitEdgeAt } from '../kernel/draw';
+import { splitTJunctions } from '../kernel/cleanup';
 import { settle } from '../kernel/transform';
 
 /** A parsed OBJ: raw positions, polygons (indices into `positions`) with their material, and the materials. */
@@ -250,28 +250,6 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions, progress: Prog
     progress(1, 'Done');
   });
   return model;
-}
-
-/**
- * Splits every edge that has a vertex lying in its interior (a T-junction: the mesh was not conforming),
- * so faces on both sides meet at the same points. Uses the model's spatial grid, so it stays fast.
- */
-function splitTJunctions(model: Model, progress: (fraction: number) => void): void {
-  const queue = model.allVertices().map((v) => v.id);
-  const total = queue.length;
-  while (queue.length > 0) {
-    if (queue.length % 500 === 0) progress(1 - queue.length / total);
-    const id = queue.pop()!;
-    if (!model.hasVertex(id)) continue;
-    for (let guard = 0; guard < 8; guard++) {
-      const edge = model.findEdgeContaining(model.position(id));
-      if (edge === undefined) break;
-      // The vertex joins the edge: both halves of the edge may in turn contain other vertices.
-      splitEdgeAt(model, edge, id);
-    }
-  }
-  // Vertices no edge uses (merged away) only add noise.
-  for (const v of model.allVertices()) if (model.edgesAt(v.id).length === 0) model.removeVertex(v.id);
 }
 
 /**

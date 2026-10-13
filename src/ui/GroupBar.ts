@@ -15,6 +15,8 @@ export interface GroupCommands {
   makeGroup(kind: 'group' | 'component'): void;
   explode(): void;
   edit(): void;
+  /** Combine the two selected groups (the first selected is the one kept in a subtraction). */
+  combine(op: 'union' | 'subtract' | 'intersect'): void;
 }
 
 /**
@@ -143,6 +145,17 @@ export class GroupBar {
       this.actions.append(edit, explode);
     }
     if (instances.size > 0) this.actions.append(this.tagSelect());
+    if (instances.size === 2 && faces.size === 0 && edges.size === 0) {
+      for (const [op, label, title] of [
+        ['union', 'Union', 'Join the two into one solid'],
+        ['subtract', 'Subtract', 'Cut the second selected out of the first selected'],
+        ['intersect', 'Intersect', 'Keep only where the two overlap'],
+      ] as const) {
+        const b = button(label, title);
+        b.addEventListener('click', () => this.commands.combine(op));
+        this.actions.append(b);
+      }
+    }
     const group = button('Make Group', 'Make Group (⌘G)');
     group.addEventListener('click', () => this.commands.makeGroup('group'));
     const component = button('Make Component', 'Make Component (⇧⌘G): copies stay linked');
