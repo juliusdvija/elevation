@@ -112,37 +112,39 @@ export function buildShell(
     toolGroup.append(button);
   }
 
-  // The views as a box that unfolds on hover. Closed it is an isometric cube (Front left, Right right,
-  // Top above); open, Front stays and the other faces fold flat around it: Top above, Left, Right and
-  // Back beside it, each labelled with its initial. Every face is a button; an extra cell is the cube itself.
+  // The views as a box that unfolds on hover. A real 3D cube seen isometrically (Front on the left,
+  // Right on the right, Top above); on hover every face turns 90 degrees about the edge it shares and
+  // lies flat in the plane of Front, which does not move: Top above it, Bottom below, and a row
+  // Back, Left, Front, Right. Each face is a button with its initial. The extra cell next to Top
+  // (shown only when open) is the isometric view.
   const viewGroup = el('div', 'group');
   const viewButtons = new Map<StandardView, HTMLButtonElement>();
   const fold = el('div', 'view-fold');
   fold.setAttribute('role', 'group');
   fold.setAttribute('aria-label', 'Standard views');
-  fold.append(el('span', 'fold-card'));
-  // Cell size 15, gap 2. `x`/`y` place the flat cell; `closed` is the transform that puts it on the cube
-  // (an isometric matrix: edges at 30 degrees, a 15 mm edge), relative to its flat position.
-  const FOLD: { view: StandardView; letter: string; label: string; x: number; y: number; closed: string; hidden?: boolean }[] = [
-    { view: 'top', letter: 'T', label: 'Top', x: 0, y: 1, closed: 'matrix(0.866, 0.5, -0.866, 0.5, 13, 0)' },
-    { view: 'left', letter: 'L', label: 'Left', x: -17, y: 18, closed: 'matrix(0.001, 0, 0, 1, 17, -9.5)', hidden: true },
-    { view: 'front', letter: 'F', label: 'Front', x: 0, y: 18, closed: 'matrix(0.866, 0.5, 0, 1, 0, -9.5)' },
-    { view: 'right', letter: 'R', label: 'Right', x: 17, y: 18, closed: 'matrix(0.866, -0.5, 0, 1, -4, -2)' },
-    { view: 'back', letter: 'B', label: 'Back', x: 34, y: 18, closed: 'matrix(0.001, 0, 0, 1, -8, -9.5)', hidden: true },
-    { view: 'iso', letter: '◇', label: 'Isometric', x: 17, y: 1, closed: 'matrix(0.001, 0, 0, 0.001, -4, 12)', hidden: true },
-  ];
-  for (const f of FOLD) {
-    const button = el('button', 'fold-face', f.letter);
+  const card = el('span', 'fold-card');
+  const scene = el('div', 'fold-scene');
+  const face = (view: StandardView, letter: string, label: string, name: string) => {
+    const node = el('div', `fold-face ${name}`);
+    const button = el('button', 'fold-hit', letter);
     button.type = 'button';
-    button.title = `${f.label} view`;
-    button.setAttribute('aria-label', `${f.label} view`);
-    button.dataset.hidden = String(!!f.hidden);
-    button.style.left = `${f.x}px`;
-    button.style.top = `${f.y}px`;
-    button.style.setProperty('--closed', f.closed);
-    viewButtons.set(f.view, button);
-    fold.append(button);
-  }
+    button.title = `${label} view`;
+    button.setAttribute('aria-label', `${label} view`);
+    viewButtons.set(view, button);
+    node.append(button);
+    return node;
+  };
+  const front = face('front', 'F', 'Front', 'front');
+  const top = face('top', 'T', 'Top', 'top');
+  const bottom = face('bottom', 'D', 'Bottom', 'bottom');
+  const right = face('right', 'R', 'Right', 'right');
+  const left = face('left', 'L', 'Left', 'left');
+  const back = face('back', 'B', 'Back', 'back');
+  const iso = face('iso', '◇', 'Isometric', 'iso');
+  left.append(back); // Back hangs off Left, so it folds round the corner after it
+  front.append(top, bottom, right, left, iso);
+  scene.append(front);
+  fold.append(card, scene);
   viewGroup.append(fold);
 
   const projection = el('button', 'text-button projection', 'Perspective');

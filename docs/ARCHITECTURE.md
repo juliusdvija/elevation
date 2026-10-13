@@ -154,6 +154,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 | 35 | Verf is een `color` (`#rrggbb`) op het vlak zelf (`kernel/cleanup.ts: paintFaces`) | Geen aparte materiaaltabel: een kleur hoeft niet gedeeld of hernoemd te worden en blijft in het bestand leesbaar. Elk stuk van een gesplitst vlak houdt de kleur (`rebuildPlane` geeft de eigenaar-kleur door), flippen, kopiëren en vouwen nemen hem mee; de snapshot van undo/fuzz bevat hem ook. Het verfblik-gereedschap (B) verft ook de hele selectie als je een geselecteerd vlak aanklikt; Alt+klik pakt een kleur op. |
 | 36 | Tekeningen vullen vlakken met schilderalgoritme, alleen als er iets geverfd is | Vlakken worden van ver naar dichtbij gevuld (gemiddelde diepte), onbeschilderde vlakken in papierkleur zodat ze geverfde erachter afdekken; een vlak van achteren gezien krijgt geen verf (zoals in 3D). Doorsneden en plattegronden knippen vlakken bij het snijvlak (vlakken met gaten die erdoor lopen vallen weg). Exact is het niet: bij elkaar doorborende vlakken kan de volgorde kloppen of niet; de lijnen (exacte hidden-line) staan er altijd bovenop. Zonder verf verandert de uitvoer niet. |
 
+| 37 | De standaardaanzichten zijn een echte 3D-kubus in CSS (isometrisch gedraaid) die bij hover openvouwt; Front is de wortel en beweegt niet | Elk vlak hangt aan de rand die hij deelt met zijn ouder en draait 90° naar 0° (Back hangt aan Left en volgt iets later), zodat het net plat in het vlak van Front komt te liggen, scheef getekend zoals de isometrie het laat zien. Alleen CSS-transformaties, geen JavaScript voor de animatie. Er is een `bottom`-aanzicht bijgekomen (van onderen, zoals een plafondplan: oost links). |
+
 ---
 
 ## 8. Bekende beperkingen

@@ -7,10 +7,12 @@ const MIN_POLAR = 1e-3;
 const VERTICAL_DOT = 1 - 1e-9;
 const FOV = 35;
 
-export type StandardView = 'top' | 'front' | 'back' | 'left' | 'right' | 'iso';
+export type StandardView = 'top' | 'bottom' | 'front' | 'back' | 'left' | 'right' | 'iso';
 
 const STANDARD_VIEWS: Record<StandardView, { dir: THREE.Vector3; topUp?: THREE.Vector3 }> = {
   top: { dir: new THREE.Vector3(0, 0, -1), topUp: new THREE.Vector3(0, 1, 0) },
+  // From below, like a reflected ceiling plan: east appears on the left.
+  bottom: { dir: new THREE.Vector3(0, 0, 1), topUp: new THREE.Vector3(0, 1, 0) },
   front: { dir: new THREE.Vector3(0, 1, 0) },
   back: { dir: new THREE.Vector3(0, -1, 0) },
   left: { dir: new THREE.Vector3(1, 0, 0) },
