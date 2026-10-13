@@ -229,4 +229,96 @@ describe('colour fills', () => {
     expect(pdf).toContain('/ca 0.4');
     expect(pdf).toContain('/GS1 gs');
   });
+
+describe('shading', () => {
+  function house() {
+    const m = new Model();
+    m.edit(() => drawPolygon(m, [v(0, 0), v(4000, 0), v(4000, 3000), v(0, 3000)]));
+    m.edit(() => pushPull(m, m.allFaces()[0].id, -3000));
+    return m;
+  }
+
+  it('adds no fills or shadows without shading', () => {
+    const m = house();
+    for (const ref of [{ kind: 'front' as const }, { kind: 'plan' as const, level: 'level-0' }]) {
+      const d = computeDrawing(m, viewSetup(ref, DEFAULT_SETTINGS, m.bounds()));
+      expect(d.fills).toEqual([]);
+      expect(d.shadows).toEqual([]);
+    }
+  });
+
+  it('shades faces by their orientation to the light: lit sides lighter than the side away from it', () => {
+    const m = house();
+    const front = computeDrawing(m, viewSetup({ kind: 'front' }, DEFAULT_SETTINGS, m.bounds()), { shading: true });
+    const right = computeDrawing(m, viewSetup({ kind: 'right' }, DEFAULT_SETTINGS, m.bounds()), { shading: true });
+    const left = computeDrawing(m, viewSetup({ kind: 'left' }, DEFAULT_SETTINGS, m.bounds()), { shading: true });
+    const lit = (d: Drawing) => Math.max(...d.fills.map((f) => f.shade ?? 0));
+    // Light comes from the front and the left (-y, -x): the front and left walls catch it, the right wall does not.
+    expect(lit(front)).toBeGreaterThan(0.8);
+    expect(lit(left)).toBeGreaterThan(lit(right));
+    expect(lit(right)).toBeCloseTo(0.72, 5);
+    expect(front.fills.every((f) => f.shade !== undefined && f.shade >= 0.72 && f.shade <= 1)).toBe(true);
+  });
+
+  it('throws counter-clockwise ground shadows in a ground-level plan only', () => {
+    const m = house();
+    const plan = computeDrawing(m, viewSetup({ kind: 'plan', level: 'level-0' }, DEFAULT_SETTINGS, m.bounds()), { shading: true });
+    expect(plan.shadows.length).toBeGreaterThan(0);
+    for (const polygon of plan.shadows) expect(signedArea(polygon)).toBeGreaterThan(0);
+    // The light travels to +x and +y, so the shadow reaches past the building on that side.
+    expect(Math.max(...plan.shadows.flat().map((p) => p.x))).toBeGreaterThan(4000);
+    expect(plan.bounds.max.x).toBeGreaterThan(4000);
+    const front = computeDrawing(m, viewSetup({ kind: 'front' }, DEFAULT_SETTINGS, m.bounds()), { shading: true });
+    expect(front.shadows).toEqual([]);
+  });
+
+  it('casts the shadow of an overhang onto the wall below it, and none on a plain box', () => {
+    const plain = house();
+    const setup = viewSetup({ kind: 'front' }, DEFAULT_SETTINGS, plain.bounds());
+    expect(computeDrawing(plain, setup, { shading: true }).fills.some((f) => f.shadows)).toBe(false);
+
+    // The same box with a slab sticking out 1 m over the front near the top.
+    const m = house();
+    m.edit(() => drawPolygon(m, [v(0, -1000, 2500), v(4000, -1000, 2500), v(4000, 0, 2500), v(0, 0, 2500)]));
+    const slab = m.allFaces().find((f) => Math.abs(f.normal.z) > 0.99 && m.position(f.outer[0]).z === 2500 && m.position(f.outer[0]).y <= 0 && m.faceVertices(f).some((id) => m.position(id).y === -1000))!;
+    m.edit(() => pushPull(m, slab.id, slab.normal.z > 0 ? 500 : -500));
+    const drawing = computeDrawing(m, viewSetup({ kind: 'front' }, DEFAULT_SETTINGS, m.bounds()), { shading: true });
+    const shadowed = drawing.fills.filter((f) => f.shadows && f.shadows.length > 0);
+    expect(shadowed.length).toBeGreaterThan(0);
+    // Shadow polygons are counter-clockwise and lie below the slab (z < 3000).
+    for (const f of shadowed) for (const poly of f.shadows!) expect(signedArea(poly)).toBeGreaterThan(0);
+    const lowest = Math.min(...shadowed.flatMap((f) => f.shadows!.flat().map((p) => p.y)));
+    expect(lowest).toBeLessThan(2500);
+  });
+
+  it('keeps shadows inside the face they fall on in SVG and PDF', () => {
+    const doc = new Document();
+    doc.run('Boxes', () => {
+      drawPolygon(doc.model, [v(0, 0), v(4000, 0), v(4000, 3000), v(0, 3000)]);
+      pushPull(doc.model, doc.model.allFaces()[0].id, -3000);
+      drawPolygon(doc.model, [v(0, -1000, 2500), v(4000, -1000, 2500), v(4000, 0, 2500), v(0, 0, 2500)]);
+      const slab = doc.model.allFaces().find((f) => Math.abs(f.normal.z) > 0.99 && doc.model.position(f.outer[0]).z === 2500 && doc.model.faceVertices(f).some((id) => doc.model.position(id).y === -1000))!;
+      pushPull(doc.model, slab.id, slab.normal.z > 0 ? 500 : -500);
+    });
+    doc.updateDrawingSettings('Shading', { ...doc.drawingSettings, shading: true });
+    const [{ sheet }] = buildSheets(doc, [{ kind: 'front' }], { scale: 100 });
+    expect(sheet.primitives.some((p) => p.type === 'path' && p.clip && p.opacity === 0.22)).toBe(true);
+    expect(sheetToSvg(sheet)).toMatch(/<clipPath id="clip0"><path d="[^"]+" clip-rule="evenodd"\/><\/clipPath>/);
+    expect(new TextDecoder().decode(sheetsToPdf([sheet]))).toContain(' W* n ');
+  });
+
+  it('writes the shadow as one translucent path under the fills on a sheet', () => {
+    const doc = new Document();
+    doc.run('Box', () => {
+      drawPolygon(doc.model, [v(0, 0), v(4000, 0), v(4000, 3000), v(0, 3000)]);
+      pushPull(doc.model, doc.model.allFaces()[0].id, -3000);
+    });
+    doc.updateDrawingSettings('Shading', { ...doc.drawingSettings, shading: true });
+    const [{ sheet }] = buildSheets(doc, [{ kind: 'plan', level: 'level-0' }], { scale: 100 });
+    const translucent = sheet.primitives.findIndex((p) => p.type === 'path' && p.opacity === 0.13);
+    const firstFill = sheet.primitives.findIndex((p, i) => i !== translucent && p.type === 'path' && p.fill && p.stroke === p.fill);
+    expect(translucent).toBeGreaterThanOrEqual(0);
+    expect(translucent).toBeLessThan(firstFill);
+  });
+});
 });

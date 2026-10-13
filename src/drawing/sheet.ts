@@ -48,6 +48,8 @@ export type Primitive =
       dash?: number[];
       /** Opacity of the fill and stroke, 0 to 1 (absent: solid). */
       opacity?: number;
+      /** Paint only inside these loops (even-odd): a shadow stays on the face it falls on. */
+      clip?: THREE.Vector2[][];
     }
   | {
       type: 'text';
@@ -124,6 +126,7 @@ export interface SheetOptions {
 const MARGIN = 12; // paper mm around everything
 const TITLE_BLOCK = 16; // paper mm below the drawing for the title
 const DEPTH_STEPS = 5;
+const SHADOW_OPACITY = 0.22; // a cast shadow is about as dark as a face turned from the light
 const LEVEL_GUTTER = 34; // paper mm right of the drawing for level labels
 const SECTION_OVERHANG = 8; // paper mm a section line runs past the drawing
 
@@ -203,11 +206,23 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
   const P = (u: number, v: number) => new THREE.Vector2(px(u), py(v));
   const out: Primitive[] = [];
 
+  // Cast shadows on the ground, under everything: one path, so overlaps do not darken twice.
+  if (drawing.shadows.length > 0) {
+    out.push({ type: 'path', lines: drawing.shadows.map((poly) => poly.map((p) => P(p.x, p.y))), closed: true, fill: style.ink, opacity: 0.13 });
+  }
+
   // Colour fills, far to near, one path per face (even-odd would punch holes where two overlap).
   // A hair of stroke in the fill colour hides the seams between neighbours.
   for (const fill of drawing.fills) {
-    const color = fill.color ?? style.paper;
-    out.push({ type: 'path', lines: fill.loops.map((loop) => loop.map((p) => P(p.x, p.y))), closed: true, fill: color, stroke: color, width: 0.08, evenOdd: true, ...(fill.opacity !== undefined ? { opacity: fill.opacity } : {}) });
+    const base = fill.color ?? style.paper;
+    // Shading darkens towards black; a fully lit face keeps its own colour.
+    const color = fill.shade !== undefined && fill.shade < 1 ? mix('#000000', base, fill.shade) : base;
+    const loops = fill.loops.map((loop) => loop.map((p) => P(p.x, p.y)));
+    out.push({ type: 'path', lines: loops, closed: true, fill: color, stroke: color, width: 0.08, evenOdd: true, ...(fill.opacity !== undefined ? { opacity: fill.opacity } : {}) });
+    // Shadows other faces cast on this one, kept inside it.
+    if (fill.shadows && fill.shadows.length > 0) {
+      out.push({ type: 'path', lines: fill.shadows.map((poly) => poly.map((p) => P(p.x, p.y))), closed: true, fill: '#000000', opacity: SHADOW_OPACITY, clip: loops });
+    }
   }
 
   // Projection lines, far first so near lines draw on top.

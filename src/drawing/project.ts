@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import type { Model } from '../kernel/Model';
+import type { Face, Model } from '../kernel/Model';
 import { pointInPolygon } from '../kernel/math';
 import type { ViewSetup } from './views';
+import { castShadows } from './shadows';
 
 /** Depth tolerance (mm): a face this close to an edge does not hide it. */
 const DEPTH_EPS = 0.5;
@@ -24,8 +25,10 @@ export interface Drawing {
   cutSegments: [THREE.Vector2, THREE.Vector2][];
   /** Visible projected edges beyond the cut. */
   lines: DrawingLine[];
-  /** Colour fills, far to near (only when something is painted). */
+  /** Colour fills, far to near (only when something is painted, or with shading). */
   fills: DrawingFill[];
+  /** Cast shadows on the ground (plans at ground level, with shading): counter-clockwise polygons, union by non-zero fill. */
+  shadows: THREE.Vector2[][];
   bounds: THREE.Box2;
 }
 
@@ -35,6 +38,25 @@ export interface DrawingFill {
   color: string | null;
   /** Below 1 for glass. */
   opacity?: number;
+  /** Light on the face, 0 (dark) to 1 (fully lit); absent without shading. */
+  shade?: number;
+  /** Shadows other faces cast on this one, in drawing coordinates (counter-clockwise; union by non-zero fill). */
+  shadows?: THREE.Vector2[][];
+}
+
+export interface DrawingOptions {
+  /** Tint faces by their orientation to a fixed light, and cast shadows on the ground in plans. */
+  shading?: boolean;
+}
+
+/** The way the light travels in the world: from above, in front (−y) and to the left (−x). */
+export const LIGHT = new THREE.Vector3(0.45, 0.55, -0.7).normalize();
+const AMBIENT = 0.72;
+
+/** How lit a face with this world normal is, as seen by a viewer looking along `w`: AMBIENT to 1. */
+function lightOn(normal: THREE.Vector3, w: THREE.Vector3): number {
+  const facing = normal.dot(w) > 0 ? normal.clone().negate() : normal; // the side the viewer sees
+  return AMBIENT + (1 - AMBIENT) * Math.max(0, -facing.dot(LIGHT));
 }
 
 type Interval = [number, number];
@@ -164,9 +186,9 @@ function clipPolygon(points: THREE.Vector3[], inside: (p: THREE.Vector3) => numb
  * faces across it are clipped (faces with holes across it are left out).
  * Empty when nothing is painted, so unpainted models draw as before.
  */
-function buildFills(model: Model, setup: ViewSetup): DrawingFill[] {
-  if (!model.allFaces().some((f) => f.color || f.opacity !== undefined)) return [];
-  const items: { fill: DrawingFill; depth: number }[] = [];
+function buildFills(model: Model, setup: ViewSetup, shading: boolean): DrawingFill[] {
+  if (!shading && !model.allFaces().some((f) => f.color || f.opacity !== undefined)) return [];
+  const items: { fill: DrawingFill; depth: number; face: Face }[] = [];
   for (const face of model.allFaces()) {
     const n = new THREE.Vector3(face.normal.dot(setup.u), face.normal.dot(setup.v), face.normal.dot(setup.w));
     if (Math.abs(n.z) < 1e-6) continue;
@@ -185,15 +207,74 @@ function buildFills(model: Model, setup: ViewSetup): DrawingFill[] {
     }
     const front = n.z < 0;
     items.push({
+      face,
       depth: outer.reduce((sum, p) => sum + p.z, 0) / outer.length,
       fill: {
         loops: [outer, ...holes].map((loop) => loop.map((p) => new THREE.Vector2(p.x, p.y))),
         color: front ? face.color ?? null : null,
         ...(face.opacity !== undefined && face.opacity < 1 ? { opacity: face.opacity } : {}),
+        ...(shading ? { shade: lightOn(face.normal, setup.w) } : {}),
       },
     });
   }
+  if (shading) {
+    // Shadows only fall on faces the light reaches; the others are already in shade.
+    const lit = items.filter((i) => i.fill.shade !== undefined && i.fill.shade > AMBIENT + 1e-6 && !i.fill.opacity && i.face.normal.dot(LIGHT) < -0.02);
+    const shadows = castShadows(model, lit.map((i) => i.face), LIGHT);
+    for (const item of lit) {
+      const cast = shadows.get(item.face.id);
+      if (!cast) continue;
+      const polygons: THREE.Vector2[][] = [];
+      for (const loop of cast) {
+        const polygon = loop.points.map((p) => {
+          const v = toView(setup, p);
+          return new THREE.Vector2(v.x, v.y);
+        });
+        const area = loopArea(polygon);
+        if (Math.abs(area) < 1) continue;
+        // Outlines wind counter-clockwise and holes clockwise, so a hole cancels the outline it sits in under the non-zero rule.
+        polygons.push(area < 0 === loop.hole ? polygon : polygon.reverse());
+      }
+      if (polygons.length > 0) item.fill.shadows = polygons;
+    }
+  }
   return items.sort((a, b) => b.depth - a.depth).map((i) => i.fill);
+}
+
+/**
+ * Shadows of everything above the ground, thrown along the light onto z = 0: each face's outline,
+ * as a counter-clockwise polygon in view coordinates. Only plans that look at the ground get them.
+ */
+/** Signed area of a loop in the plane (positive: counter-clockwise). */
+function loopArea(polygon: THREE.Vector2[]): number {
+  let area = 0;
+  for (let i = 0; i < polygon.length; i++) {
+    const a = polygon[i];
+    const b = polygon[(i + 1) % polygon.length];
+    area += a.x * b.y - b.x * a.y;
+  }
+  return area / 2;
+}
+
+function groundShadows(model: Model, setup: ViewSetup): THREE.Vector2[][] {
+  if (setup.kind !== 'plan' || setup.depthLimit === null || Math.abs(setup.depthLimit - 1) > 1e-6) return [];
+  const shadows: THREE.Vector2[][] = [];
+  for (const face of model.allFaces()) {
+    if (face.opacity !== undefined && face.opacity < 1) continue;
+    if (!face.outer.some((id) => model.position(id).z > 1)) continue;
+    [face.outer, ...face.holes].forEach((loop, i) => {
+      const polygon = loop.map((id) => {
+        const p = model.position(id);
+        const v = toView(setup, p.clone().addScaledVector(LIGHT, -p.z / LIGHT.z));
+        return new THREE.Vector2(v.x, v.y);
+      });
+      const area = loopArea(polygon);
+      if (Math.abs(area) < 1) return; // a face edge-on to the light casts a line
+      // Outlines counter-clockwise, holes clockwise: light passes through a hole.
+      shadows.push(area < 0 === (i > 0) ? polygon : polygon.reverse());
+    });
+  }
+  return shadows;
 }
 
 /** Visible pieces of every edge beyond the cut (hidden-line removal). */
@@ -368,7 +449,7 @@ export function mergeCollinear(pieces: { a: THREE.Vector2; b: THREE.Vector2; w: 
 }
 
 /** Computes a hidden-line vector drawing of the model for one view. */
-export function computeDrawing(model: Model, setup: ViewSetup): Drawing {
+export function computeDrawing(model: Model, setup: ViewSetup, options: DrawingOptions = {}): Drawing {
   const occluders = buildOccluders(model, setup);
   const pieces = mergeCollinear(projectEdges(model, setup, occluders));
   const cutSegments = setup.cut === null ? [] : cutFaces(model, setup, setup.cut);
@@ -376,6 +457,8 @@ export function computeDrawing(model: Model, setup: ViewSetup): Drawing {
   const bounds = new THREE.Box2();
   for (const p of pieces) bounds.expandByPoint(p.a).expandByPoint(p.b);
   for (const [a, b] of cutSegments) bounds.expandByPoint(a).expandByPoint(b);
+  const shadows = options.shading ? groundShadows(model, setup) : [];
+  for (const polygon of shadows) for (const p of polygon) bounds.expandByPoint(p);
 
   // Depth cueing: lines fade with distance behind the cut (or the nearest
   // line), over a fixed distance so a small projection does not wash out the
@@ -384,7 +467,8 @@ export function computeDrawing(model: Model, setup: ViewSetup): Drawing {
   if (setup.cut === null) for (const p of pieces) near = Math.min(near, p.w);
 
   return {
-    fills: buildFills(model, setup),
+    fills: buildFills(model, setup, !!options.shading),
+    shadows,
     cutLoops: chainLoops(cutSegments),
     cutSegments,
     lines: pieces.map((p) => ({ a: p.a, b: p.b, depth: THREE.MathUtils.clamp((p.w - near) / FADE_DISTANCE, 0, 1) })),

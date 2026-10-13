@@ -354,11 +354,16 @@ export class DrawingPanel {
     auto.title = 'Dimension every drawing: overall size and a chain along the cut walls';
     auto.setAttribute('aria-pressed', String(s.autoDimensions));
     auto.addEventListener('click', () => this.commit('Auto Dimensions', (n) => (n.autoDimensions = !n.autoDimensions)));
+    const shading = el('button', 'pill-button', 'Shading');
+    shading.type = 'button';
+    shading.title = 'Tint faces by how the light falls on them, and cast shadows on the ground in plans';
+    shading.setAttribute('aria-pressed', String(s.shading));
+    shading.addEventListener('click', () => this.commit('Shading', (n) => (n.shading = !n.shading)));
     const addToSheet = el('button', 'pill-button', 'Add to sheet');
     addToSheet.type = 'button';
     addToSheet.title = 'Put this drawing, at this scale, on a sheet with other drawings';
     addToSheet.addEventListener('click', () => this.addCurrentToSheet());
-    this.controls.append(el('div', 'spacer'), this.status, auto, addToSheet, field('Scale', scale), field('Paper', paper), this.exportControl());
+    this.controls.append(el('div', 'spacer'), this.status, auto, shading, addToSheet, field('Scale', scale), field('Paper', paper), this.exportControl());
   }
 
   private exportControl(): HTMLElement {

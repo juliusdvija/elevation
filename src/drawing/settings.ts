@@ -38,6 +38,8 @@ export interface DrawingSettings {
   dimensions: Dimension[];
   /** Add overall dimensions (and a chain along cut walls) to every drawing. */
   autoDimensions: boolean;
+  /** Tint faces by orientation to a fixed light, and cast ground shadows in plans. */
+  shading: boolean;
   /** Pages with several drawings each (format 4). */
   layouts: Layout[];
 }
@@ -51,6 +53,7 @@ export const DEFAULT_SETTINGS: DrawingSettings = {
   ],
   dimensions: [],
   autoDimensions: false,
+  shading: false,
   layouts: [],
 };
 

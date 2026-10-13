@@ -48,9 +48,14 @@ function contentStream(sheet: Sheet): { stream: string; opacities: number[] } {
       if (p.stroke) style.push(`${rgb(p.stroke)} RG ${fmt((p.width ?? 0.25) * k)} w`);
       style.push(p.dash ? `[${p.dash.map((d) => fmt(d * k)).join(' ')}] 0 d` : '[] 0 d');
       const paint = p.fill && p.stroke ? (p.evenOdd ? 'B*' : 'B') : p.fill ? (p.evenOdd ? 'f*' : 'f') : 'S';
-      // Translucent paths set a graphics state, then restore the solid one.
-      if (p.opacity !== undefined && p.opacity < 1) ops.push(`${stateOf(p.opacity)} ${style.join(' ')} ${path} ${paint} /GS0 gs`);
-      else ops.push(`${style.join(' ')} ${path} ${paint}`);
+      // Translucent paths set a graphics state, then restore the solid one; clipped paths sit in q ... Q.
+      const painted = p.opacity !== undefined && p.opacity < 1 ? `${stateOf(p.opacity)} ${style.join(' ')} ${path} ${paint} /GS0 gs` : `${style.join(' ')} ${path} ${paint}`;
+      if (p.clip) {
+        const clip = p.clip.map((line) => `${line.map((q, i) => `${X(q.x)} ${Y(q.y)} ${i === 0 ? 'm' : 'l'}`).join(' ')} h`).join(' ');
+        ops.push(`q ${clip} W* n ${painted} Q`);
+      } else {
+        ops.push(painted);
+      }
     } else {
       const font = p.bold ? '/F2' : '/F1';
       const w = textWidth(p.text, p.size, p.bold, p.letterSpacing ?? 0);

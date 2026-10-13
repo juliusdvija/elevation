@@ -27,6 +27,10 @@ it('benchmark', () => {
       const ref = views.find((x) => x.kind === kind)!;
       return time(() => computeDrawing(m, viewSetup(ref, DEFAULT_SETTINGS, bounds)))[1];
     };
+    const shaded = (() => {
+      const ref = views.find((x) => x.kind === 'front')!;
+      return time(() => computeDrawing(m, viewSetup(ref, DEFAULT_SETTINGS, bounds), { shading: true }))[1];
+    })();
     const plan = drawing('plan');
     const elevation = drawing('front');
     const section = drawing('section');
@@ -34,7 +38,7 @@ it('benchmark', () => {
     const top = m.allFaces().find((f) => f.normal.z > 0.99)!;
     const [, push] = time(() => m.edit(() => pushPull(m, top.id, 500)).edit.revert());
     const [, move] = time(() => m.edit(() => transformVertices(m, verticesOf(m, [top.id], []), new THREE.Matrix4().makeTranslation(0, 0, 300))).edit.revert());
-    rows.push(`${String(n * n).padStart(4)} houses ${String(faces).padStart(6)} faces | build ${(build / 1000).toFixed(1)}s | push/pull ${push.toFixed(0)}ms | move ${move.toFixed(0)}ms | plan ${plan.toFixed(0)}ms | elevation ${elevation.toFixed(0)}ms | section ${section.toFixed(0)}ms | validate ${validate.toFixed(0)}ms`);
+    rows.push(`${String(n * n).padStart(4)} houses ${String(faces).padStart(6)} faces | build ${(build / 1000).toFixed(1)}s | push/pull ${push.toFixed(0)}ms | move ${move.toFixed(0)}ms | plan ${plan.toFixed(0)}ms | elevation ${elevation.toFixed(0)}ms (shaded ${shaded.toFixed(0)}ms) | section ${section.toFixed(0)}ms | validate ${validate.toFixed(0)}ms`);
     console.log(rows.at(-1));
   }
   console.log('\nBENCH\n' + rows.join('\n'));
