@@ -1,5 +1,5 @@
 import { afterEach, describe, expect, it } from 'vitest';
-import { formatDimension, formatLength, parseLength, parseLengthPair, setDisplaySettings, trimNumber } from './units';
+import { formatDimension, formatLength, parseLength, parseLengthPair, parseRectangleInput, setDisplaySettings, trimNumber } from './units';
 
 afterEach(() => setDisplaySettings({ unit: 'mm', decimals: 2 }));
 
@@ -62,5 +62,14 @@ describe('units', () => {
     expect(formatDimension(4000.2)).toBe('4000');
     expect(formatDimension(45.67)).toBe('45.7');
     expect(formatDimension(7.456)).toBe('7.46');
+  });
+
+  it('reads rectangle input with an optional corner radius', () => {
+    expect(parseRectangleInput('30;20')).toEqual({ width: 30, height: 20 });
+    expect(parseRectangleInput('30;20;3')).toEqual({ width: 30, height: 20, radius: 3 });
+    expect(parseRectangleInput('3cm x 2cm x 2mm')).toEqual({ width: 30, height: 20, radius: 2 });
+    expect(parseRectangleInput('30')).toBeNull();
+    expect(parseRectangleInput('1;2;3;4')).toBeNull();
+    expect(parseRectangleInput('30;abc')).toBeNull();
   });
 });

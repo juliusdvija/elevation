@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
-import { arcFromCenter, arcSegments, circlePoints, offsetHolds, offsetPolygon } from './shapes';
+import { arcFromCenter, arcSegments, circlePoints, offsetHolds, offsetPolygon, roundedRectangle } from './shapes';
 
 const v = (x: number, y: number, z = 0) => new THREE.Vector3(x, y, z);
 const Z = v(0, 0, 1);
@@ -53,5 +53,32 @@ describe('shapes', () => {
     expect(offsetHolds(offsetPolygon(strip, Z, 200), Z, strip)).toBe(false);
     expect(offsetHolds(offsetPolygon(strip, Z, 300), Z, strip)).toBe(false);
     expect(offsetHolds(offsetPolygon(strip, Z, -300), Z, strip)).toBe(true);
+  });
+
+  it('rounds the corners of a rectangle: tangent to the sides, area just under the exact value', () => {
+    const rect = [v(0, 0), v(30, 0), v(30, 20), v(0, 20)];
+    const outline = roundedRectangle(rect, 3);
+    // Four quarter arcs of 7 points (six 15-degree pieces).
+    expect(outline).toHaveLength(28);
+    // Every point is inside the rectangle, and the outline starts 3 along the first side.
+    expect(outline.every((p) => p.x >= -1e-9 && p.x <= 30 + 1e-9 && p.y >= -1e-9 && p.y <= 20 + 1e-9)).toBe(true);
+    expect(round(outline[0])).toEqual([0, 3, 0]);
+    // The shoelace area, against the exact w*h - (4 - pi) r^2.
+    let area = 0;
+    outline.forEach((p, i) => {
+      const q = outline[(i + 1) % outline.length];
+      area += (p.x * q.y - q.x * p.y) / 2;
+    });
+    const exact = 600 - (4 - Math.PI) * 9;
+    expect(Math.abs(area)).toBeLessThan(exact);
+    expect(Math.abs(area)).toBeGreaterThan(exact - 0.4);
+  });
+
+  it('limits the radius to half the short side and leaves a zero radius sharp', () => {
+    const rect = [v(0, 0), v(30, 0), v(30, 10), v(0, 10)];
+    const outline = roundedRectangle(rect, 99);
+    expect(Math.min(...outline.map((p) => p.y))).toBeGreaterThanOrEqual(-1e-9);
+    expect(Math.max(...outline.map((p) => p.x))).toBeCloseTo(30);
+    expect(roundedRectangle(rect, 0)).toHaveLength(4);
   });
 });

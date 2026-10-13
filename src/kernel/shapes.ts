@@ -101,3 +101,27 @@ export function offsetHolds(points: THREE.Vector3[], normal: THREE.Vector3, orig
   };
   return points.length >= 3 && area(points) * area(original) > 1 && Math.abs(area(points)) > 1;
 }
+
+/**
+ * The outline of a rectangle with rounded corners: `corners` are the four sharp corners in order, `radius`
+ * how round (limited to half the shorter side), `segments` the straight pieces in each corner (default one per 15 degrees).
+ */
+export function roundedRectangle(corners: THREE.Vector3[], radius: number, segments?: number): THREE.Vector3[] {
+  const shortest = Math.min(...corners.map((c, i) => c.distanceTo(corners[(i + 1) % 4])));
+  const r = Math.min(radius, shortest / 2);
+  if (r < 1e-9) return corners.map((c) => c.clone());
+  const n = Math.max(2, segments ?? arcSegments(Math.PI / 2));
+  const out: THREE.Vector3[] = [];
+  corners.forEach((corner, i) => {
+    const toPrev = corners[(i + 3) % 4].clone().sub(corner).normalize();
+    const toNext = corners[(i + 1) % 4].clone().sub(corner).normalize();
+    const start = corner.clone().addScaledVector(toPrev, r);
+    const end = corner.clone().addScaledVector(toNext, r);
+    // The arc's centre is r along both edges from the corner; it sweeps a quarter turn from start to end.
+    const centre = corner.clone().addScaledVector(toPrev, r).addScaledVector(toNext, r);
+    const from = start.clone().sub(centre);
+    const axis = new THREE.Vector3().crossVectors(from, end.clone().sub(centre)).normalize();
+    for (let k = 0; k <= n; k++) out.push(from.clone().applyAxisAngle(axis, ((Math.PI / 2) * k) / n).add(centre));
+  });
+  return out;
+}

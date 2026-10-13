@@ -66,6 +66,18 @@ export function formatNumber(mm: number): string {
 }
 
 /** A length in the display unit with its suffix: "12.5 mm", "1.234 m". */
+/**
+ * Parses "width;height" or "width;height;radius" (separated by ";" or "x") for a rectangle, with an optional
+ * corner radius. Null when it is not one.
+ */
+export function parseRectangleInput(text: string): { width: number; height: number; radius?: number } | null {
+  const parts = text.split(/[;x]/i);
+  if (parts.length < 2 || parts.length > 3) return null;
+  const [width, height, radius] = parts.map(parseLength);
+  if (width === null || height === null || radius === null) return null;
+  return radius === undefined ? { width, height } : { width, height, radius };
+}
+
 export function formatLength(mm: number): string {
   const info = UNIT_INFO[display.unit];
   return `${trimNumber(mm / info.mm, display.decimals)} ${info.suffix}`;

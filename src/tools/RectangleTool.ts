@@ -1,7 +1,8 @@
 import * as THREE from 'three';
-import { formatLength, parseLengthPair } from '../core/units';
+import { formatLength, parseRectangleInput } from '../core/units';
 import { drawPolygon } from '../kernel/draw';
 import { DIR_EPS, EPS, onPlane, planeFromPointNormal, type Plane } from '../kernel/math';
+import { roundedRectangle } from '../kernel/shapes';
 import type { InferredPoint } from './inference';
 import { PreviewLines } from './overlay';
 import type { Tool, ToolContext } from './Tool';
@@ -9,7 +10,7 @@ import { space } from './space';
 import { planeOfStart } from './planeOfStart';
 
 const HINT_START = 'Click the first corner. Rectangles follow the face you start on.';
-const HINT_NEXT = 'Click the opposite corner, or type width;height and press Enter.';
+const HINT_NEXT = 'Click the opposite corner, or type width;height (add ;radius for rounded corners) and press Enter.';
 const SQUARE_RADIUS = 8; // px
 
 interface Frame {
@@ -54,11 +55,12 @@ export function createRectangleTool(ctx: ToolContext): Tool {
     ctx.setHint(HINT_START);
   };
 
-  const commit = (du: number, dv: number) => {
+  const commit = (du: number, dv: number, radius = 0) => {
     if (!corner || Math.abs(du) < EPS || Math.abs(dv) < EPS) return;
     const points = corners(du, dv);
+    const outline = radius > EPS ? roundedRectangle(points, radius) : points;
     const s = space(ctx);
-    ctx.doc.run('Rectangle', () => drawPolygon(s.model, points.map(s.toLocal)));
+    ctx.doc.run(radius > EPS ? 'Rounded Rectangle' : 'Rectangle', () => drawPolygon(s.model, outline.map(s.toLocal)));
     for (const p of points) inference.remember(p);
     reset();
   };
@@ -136,9 +138,9 @@ export function createRectangleTool(ctx: ToolContext): Tool {
     },
 
     onMeasurement(text) {
-      const dims = parseLengthPair(text);
+      const dims = parseRectangleInput(text);
       if (!corner || !dims) return false;
-      commit(dims[0] * (size.du < 0 ? -1 : 1), dims[1] * (size.dv < 0 ? -1 : 1));
+      commit(dims.width * (size.du < 0 ? -1 : 1), dims.height * (size.dv < 0 ? -1 : 1), dims.radius ?? 0);
       return true;
     },
 
