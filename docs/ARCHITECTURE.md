@@ -167,6 +167,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 | 42 | Scenes zijn zelfstandige opgeslagen aanzichten (strip onder het 3D-beeld) die ook op bladen gebruikt worden | Een scene is niet meer afhankelijk van een blad: opslaan met "+ View", aanklikken vliegt de camera er in 450 ms heen (gladde in-en-uit), dubbelklik hernoemt, × verwijdert; alles via de tekeninginstellingen (undo, bestand). "3D view" op een blad hergebruikt een scene als de camera er al op staat. Een blad met een verwijderde scene toont een placeholder. De vlucht stopt zodra de gebruiker de camera overneemt. |
 
+| 43 | Een materiaal in het palet is kleur + dekking + arcering; de arcering (`Face.hatch`) wordt pas in de tekening uitgerekend, op schaal | Het vlak bewaart alleen de naam van het patroon (`brick`, `boards`, `tiles`, `concrete`, `grass`), net als verf en dekking (bestand, kopieën, splitsen, undo, Push/Pull geven het door; vlakken met verschillende arcering worden niet samengevoegd). `drawing/hatch.ts` maakt de lijnstukken in het vlak van de wand zelf (metselwerk loopt dus horizontaal, planken verticaal) met een modulemaat in mm; de maat wordt opgerekt tot het patroon op papier minstens `paperMin` mm is en een vlak niet meer dan ~700 lijnen krijgt. Op het blad is het één pad (donkerder tint van de kleur, dun, deels doorzichtig) met een knippad op het vlak. Alleen aan de voorkant van een vlak. Het palet heeft een knop "Patterns" om de arcering uit te zetten; in 3D blijft het kleur. |
+
 ---
 
 ## 8. Bekende beperkingen
@@ -175,6 +177,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
 - Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- Arcering: vijf patronen, alleen in tekeningen (geen texturen in 3D); de patroonrichting volgt het vlakraam (niet instelbaar) en loopt niet door over aangrenzende vlakken.
 - 3D-aanzichten op bladen: maten en gereedschapsfeedback staan niet in het plaatje; het plaatje is een raster (niet schaalbaar) en toont geen cast shadows (3D-weergave heeft een eigen eenvoudige verlichting); geen perspectiefcorrectie of zonnestand.
 - Schaduwen: één vaste lichtrichting; schaduw valt alleen op vlakken, niet op de grond in aanzichten; glas laat licht volledig door (geen getinte schaduw); gaten met meerdere onderdelen die door het snijvlak lopen kunnen ruwe randen geven.
 - OBJ-import: bij bronnen met dubbele of elkaar rakende geometrie blijven enkele vlakken overlappen (validator: `overlapping-faces`), en open meshes blijven open; er is nog geen STL-, glTF- of DXF-import en geen export.

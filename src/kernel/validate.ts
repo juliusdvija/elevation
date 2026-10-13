@@ -184,7 +184,7 @@ export function snapshot(model: Model): string {
   return JSON.stringify({
     v: byId(model.allVertices()).map((v) => [v.id, v.position.x, v.position.y, v.position.z]),
     e: byId(model.allEdges()).map((e) => [e.id, e.a, e.b]),
-    f: byId(model.allFaces()).map((f) => [f.id, f.outer, f.holes, f.normal.toArray(), f.color ?? null, f.opacity ?? null]),
+    f: byId(model.allFaces()).map((f) => [f.id, f.outer, f.holes, f.normal.toArray(), f.color ?? null, f.opacity ?? null, f.hatch ?? null]),
     g: byId(model.allGuides()).map((g) => [g.id, g.kind, g.point.toArray()]),
   });
 }

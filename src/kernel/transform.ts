@@ -68,6 +68,7 @@ export function copyEntities(model: Model, faces: Iterable<Id>, edges: Iterable<
       normal: f.normal.clone().applyMatrix3(normalMatrix).normalize(),
       color: f.color,
       opacity: f.opacity,
+      hatch: f.hatch,
     });
   }
   const created = [...map.values()];
@@ -132,7 +133,7 @@ function foldFace(model: Model, face: Face): { diagonals: Id[]; faces: Id[] } {
     for (const [p, q] of loopPairs(outer)) {
       if (model.edgeBetween(p, q) === undefined) diagonals.push(model.addEdge(p, q));
     }
-    created.push(model.putFace({ outer, holes: [], normal, color: face.color, opacity: face.opacity }));
+    created.push(model.putFace({ outer, holes: [], normal, color: face.color, opacity: face.opacity, hatch: face.hatch }));
   }
   return { diagonals, faces: created };
 }
@@ -289,6 +290,7 @@ export function copyBetweenModels(
       normal: f.normal.clone().applyMatrix3(normalMatrix).normalize(),
       color: f.color,
       opacity: f.opacity,
+      hatch: f.hatch,
     });
   }
   const created = [...map.values()];

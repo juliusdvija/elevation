@@ -10,15 +10,15 @@ export class PaintPalette {
   constructor(private readonly state: PaintState) {
     this.el.className = 'paint-palette';
     this.el.hidden = true;
-    for (const { name, color, opacity } of PALETTE) {
+    for (const { name, color, opacity, hatch } of PALETTE) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'swatch';
-      b.title = name;
+      b.title = hatch ? `${name} (${hatch} pattern in drawings)` : name;
       b.setAttribute('aria-label', name);
       b.style.background = color;
-      b.addEventListener('click', () => state.set(color, opacity));
-      this.swatches.set(`${color}${opacity ?? ''}`, b);
+      b.addEventListener('click', () => state.set(color, opacity, hatch));
+      this.swatches.set(`${color}${opacity ?? ''}${hatch ?? ''}`, b);
       this.el.append(b);
     }
     this.custom.type = 'color';
@@ -30,7 +30,18 @@ export class PaintPalette {
     this.clear.textContent = 'No paint';
     this.clear.title = 'Remove paint from faces you click';
     this.clear.addEventListener('click', () => (state.color = undefined));
-    this.el.append(this.custom, this.clear);
+    this.custom.title = 'Any colour';
+    const patterns = document.createElement('button');
+    patterns.type = 'button';
+    patterns.className = 'text-button';
+    patterns.textContent = 'Patterns';
+    patterns.title = 'Give materials their hatch pattern (brick, boards ...) in drawings';
+    patterns.setAttribute('aria-pressed', String(state.patterns));
+    patterns.addEventListener('click', () => {
+      state.patterns = !state.patterns;
+      patterns.setAttribute('aria-pressed', String(state.patterns));
+    });
+    this.el.append(this.custom, patterns, this.clear);
     state.changed.on(() => this.sync());
     this.sync();
   }
@@ -39,9 +50,14 @@ export class PaintPalette {
     this.el.hidden = !visible;
   }
 
+  /** The hatch of the selected material, whether or not patterns are on (it identifies the swatch). */
+  private currentHatch(): string {
+    return PALETTE.find((m) => m.color === this.state.color && m.opacity === this.state.opacity)?.hatch ?? '';
+  }
+
   private sync(): void {
     const current = this.state.color;
-    for (const [key, button] of this.swatches) button.setAttribute('aria-pressed', String(key === `${current}${this.state.opacity ?? ''}`));
+    for (const [key, button] of this.swatches) button.setAttribute('aria-pressed', String(key === `${current}${this.state.opacity ?? ''}${this.currentHatch()}`));
     this.clear.setAttribute('aria-pressed', String(current === undefined));
     if (current) this.custom.value = current;
   }

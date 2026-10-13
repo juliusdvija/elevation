@@ -1,8 +1,9 @@
 import * as THREE from 'three';
 import type { Face, Model } from '../kernel/Model';
-import { pointInPolygon } from '../kernel/math';
+import { planeFrame, pointInPolygon, to2D, to3D } from '../kernel/math';
 import type { ViewSetup } from './views';
 import { castShadows } from './shadows';
+import type { HatchBox } from './hatch';
 
 /** Depth tolerance (mm): a face this close to an edge does not hide it. */
 const DEPTH_EPS = 0.5;
@@ -42,6 +43,8 @@ export interface DrawingFill {
   shade?: number;
   /** Shadows other faces cast on this one, in drawing coordinates (counter-clockwise; union by non-zero fill). */
   shadows?: THREE.Vector2[][];
+  /** A hatch pattern: its kind, the face's extent in its own plane, and how a point of that plane lands in the drawing. */
+  hatch?: { kind: string; box: HatchBox; map: (x: number, y: number) => THREE.Vector2 };
 }
 
 export interface DrawingOptions {
@@ -180,6 +183,27 @@ function clipPolygon(points: THREE.Vector3[], inside: (p: THREE.Vector3) => numb
   return out;
 }
 
+/** The hatch of a face: its plane's frame, the face's extent in it, and the way back to drawing coordinates. */
+function hatchOf(model: Model, face: Face, setup: ViewSetup): NonNullable<DrawingFill['hatch']> {
+  const frame = planeFrame(model.facePlane(face));
+  const flat = face.outer.map((id) => to2D(frame, model.position(id)));
+  const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const p of flat) {
+    box.minX = Math.min(box.minX, p.x);
+    box.maxX = Math.max(box.maxX, p.x);
+    box.minY = Math.min(box.minY, p.y);
+    box.maxY = Math.max(box.maxY, p.y);
+  }
+  return {
+    kind: face.hatch!,
+    box,
+    map: (x, y) => {
+      const v = toView(setup, to3D(frame, new THREE.Vector2(x, y)));
+      return new THREE.Vector2(v.x, v.y);
+    },
+  };
+}
+
 /**
  * Painter's-algorithm fills: every face seen from some side, far to near, with
  * its paint when seen from its front. Faces in front of the cut are dropped and
@@ -187,7 +211,7 @@ function clipPolygon(points: THREE.Vector3[], inside: (p: THREE.Vector3) => numb
  * Empty when nothing is painted, so unpainted models draw as before.
  */
 function buildFills(model: Model, setup: ViewSetup, shading: boolean): DrawingFill[] {
-  if (!shading && !model.allFaces().some((f) => f.color || f.opacity !== undefined)) return [];
+  if (!shading && !model.allFaces().some((f) => f.color || f.opacity !== undefined || f.hatch)) return [];
   const items: { fill: DrawingFill; depth: number; face: Face }[] = [];
   for (const face of model.allFaces()) {
     const n = new THREE.Vector3(face.normal.dot(setup.u), face.normal.dot(setup.v), face.normal.dot(setup.w));
@@ -214,6 +238,7 @@ function buildFills(model: Model, setup: ViewSetup, shading: boolean): DrawingFi
         color: front ? face.color ?? null : null,
         ...(face.opacity !== undefined && face.opacity < 1 ? { opacity: face.opacity } : {}),
         ...(shading ? { shade: lightOn(face.normal, setup.w) } : {}),
+        ...(face.hatch && front ? { hatch: hatchOf(model, face, setup) } : {}),
       },
     });
   }

@@ -454,6 +454,22 @@ describe('paint', () => {
     expect(model.face(id).opacity).toBeUndefined();
   });
 
+  it('carries a hatch with the paint: saved, copied, split, kept through push/pull, cleared with the paint', () => {
+    const model = new Model();
+    model.edit(() => drawPolygon(model, rect(0, 0, 2000, 1000)));
+    const id = model.allFaces()[0].id;
+    model.edit(() => paintFaces(model, [id], '#b5654a', undefined, 'brick'));
+    const copy = new Model();
+    copy.load(model.toData());
+    expect(copy.face(id).hatch).toBe('brick');
+    model.edit(() => drawSegments(model, [[v(1000, 0), v(1000, 1000)]]));
+    expect(model.allFaces().every((f) => f.hatch === 'brick')).toBe(true);
+    model.edit(() => paintFaces(model, [model.allFaces()[0].id], '#ff0000')); // plain colour: no hatch
+    expect(model.allFaces().filter((f) => f.hatch).length).toBe(1);
+    model.edit(() => paintFaces(model, model.allFaces().map((f) => f.id), undefined));
+    expect(model.allFaces().some((f) => f.color || f.hatch)).toBe(false);
+  });
+
   it('is saved, loaded and cleared again', () => {
     const model = new Model();
     model.edit(() => drawPolygon(model, rect(0, 0, 1000, 1000)));

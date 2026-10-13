@@ -1023,3 +1023,8 @@ input.swatch.custom {
   font: 12px var(--font);
   color: var(--ink);
 }
+
+.paint-palette .text-button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--hover);
+}

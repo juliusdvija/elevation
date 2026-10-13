@@ -8,6 +8,7 @@ import { Document } from '../document';
 import { buildSheets } from './build';
 import { sheetToSvg } from './svg';
 import { sheetsToPdf } from './pdf';
+import { hatchSegments, HATCHES } from './hatch';
 import { faceArea } from '../kernel/faces';
 import { signedArea } from '../kernel/math';
 import { computeDrawing, type Drawing } from './project';
@@ -321,4 +322,51 @@ describe('shading', () => {
     expect(translucent).toBeLessThan(firstFill);
   });
 });
+
+  describe('hatching', () => {
+    const wall = { minX: 0, minY: 0, maxX: 6000, maxY: 3000 };
+
+    it('spaces patterns out until they read on paper, and caps how many lines a face gets', () => {
+      for (const { id } of HATCHES) {
+        const fine = hatchSegments(id, wall, 20); // 1:20: close to true size
+        const coarse = hatchSegments(id, wall, 200); // 1:200: spread out
+        expect(fine.length).toBeGreaterThan(0);
+        expect(coarse.length).toBeGreaterThan(0);
+        // However fine the scale, a face never gets more lines than the cap allows.
+        expect(fine.length).toBeLessThan(2500);
+        expect(coarse.length).toBeLessThan(2500);
+      }
+      // A small panel at a coarse scale still gets a pattern that is not finer than 1.3 mm on paper.
+      const spacing = hatchSegments('brick', { minX: 0, minY: 0, maxX: 2000, maxY: 1000 }, 100).filter(([a, b]) => a.y === b.y).map(([a]) => a.y);
+      expect(Math.min(...spacing.slice(1).map((y, i) => y - spacing[i]).filter((d) => d > 0)) / 100).toBeGreaterThanOrEqual(1.3);
+      expect(hatchSegments('nonsense', wall, 100)).toEqual([]);
+    });
+
+    it('lays brick courses horizontally and boards vertically', () => {
+      const courses = hatchSegments('brick', wall, 50).filter(([a, b]) => a.y === b.y);
+      expect(courses.length).toBeGreaterThan(5);
+      const boards = hatchSegments('boards', wall, 50);
+      expect(boards.every(([a, b]) => a.x === b.x)).toBe(true);
+    });
+
+    it('carries a face hatch into the drawing and onto the sheet, clipped to the face', () => {
+      const doc = new Document();
+      doc.run('Box', () => {
+        drawPolygon(doc.model, [v(0, 0), v(6000, 0), v(6000, 3000), v(0, 3000)]);
+        pushPull(doc.model, doc.model.allFaces()[0].id, -3000);
+        paintFaces(doc.model, doc.model.allFaces().filter((f) => f.normal.y < -0.99).map((f) => f.id), '#b5654a', undefined, 'brick');
+      });
+      const model = doc.flatten();
+      const drawing = computeDrawing(model, viewSetup({ kind: 'front' }, DEFAULT_SETTINGS, model.bounds()));
+      const hatched = drawing.fills.filter((f) => f.hatch);
+      expect(hatched).toHaveLength(1);
+      expect(hatched[0].hatch!.kind).toBe('brick');
+      const [{ sheet }] = buildSheets(doc, [{ kind: 'front' }], { scale: 50 });
+      const path = sheet.primitives.find((p) => p.type === 'path' && p.clip && p.opacity === 0.6 && !p.fill);
+      expect(path).toBeTruthy();
+      // The same wall seen from behind (the hatch is on its front only) has no pattern.
+      const back = computeDrawing(model, viewSetup({ kind: 'back' }, DEFAULT_SETTINGS, model.bounds()));
+      expect(back.fills.some((f) => f.hatch)).toBe(false);
+    });
+  });
 });

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Drawing } from './project';
+import { hatchSegments } from './hatch';
 import type { Level } from './settings';
 import type { ViewSetup } from './views';
 
@@ -230,6 +231,18 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
     const color = fill.shade !== undefined && fill.shade < 1 ? mix('#000000', base, fill.shade) : base;
     const loops = fill.loops.map((loop) => loop.map((p) => P(p.x, p.y)));
     out.push({ type: 'path', lines: loops, closed: true, fill: color, stroke: color, width: 0.08, evenOdd: true, ...(fill.opacity !== undefined ? { opacity: fill.opacity } : {}) });
+    // A hatch pattern in the face's plane (brick courses, boards ...), kept inside it, a darker shade of its colour.
+    if (fill.hatch) {
+      const segments = hatchSegments(fill.hatch.kind, fill.hatch.box, s);
+      if (segments.length > 0) {
+        const lines = segments.map(([a, b]) => {
+          const p = fill.hatch!.map(a.x, a.y);
+          const q = fill.hatch!.map(b.x, b.y);
+          return [P(p.x, p.y), P(q.x, q.y)];
+        });
+        out.push({ type: 'path', lines, stroke: mix('#000000', base, 0.5), width: 0.07, opacity: 0.6, clip: loops });
+      }
+    }
     // Shadows other faces cast on this one, kept inside it.
     if (fill.shadows && fill.shadows.length > 0) {
       out.push({ type: 'path', lines: fill.shadows.map((poly) => poly.map((p) => P(p.x, p.y))), closed: true, fill: '#000000', opacity: SHADOW_OPACITY, clip: loops });

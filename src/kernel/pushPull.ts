@@ -291,11 +291,11 @@ function extrude(model: Model, face: Face, distance: number): void {
   });
 
   // The new walls and cap carry the paint of the face that was pulled.
-  if (face.color) {
+  if (face.color || face.hatch) {
     for (const f of model.allFaces()) {
-      if (facesBefore.has(f.id) || f.color) continue;
+      if (facesBefore.has(f.id) || f.color || f.hatch) continue;
       const inside = faceInteriorPoint(model, f);
-      if (inside && (sideContaining(inside) || inCap(inside))) model.putFace({ ...f, color: face.color, opacity: face.opacity });
+      if (inside && (sideContaining(inside) || inCap(inside))) model.putFace({ ...f, color: face.color, opacity: face.opacity, hatch: face.hatch });
     }
   }
 
