@@ -260,13 +260,15 @@ viewport.canvas.addEventListener('pointerleave', () => feedback.clear());
 // Grid snap, remembered per browser.
 const GRID_SNAP_KEY = 'elevation.gridSnap';
 try {
-  inference.gridSnap = localStorage.getItem(GRID_SNAP_KEY) !== 'off';
+  inference.gridSnap = localStorage.getItem(GRID_SNAP_KEY) === 'on';
 } catch {
   // Storage unavailable: keep the default.
 }
 function syncGridSnap() {
   shell.gridSnapToggle.setAttribute('aria-pressed', String(inference.gridSnap));
-  shell.gridSnapToggle.title = inference.gridSnap ? 'Snap to grid: on' : 'Snap to grid: off';
+  shell.gridSnapToggle.title = inference.gridSnap ? 'Grid and snap to grid: on' : 'Grid and snap to grid: off';
+  viewport.gridVisible = inference.gridSnap;
+  viewport.requestRender();
 }
 shell.gridSnapToggle.addEventListener('click', () => {
   inference.gridSnap = !inference.gridSnap;

@@ -81,8 +81,15 @@ DATA = {
       ("later","Custom hatch rotation and offset; reusable sheet templates",""),
       ("later","Component families and parametric 2D symbols",""),
       ("later","Command bar: type a tool and its numbers",""),]},
+    {"name":"3D view look","blurb":"Closer to SketchUp: bold lines, flat endless ground, sharp shadows.","items":[
+      ("done","Thicker model lines and a thick blue selection outline",""),
+      ("done","Endless flat ground that fades into the sky; the grid shows only when grid snap is on",""),
+      ("done","Sun with sharp cast shadows on the model and the ground",""),
+      ("next","Shadows on/off, sun direction and time of day",""),
+      ("next","Sky gradient and a softer horizon",""),
+      ("later","Line weight setting and line styles (profile edges heavier)","")]},
   ],
-  "log":[("Now","Studied Rayon: a ranked list of features to adopt is on the roadmap."),("Just finished","Rayon-inspired drawing style: finer lines, solid thin cuts, hatched earth, new title block."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
+  "log":[("Now","3D view reworked to look more like SketchUp: lines, ground, selection, shadows."),("Just finished","Rayon-inspired drawing style: finer lines, solid thin cuts, hatched earth, new title block."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
 }
 
 def render(d):

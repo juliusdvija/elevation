@@ -76,3 +76,58 @@ export class AdaptiveGrid {
     this.group.position.set(Math.round(center.x / step) * step, Math.round(center.y / step) * step, 0);
   }
 }
+
+/**
+ * An endless flat ground, like SketchUp's: a plane that follows the camera target and blends into the sky colour
+ * towards its edge, so there is no visible end. It writes no depth, so anything below z = 0 still shows through
+ * it; a second, transparent plane catches the sun's shadows.
+ */
+export class Ground {
+  readonly group = new THREE.Group();
+  private readonly plane: THREE.Mesh;
+  private readonly shadow: THREE.Mesh;
+  private readonly uniforms = {
+    ground: { value: new THREE.Color(theme.ground) },
+    sky: { value: new THREE.Color(theme.background) },
+    center: { value: new THREE.Vector2() },
+    radius: { value: 1 },
+  };
+
+  constructor() {
+    this.group.name = 'ground';
+    const geometry = new THREE.PlaneGeometry(2, 2);
+    this.plane = new THREE.Mesh(
+      geometry,
+      new THREE.ShaderMaterial({
+        uniforms: this.uniforms,
+        depthWrite: false,
+        vertexShader: `varying vec3 vWorld;
+          void main() { vec4 w = modelMatrix * vec4(position, 1.0); vWorld = w.xyz; gl_Position = projectionMatrix * viewMatrix * w; }`,
+        fragmentShader: `uniform vec3 ground; uniform vec3 sky; uniform vec2 center; uniform float radius; varying vec3 vWorld;
+          void main() {
+            float t = smoothstep(0.3, 1.0, distance(vWorld.xy, center) / radius);
+            gl_FragColor = vec4(mix(ground, sky, t), 1.0);
+            #include <colorspace_fragment>
+          }`,
+      }),
+    );
+    this.plane.renderOrder = -10;
+    this.plane.frustumCulled = false;
+    this.shadow = new THREE.Mesh(
+      geometry,
+      new THREE.ShadowMaterial({ opacity: 0.32, depthWrite: false, polygonOffset: true, polygonOffsetFactor: 2, polygonOffsetUnits: 2 }),
+    );
+    this.shadow.receiveShadow = true;
+    this.shadow.frustumCulled = false;
+    for (const mesh of [this.plane, this.shadow]) mesh.raycast = () => {};
+    this.group.add(this.plane, this.shadow);
+  }
+
+  /** Centres the ground under `center` with the given reach (mm). */
+  update(center: THREE.Vector3, radius: number): void {
+    this.uniforms.center.value.set(center.x, center.y);
+    this.uniforms.radius.value = radius;
+    this.group.position.set(center.x, center.y, 0);
+    this.group.scale.set(radius, radius, 1);
+  }
+}

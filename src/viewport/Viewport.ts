@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CameraRig, WORLD_UP } from './CameraRig';
-import { AdaptiveGrid, createAxes, niceSpacing } from './helpers';
+import { AdaptiveGrid, Ground, createAxes, niceSpacing } from './helpers';
 import { theme } from './theme';
 
 const GROUND = new THREE.Plane(WORLD_UP.clone(), 0);
@@ -17,6 +17,9 @@ export interface SnapshotCamera {
  * Owns the WebGL renderer, the scene and the camera rig. Renders on demand:
  * call `requestRender()` after anything visible changes.
  */
+/** Where the sun is, as a direction from the model: up, to the left and a little to the front of the default view, so shadows fall to the right. */
+const SUN_DIRECTION = new THREE.Vector3(-0.75, -0.3, 1).normalize();
+
 export class Viewport {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -34,6 +37,18 @@ export class Viewport {
 
   private readonly raycaster = new THREE.Raycaster();
   private readonly adaptiveGrid = new AdaptiveGrid();
+  private readonly ground = new Ground();
+  private readonly sun = new THREE.DirectionalLight(0xffffff, 2.4);
+  /** Whether the snap grid is drawn on the ground. */
+  gridVisible = false;
+  /** Whether the sun casts shadows. */
+  get shadows(): boolean {
+    return this.sun.castShadow;
+  }
+  set shadows(on: boolean) {
+    this.sun.castShadow = on;
+    this.requestRender();
+  }
   private readonly helpers: THREE.Object3D[];
   private dirty = true;
   /** Runs just before a frame is drawn, so things that follow the camera can update. */
@@ -41,20 +56,23 @@ export class Viewport {
 
   constructor(readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
+    this.renderer.shadowMap.enabled = true;
+    this.renderer.shadowMap.type = THREE.PCFShadowMap;
     this.renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
     this.renderer.domElement.classList.add('viewport-canvas');
     container.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(theme.background);
     const axes = createAxes();
-    this.helpers = [this.adaptiveGrid.group, axes, this.overlay];
-    this.scene.add(this.adaptiveGrid.group, axes, this.content, this.overlay);
+    this.helpers = [this.ground.group, this.adaptiveGrid.group, axes, this.overlay];
+    this.scene.add(this.ground.group, this.adaptiveGrid.group, axes, this.content, this.overlay);
 
-    const hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 2.4);
+    const hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 1.5);
     hemisphere.position.copy(WORLD_UP);
-    const sun = new THREE.DirectionalLight(0xffffff, 1.6);
-    sun.position.set(0.4, -0.7, 1);
-    this.scene.add(hemisphere, sun);
+    this.sun.position.copy(SUN_DIRECTION);
+    this.sun.castShadow = true;
+    this.sun.shadow.mapSize.set(4096, 4096);
+    this.scene.add(hemisphere, this.sun, this.sun.target);
 
     new ResizeObserver(() => this.resize()).observe(container);
     this.resize();
@@ -190,6 +208,27 @@ export class Viewport {
     }
   }
 
+  /** Aims the sun at the model and sizes its shadow map to just cover it, so shadows stay sharp at any scale. */
+  private fitSun(): void {
+    if (!this.sun.castShadow) return;
+    const bounds = this.contentBounds();
+    if (bounds.isEmpty()) return;
+    const sphere = bounds.getBoundingSphere(new THREE.Sphere());
+    const radius = Math.max(sphere.radius, 1);
+    this.sun.target.position.copy(sphere.center);
+    this.sun.position.copy(sphere.center).addScaledVector(SUN_DIRECTION, radius * 2);
+    const camera = this.sun.shadow.camera;
+    camera.left = -radius;
+    camera.right = radius;
+    camera.top = radius;
+    camera.bottom = -radius;
+    camera.near = radius * 0.2;
+    camera.far = radius * 4;
+    camera.updateProjectionMatrix();
+    this.sun.shadow.bias = -0.0002;
+    this.sun.shadow.normalBias = ((radius * 2) / 4096) * 1.5;
+  }
+
   private resize(): void {
     const { clientWidth: width, clientHeight: height } = this.container;
     if (width === 0 || height === 0) return;
@@ -202,7 +241,10 @@ export class Viewport {
     if (!this.dirty) return;
     this.dirty = false;
     this.beforeRender?.();
-    this.adaptiveGrid.update(this.gridSpacingAt(this.rig.target), this.rig.target);
+    this.adaptiveGrid.group.visible = this.gridVisible;
+    if (this.gridVisible) this.adaptiveGrid.update(this.gridSpacingAt(this.rig.target), this.rig.target);
+    this.ground.update(this.rig.target, Math.max(this.rig.perspective.far, 1e5) * 0.45);
+    this.fitSun();
     this.renderer.render(this.scene, this.rig.camera);
   }
 }

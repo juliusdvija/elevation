@@ -3,6 +3,7 @@ import type { Document, Placement } from '../document';
 import type { Id } from '../kernel/Model';
 import { faceArea, triangulateFace } from '../kernel/faces';
 import { theme } from './theme';
+import { ThickLines } from './thickLines';
 import type { Viewport } from './Viewport';
 
 /** Entities to highlight: ids in the current context's model (guides in the root). */
@@ -22,6 +23,10 @@ export interface FaceRef {
 const EMPTY: Highlight = { faces: [], edges: [] };
 const GUIDE_REACH = 100_000; // guide lines are drawn 100 m each way
 const FADED_OPACITY = 0.3;
+/** Line widths in screen pixels: model edges, the selection's outline, and the hover outline. */
+const EDGE_WIDTH = 1.6;
+const SELECTION_WIDTH = 3.2;
+const HOVER_WIDTH = 2.4;
 
 /** The shading normal at a corner: the area-weighted mean of the normals of the faces there that are within the smoothing angle of this face's. */
 function smoothNormal(neighbours: { n: THREE.Vector3; weight: number }[] | undefined, own: THREE.Vector3, cosAngle: number): THREE.Vector3 {
@@ -42,7 +47,7 @@ interface Layer {
   back: THREE.Mesh;
   /** See-through faces (glass), drawn after the solid ones. */
   glass: THREE.Mesh;
-  edges: THREE.LineSegments;
+  edges: ThickLines;
   refs: FaceRef[];
   glassRefs: FaceRef[];
 }
@@ -58,9 +63,9 @@ export class ModelRenderer {
   private readonly active: Layer;
   private readonly faded: Layer;
   private readonly selectionFaces: THREE.Mesh;
-  private readonly selectionEdges: THREE.LineSegments;
+  private readonly selectionEdges: ThickLines;
   private readonly hoverFaces: THREE.Mesh;
-  private readonly hoverEdges: THREE.LineSegments;
+  private readonly hoverEdges: ThickLines;
   private readonly guideLines: THREE.LineSegments;
   private readonly guidePoints: THREE.Points;
   /** Faces meeting at less than this angle (radians) shade smoothly and show no edge line between them; 0 turns it off. */
@@ -87,11 +92,12 @@ export class ModelRenderer {
     const layer = (opacity: number): Layer => {
       const front = new THREE.Mesh(new THREE.BufferGeometry(), faceMaterial(0xffffff, THREE.FrontSide, opacity, true));
       const back = new THREE.Mesh(front.geometry, faceMaterial(theme.faceBack, THREE.BackSide, opacity));
-      const edges = new THREE.LineSegments(
-        new THREE.BufferGeometry(),
-        new THREE.LineBasicMaterial({ color: theme.edge, transparent: opacity < 1, opacity }),
-      );
-      edges.raycast = () => {};
+      const edges = new ThickLines(theme.edge, EDGE_WIDTH, opacity);
+      // Faces cast and receive the sun's shadows; glass and the back side do not cast.
+      front.castShadow = true;
+      front.receiveShadow = true;
+      front.material.shadowSide = THREE.DoubleSide;
+      back.receiveShadow = true;
       // Per-vertex alpha (an RGBA colour attribute) gives each pane its own opacity.
       const glass = new THREE.Mesh(
         new THREE.BufferGeometry(),
@@ -116,8 +122,8 @@ export class ModelRenderer {
       });
     this.selectionFaces = new THREE.Mesh(new THREE.BufferGeometry(), tint(theme.selection, 0.22));
     this.hoverFaces = new THREE.Mesh(new THREE.BufferGeometry(), tint(theme.hover, 0.16));
-    this.selectionEdges = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: theme.selection }));
-    this.hoverEdges = new THREE.LineSegments(new THREE.BufferGeometry(), new THREE.LineBasicMaterial({ color: theme.hover }));
+    this.selectionEdges = new ThickLines(theme.selection, SELECTION_WIDTH);
+    this.hoverEdges = new ThickLines(theme.hover, HOVER_WIDTH);
     for (const lines of [this.selectionEdges, this.hoverEdges]) lines.renderOrder = 2;
     for (const obj of [this.selectionFaces, this.hoverFaces, this.selectionEdges, this.hoverEdges]) obj.raycast = () => {};
 
@@ -275,9 +281,7 @@ export class ModelRenderer {
       layer.glass.geometry.dispose();
       layer.glass.geometry = glass;
       layer.glassRefs = data.glass.refs;
-      layer.edges.geometry.dispose();
-      layer.edges.geometry = new THREE.BufferGeometry();
-      layer.edges.geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.edges, 3));
+      layer.edges.setSegments(data.edges);
     }
 
     const guides = this.doc.model.allGuides();
@@ -303,7 +307,7 @@ export class ModelRenderer {
     return new THREE.BufferGeometry().setFromPoints(points);
   }
 
-  private updateHighlight(mesh: THREE.Mesh, lines: THREE.LineSegments, highlight: Highlight): void {
+  private updateHighlight(mesh: THREE.Mesh, lines: ThickLines, highlight: Highlight): void {
     const ctx = this.doc.context;
     const { model, matrix } = ctx;
     const positions: number[] = [];
@@ -349,9 +353,7 @@ export class ModelRenderer {
       }
     }
     const guides = this.guideGeometry(highlight.guides ?? []).getAttribute('position')?.array ?? new Float32Array();
-    lines.geometry.dispose();
-    lines.geometry = new THREE.BufferGeometry();
-    lines.geometry.setAttribute('position', new THREE.Float32BufferAttribute([...segments, ...guides], 3));
+    lines.setSegments([...segments, ...guides]);
     this.viewport.requestRender();
   }
 }
