@@ -46,6 +46,7 @@ import { buildModel } from './io/obj';
 import { Model } from './kernel/Model';
 import { exportObj } from './io/objExport';
 import { exportStl } from './io/stlExport';
+import { flattenFace, layoutParts, layoutToDxf, layoutToSvg } from './io/flatExport';
 import { askImportOptions, chooseObjFiles, isModelFile, readModelFiles } from './ui/ImportDialog';
 import { restoreAutosave, startAutosave } from './io/autosave';
 import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
@@ -532,10 +533,32 @@ function exportStlFile() {
   );
 }
 
+/**
+ * Exports the selected faces (or every face when nothing is selected) flat and at true size, for laser cutting
+ * or CNC, as SVG or DXF in millimetres.
+ */
+function exportFlat(kind: 'svg' | 'dxf') {
+  const base = doc.name.replace(/[\\/:*?"<>|]+/g, '-');
+  const context = doc.context.model;
+  const selected = [...selection.faces].filter((id) => context.hasFace(id));
+  const source = selected.length > 0 ? context : doc.flatten();
+  const faces = selected.length > 0 ? selected : source.allFaces().map((f) => f.id);
+  if (faces.length === 0) {
+    ctx.setHint('Nothing to export yet.');
+    return;
+  }
+  const layout = layoutParts(faces.map((id) => flattenFace(source, id)));
+  const text = kind === 'svg' ? layoutToSvg(layout) : layoutToDxf(layout);
+  downloadFile(text, `${base} - flat.${kind}`, kind === 'svg' ? 'image/svg+xml' : 'application/dxf');
+  ctx.setHint(`Exported ${layout.parts.length} flat part${layout.parts.length > 1 ? 's' : ''} at true size (${formatLength(layout.width)} × ${formatLength(layout.height)}), ${kind.toUpperCase()}.`);
+}
+
 // The export button opens a small menu.
 const exportItems: [string, string, () => void][] = [
   ['STL', '3D printing: STL, in millimetres', exportStlFile],
   ['OBJ', 'Model with colours: OBJ (metres, Y up)', exportObjFile],
+  ['SVG', 'Flat parts, true size: SVG (selection, or all faces)', () => exportFlat('svg')],
+  ['DXF', 'Flat parts, true size: DXF for laser or CNC', () => exportFlat('dxf')],
 ];
 for (const [, label, action] of exportItems) {
   const item = document.createElement('button');
