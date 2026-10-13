@@ -427,6 +427,16 @@ describe('paint', () => {
     expect(model.allFaces().filter((f) => f.color).length).toBe(3);
   });
 
+  it('carries over to the walls and top when a painted face is pulled up', () => {
+    const model = new Model();
+    model.edit(() => drawPolygon(model, rect(0, 0, 2000, 1000)));
+    model.edit(() => paintFaces(model, [model.allFaces()[0].id], '#2e86c1'));
+    model.edit(() => pushPull(model, model.allFaces()[0].id, 1500));
+    // Four walls and a top are new; the base is the painted face itself.
+    expect(model.faceCount).toBe(6);
+    expect(colors(model).filter((c) => c === '#2e86c1').length).toBeGreaterThanOrEqual(5);
+  });
+
   it('is saved, loaded and cleared again', () => {
     const model = new Model();
     model.edit(() => drawPolygon(model, rect(0, 0, 1000, 1000)));

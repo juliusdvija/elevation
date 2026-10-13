@@ -290,6 +290,15 @@ function extrude(model: Model, face: Face, distance: number): void {
     cutting,
   });
 
+  // The new walls and cap carry the paint of the face that was pulled.
+  if (face.color) {
+    for (const f of model.allFaces()) {
+      if (facesBefore.has(f.id) || f.color) continue;
+      const inside = faceInteriorPoint(model, f);
+      if (inside && (sideContaining(inside) || inCap(inside))) model.putFace({ ...f, color: face.color });
+    }
+  }
+
   // Merge new walls that continue an existing coplanar wall.
   const edges = new Set<Id>(affected);
   for (const loop of base) {
