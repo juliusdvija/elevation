@@ -366,8 +366,8 @@ export class Document {
    * Puts a finished model (e.g. an imported file) into the current context as a new group.
    * Call inside `run`. Returns the instance.
    */
-  addGroupFromModel(model: Model, name: string): Id {
-    const def = this.addDefinition('group', name, model);
+  addGroupFromModel(model: Model, name: string, kind: 'group' | 'component' = 'group'): Id {
+    const def = this.addDefinition(kind, name, model);
     return this.context.model.addInstance(def.id, new THREE.Matrix4());
   }
 

@@ -597,7 +597,7 @@ async function openExample() {
   applyCamera(viewport.rig, loadExample(doc));
   afterLoad();
   viewport.rig.fit(doc.bounds());
-  ctx.setHint('This is an example: a pill box in three parts. Open the Drawings panel to see its plan, section and sheet. Press New to start your own.');
+  ctx.setHint('This is an example: a small house. Look at the Drawings panel for its plan, section and sheet, and the scenes and tags below. Press New to start your own.');
 }
 
 shell.exampleDoc.addEventListener('click', () => openExample());
@@ -709,7 +709,7 @@ else if (isFirstVisit()) {
   applyCamera(viewport.rig, loadExample(doc));
   afterLoad();
   viewport.rig.fit(doc.bounds());
-  ctx.setHint('This is an example: a pill box in three parts. Open the Drawings panel to see its plan, section and sheet. Press New to start your own.');
+  ctx.setHint('This is an example: a small house. Look at the Drawings panel for its plan, section and sheet, and the scenes and tags below. Press New to start your own.');
 } else doc.addDefaultFigure();
 if (recovered.unsaved) ctx.setHint('Restored your unsaved work from last time. Save it to keep it in a file (⌘S).');
 startAutosave(doc, viewport.rig);

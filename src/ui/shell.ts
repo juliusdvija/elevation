@@ -119,7 +119,7 @@ export function buildShell(
   const docName = el('div', 'doc-name');
   const newDoc = iconButton(FilePlus, 'New');
   const openDoc = iconButton(FolderOpen, 'Open… (⌘O)');
-  const exampleDoc = iconButton(BookOpen, 'Open the example: a small pill box with drawings and a sheet');
+  const exampleDoc = iconButton(BookOpen, 'Open the example: a small house with drawings and a sheet');
   const importDoc = iconButton(Import, 'Import: OBJ, STL, glTF or a DXF underlay…');
   const exportDoc = iconButton(FileOutput, 'Export: STL for 3D printing, OBJ, flat SVG or DXF for laser cutting');
   const exportMenu = el('div', 'export-menu');
