@@ -2,6 +2,7 @@ import { Plus, X, createElement } from 'lucide';
 import type { Document } from '../document';
 import type { CameraData } from '../io/format';
 import { nextScene } from '../drawing/layout';
+import type { Scene } from '../drawing/settings';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
   const node = document.createElement(tag);
@@ -26,7 +27,7 @@ export class ScenesBar {
 
   constructor(
     private readonly doc: Document,
-    private readonly port: { camera(): CameraData; flyTo(camera: CameraData): void },
+    private readonly port: { camera(): CameraData; flyTo(scene: Scene): void },
   ) {
     doc.settingsChanged.on(() => this.render());
     this.render();
@@ -35,9 +36,10 @@ export class ScenesBar {
   /** Re-marks the current scene (call after the camera moved). */
   refresh(): void {
     const camera = this.port.camera();
+    const hidden = [...this.doc.hiddenTags()].sort().join(',');
     for (const chip of this.el.querySelectorAll<HTMLElement>('.scene-chip')) {
       const scene = this.doc.drawingSettings.scenes.find((s) => s.id === chip.dataset.scene);
-      chip.setAttribute('aria-pressed', String(!!scene && sameView(scene.camera, camera)));
+      chip.setAttribute('aria-pressed', String(!!scene && sameView(scene.camera, camera) && [...(scene.hidden ?? [])].sort().join(',') === hidden));
     }
   }
 
@@ -49,7 +51,7 @@ export class ScenesBar {
       const name = el('button', 'scene-name', scene.name);
       name.type = 'button';
       name.title = 'Go to this view (double-click to rename)';
-      name.addEventListener('click', () => this.port.flyTo(scene.camera));
+      name.addEventListener('click', () => this.port.flyTo(scene));
       name.addEventListener('dblclick', () => this.rename(scene.id, chip, scene.name));
       const remove = el('button', 'scene-remove');
       remove.type = 'button';
@@ -65,7 +67,8 @@ export class ScenesBar {
     add.title = 'Save the current view';
     add.append(createElement(Plus, { width: 14, height: 14, 'stroke-width': 2 }), ' View');
     add.addEventListener('click', () => {
-      const scene = nextScene(this.doc.drawingSettings.scenes, this.port.camera());
+      const hidden = [...this.doc.hiddenTags()];
+      const scene = { ...nextScene(this.doc.drawingSettings.scenes, this.port.camera()), ...(hidden.length > 0 ? { hidden } : {}) };
       this.commit('Save View', (n) => n.scenes.push(scene));
     });
     this.el.append(add);

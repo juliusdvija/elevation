@@ -454,7 +454,8 @@ input:focus-visible {
 }
 
 .group-actions {
-  bottom: 14px;
+  /* Above the strip of saved views, which runs along the bottom. */
+  bottom: 52px;
   left: 50%;
   transform: translateX(-50%);
   white-space: nowrap;
@@ -1043,4 +1044,101 @@ input.swatch.custom {
   height: 100%;
   background: var(--active);
   transition: width 120ms ease;
+}
+
+.tags-panel {
+  position: absolute;
+  top: 12px;
+  left: 12px;
+  width: 240px;
+  max-height: 60%;
+  overflow-y: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--surface);
+  box-shadow: 0 2px 10px rgba(0, 0, 0, 0.08);
+  z-index: 5;
+}
+
+.tags-panel[hidden] {
+  display: none;
+}
+
+.tags-panel h3 {
+  margin: 0;
+  font-size: 12px;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--ink-muted);
+  font-weight: 500;
+}
+
+.tags-empty {
+  margin: 0;
+  font-size: 12px;
+  color: var(--ink-muted);
+}
+
+.tag-row {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+
+.tag-row .icon-button {
+  width: 26px;
+  height: 26px;
+}
+
+.tag-name {
+  flex: 1;
+  min-width: 0;
+  height: 26px;
+  padding: 0 6px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background: none;
+  font: 13px var(--font);
+  color: var(--ink);
+}
+
+.tag-name:hover,
+.tag-name:focus {
+  border-color: var(--line);
+  background: var(--bg);
+}
+
+.tag-name[data-hidden-tag='true'] {
+  color: var(--ink-muted);
+  text-decoration: line-through;
+}
+
+.tag-count {
+  min-width: 16px;
+  text-align: right;
+  font: 12px var(--font);
+  color: var(--ink-muted);
+}
+
+.tags-panel .pill-button {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  border: 1px solid var(--line);
+  background: var(--surface);
+}
+
+.tag-select {
+  height: 26px;
+  border: 1px solid var(--line);
+  border-radius: 13px;
+  background: var(--surface);
+  font: 12px var(--font);
+  color: var(--ink);
+  padding: 0 8px;
 }

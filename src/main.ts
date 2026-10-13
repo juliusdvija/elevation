@@ -30,6 +30,8 @@ import { createScaleTool } from './tools/ScaleTool';
 import { createPaintTool, PaintState } from './tools/PaintTool';
 import { PaintPalette } from './ui/PaintPalette';
 import { ScenesBar } from './ui/ScenesBar';
+import { TagsPanel } from './ui/TagsPanel';
+import type { Scene } from './drawing/settings';
 import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
@@ -212,13 +214,26 @@ shell.componentsToggle.addEventListener('click', () => {
 const drawings = new DrawingPanel(doc, {
   camera: () => cameraData(viewport.rig),
   ratio: () => viewport.container.clientHeight / Math.max(1, viewport.container.clientWidth),
-  snapshot: (camera, width, height) => viewport.snapshot(camera, width, height),
+  snapshot: (camera, width, height, hidden) => {
+    // A picture shows the tags its scene had hidden: switch them for the render, then put the view back.
+    const before = doc.hiddenTags();
+    const same = hidden.length === before.size && hidden.every((t) => before.has(t));
+    if (!same) doc.setHiddenTags(hidden);
+    try {
+      return viewport.snapshot(camera, width, height);
+    } finally {
+      if (!same) doc.setHiddenTags(before);
+    }
+  },
 });
 shell.workspace.append(drawings.el);
 
 // Saved views: a strip over the 3D view; clicking one flies the camera there.
 let flight = 0;
-function flyTo(camera: ReturnType<typeof cameraData>) {
+function flyTo(scene: Scene) {
+  const camera = scene.camera;
+  // The view remembers which tags were hidden.
+  doc.setHiddenTags(scene.hidden ?? []);
   cancelAnimationFrame(flight);
   const rig = viewport.rig;
   if (rig.isOrtho !== camera.ortho) rig.toggleProjection();
@@ -243,6 +258,12 @@ function flyTo(camera: ReturnType<typeof cameraData>) {
 }
 // Taking over the camera cancels a flight in progress.
 for (const type of ['pointerdown', 'wheel'] as const) shell.viewport.addEventListener(type, () => cancelAnimationFrame(flight), { capture: true, passive: true });
+const tagsPanel = new TagsPanel(doc);
+shell.viewport.append(tagsPanel.el);
+shell.tagsToggle.addEventListener('click', () => {
+  tagsPanel.setVisible(!tagsPanel.isVisible);
+  shell.tagsToggle.setAttribute('aria-pressed', String(tagsPanel.isVisible));
+});
 const scenesBar = new ScenesBar(doc, { camera: () => cameraData(viewport.rig), flyTo });
 shell.viewport.append(scenesBar.el);
 

@@ -29,11 +29,20 @@ export interface Dimension {
   offset: [number, number, number];
 }
 
-/** A saved 3D view: a name and where the camera stands. Placed on sheets as a picture. */
+/** A tag (layer): groups and components on it hide and show together. */
+export interface Tag {
+  id: string;
+  name: string;
+  visible: boolean;
+}
+
+/** A saved 3D view: a name, where the camera stands, and which tags are hidden in it. Placed on sheets as a picture. */
 export interface Scene {
   id: string;
   name: string;
   camera: CameraData;
+  /** Tags switched off in this view (absent: none). */
+  hidden?: string[];
 }
 
 /** Drawing settings saved with the document. */
@@ -48,6 +57,8 @@ export interface DrawingSettings {
   autoDimensions: boolean;
   /** Tint faces by orientation to a fixed light, and cast ground shadows in plans. */
   shading: boolean;
+  /** Tags for groups and components (format 6). */
+  tags: Tag[];
   /** Saved 3D views (format 5). */
   scenes: Scene[];
   /** Pages with several drawings each (format 4). */
@@ -64,6 +75,7 @@ export const DEFAULT_SETTINGS: DrawingSettings = {
   dimensions: [],
   autoDimensions: false,
   shading: false,
+  tags: [],
   scenes: [],
   layouts: [],
 };

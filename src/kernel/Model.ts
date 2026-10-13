@@ -52,6 +52,8 @@ export interface Instance {
   readonly id: Id;
   readonly definition: number;
   readonly matrix: readonly number[];
+  /** The tag (layer) it belongs to; absent for untagged. Hiding a tag hides the instances that carry it. */
+  readonly tag?: string;
 }
 
 type Table = 'vertices' | 'edges' | 'faces' | 'guides' | 'instances';
@@ -80,7 +82,7 @@ export interface ModelData {
   edges: [Id, Id, Id][];
   faces: { id: Id; outer: Id[]; holes: Id[][]; normal: [number, number, number]; color?: string; opacity?: number; hatch?: string }[];
   guides: ({ id: Id; kind: 'line'; point: [number, number, number]; direction: [number, number, number] } | { id: Id; kind: 'point'; point: [number, number, number] })[];
-  instances?: { id: Id; definition: number; matrix: number[] }[];
+  instances?: { id: Id; definition: number; matrix: number[]; tag?: string }[];
 }
 
 /**
@@ -312,7 +314,7 @@ export class Model {
         ...(f.opacity !== undefined ? { opacity: f.opacity } : {}),
         ...(f.hatch ? { hatch: f.hatch } : {}),
       })),
-      instances: byId(this.allInstances()).map((i) => ({ id: i.id, definition: i.definition, matrix: [...i.matrix] })),
+      instances: byId(this.allInstances()).map((i) => ({ id: i.id, definition: i.definition, matrix: [...i.matrix], ...(i.tag ? { tag: i.tag } : {}) })),
       guides: byId(this.allGuides()).map((g) =>
         g.kind === 'line'
           ? { id: g.id, kind: 'line' as const, point: g.point.toArray() as [number, number, number], direction: g.direction.toArray() as [number, number, number] }
@@ -341,7 +343,7 @@ export class Model {
           : { id: g.id, kind: 'point', point: new THREE.Vector3(...g.point) },
       );
     }
-    for (const i of data.instances ?? []) this.set('instances', i.id, { id: i.id, definition: i.definition, matrix: [...i.matrix] });
+    for (const i of data.instances ?? []) this.set('instances', i.id, { id: i.id, definition: i.definition, matrix: [...i.matrix], ...(i.tag ? { tag: i.tag } : {}) });
     this.nextId = Math.max(data.nextId, this.nextId);
     this.changed.emit();
   }
@@ -426,10 +428,16 @@ export class Model {
     for (const entry of journal.values()) this.restore(entry.table, entry.id, entry.before);
   }
 
-  addInstance(definition: number, matrix: THREE.Matrix4): Id {
+  addInstance(definition: number, matrix: THREE.Matrix4, tag?: string): Id {
     const id = this.nextId++;
-    this.write('instances', id, { id, definition, matrix: matrix.toArray() });
+    this.write('instances', id, { id, definition, matrix: matrix.toArray(), ...(tag ? { tag } : {}) });
     return id;
+  }
+
+  /** Puts an instance on a tag, or on none (undefined). */
+  setInstanceTag(id: Id, tag: string | undefined): void {
+    const { tag: _old, ...rest } = this.instance(id);
+    this.write('instances', id, tag ? { ...rest, tag } : rest);
   }
 
   setInstanceMatrix(id: Id, matrix: THREE.Matrix4): void {

@@ -75,7 +75,7 @@ export interface ScenePort {
   /** The viewport's height / width, for the shape of a new picture. */
   ratio(): number;
   /** Renders a picture of the model from a camera. */
-  snapshot(camera: CameraData, width: number, height: number): RenderedImage | null;
+  snapshot(camera: CameraData, width: number, height: number, hidden: string[]): RenderedImage | null;
 }
 
 const PREVIEW_DPI = 110;
@@ -270,8 +270,10 @@ export class DrawingPanel {
     const camera = port.camera();
     const near = (a: number[], b: number[]) => a.every((v, i) => Math.abs(v - b[i]) < 1);
     // Reuse a saved view when the camera is on one, so the sheet and the scenes bar share it.
-    const existing = this.doc.drawingSettings.scenes.find((s) => s.camera.ortho === camera.ortho && near(s.camera.position, camera.position) && near(s.camera.target, camera.target));
-    const scene = existing ?? nextScene(this.doc.drawingSettings.scenes, camera);
+    const nowHidden = [...this.doc.hiddenTags()].sort().join(',');
+    const existing = this.doc.drawingSettings.scenes.find((s) => s.camera.ortho === camera.ortho && near(s.camera.position, camera.position) && near(s.camera.target, camera.target) && [...(s.hidden ?? [])].sort().join(',') === nowHidden);
+    const hidden = [...this.doc.hiddenTags()];
+    const scene = existing ?? { ...nextScene(this.doc.drawingSettings.scenes, camera), ...(hidden.length > 0 ? { hidden } : {}) };
     // About a third of the page wide, in the shape of the 3D view on screen.
     const pageWidth = { A4: 297, A3: 420, A2: 594, A1: 841 }[layout.paper];
     const ratio = Math.min(1.1, Math.max(0.45, port.ratio()));
@@ -758,7 +760,7 @@ export class DrawingPanel {
     if (!port) return undefined;
     return (scene, widthMm, heightMm) => {
       const pixels: [number, number] = [Math.round((widthMm / 25.4) * dpi), Math.round((heightMm / 25.4) * dpi)];
-      const key = `${JSON.stringify(scene.camera)}|${pixels.join('x')}|${this.modelVersion}`;
+      const key = `${JSON.stringify(scene.camera)}|${(scene.hidden ?? []).join(',')}|${pixels.join('x')}|${this.modelVersion}`;
       const cached = this.pictures.get(key);
       if (cached) return cached;
       const last = this.lastPicture.get(scene.id);
@@ -768,7 +770,7 @@ export class DrawingPanel {
         this.pictureTimer = window.setTimeout(() => this.schedule(), 420);
         return last.image;
       }
-      const image = port.snapshot(scene.camera, pixels[0], pixels[1]);
+      const image = port.snapshot(scene.camera, pixels[0], pixels[1], scene.hidden ?? []);
       if (!image) return null;
       if (this.pictures.size > 12) this.pictures.clear();
       this.pictures.set(key, image);

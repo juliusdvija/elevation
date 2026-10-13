@@ -28,6 +28,7 @@ import {
   RulerDimensionLine,
   PersonStanding,
   Redo2,
+  Tags,
   Rotate3d,
   Undo2,
   createElement,
@@ -41,6 +42,7 @@ export interface ShellElements {
   viewport: HTMLElement;
   drawingsToggle: HTMLButtonElement;
   componentsToggle: HTMLButtonElement;
+  tagsToggle: HTMLButtonElement;
   gridSnapToggle: HTMLButtonElement;
   docName: HTMLElement;
   newDoc: HTMLButtonElement;
@@ -172,8 +174,9 @@ export function buildShell(
 
   const drawingsToggle = iconButton(PanelRight, 'Show drawings');
   const componentsToggle = iconButton(Boxes, 'Show components');
+  const tagsToggle = iconButton(Tags, 'Show tags');
   const panelGroup = el('div', 'group');
-  panelGroup.append(componentsToggle, drawingsToggle);
+  panelGroup.append(tagsToggle, componentsToggle, drawingsToggle);
 
   toolbar.append(brand, docName, fileGroup, toolGroup, el('div', 'spacer'), viewGroup, cameraGroup, historyGroup, panelGroup);
 
@@ -195,5 +198,5 @@ export function buildShell(
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, componentsToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
 }

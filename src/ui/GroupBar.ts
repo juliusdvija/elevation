@@ -1,5 +1,6 @@
 import type { Document } from '../document';
 import type { Selection } from '../tools/Selection';
+import { nextTag } from './TagsPanel';
 
 function button(text: string, title: string): HTMLButtonElement {
   const b = document.createElement('button');
@@ -79,6 +80,40 @@ export class GroupBar {
     this.crumbs.append(close);
   }
 
+  /** A selector for the tag of the selected groups and components (blank when they differ). */
+  private tagSelect(): HTMLSelectElement {
+    const model = this.doc.context.model;
+    const ids = [...this.selection.instances].filter((id) => model.hasInstance(id));
+    const tags = new Set(ids.map((id) => model.instance(id).tag ?? ''));
+    const select = document.createElement('select');
+    select.className = 'tag-select';
+    select.title = 'Tag: hide or show it with others in the Tags panel';
+    const option = (value: string, label: string) => {
+      const o = document.createElement('option');
+      o.value = value;
+      o.textContent = label;
+      select.append(o);
+    };
+    if (tags.size > 1) option('__mixed', 'Mixed tags');
+    option('', 'Untagged');
+    for (const t of this.doc.drawingSettings.tags) option(t.id, t.name);
+    option('__new', 'New tag…');
+    select.value = tags.size > 1 ? '__mixed' : [...tags][0] ?? '';
+    select.addEventListener('change', () => {
+      if (select.value === '__mixed') return;
+      let id = select.value;
+      if (id === '__new') {
+        const tag = nextTag(this.doc.drawingSettings.tags);
+        this.doc.updateDrawingSettings('Add Tag', { ...structuredClone(this.doc.drawingSettings), tags: [...this.doc.drawingSettings.tags, tag] });
+        id = tag.id;
+      }
+      this.doc.run('Set Tag', () => {
+        for (const i of ids) model.setInstanceTag(i, id || undefined);
+      });
+    });
+    return select;
+  }
+
   private renderActions(): void {
     this.actions.replaceChildren();
     const { faces, edges, instances } = this.selection;
@@ -107,6 +142,7 @@ export class GroupBar {
       explode.addEventListener('click', () => this.commands.explode());
       this.actions.append(edit, explode);
     }
+    if (instances.size > 0) this.actions.append(this.tagSelect());
     const group = button('Make Group', 'Make Group (⌘G)');
     group.addEventListener('click', () => this.commands.makeGroup('group'));
     const component = button('Make Component', 'Make Component (⇧⌘G): copies stay linked');

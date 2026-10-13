@@ -234,18 +234,39 @@ export class Document {
    */
   placements(viewer: THREE.Vector3 | null | undefined = undefined): Placement[] {
     const eye = viewer === undefined ? this.viewer : viewer;
+    const hidden = this.hiddenTags();
     const result: Placement[] = [];
     const visit = (model: Model, path: Id[], matrix: THREE.Matrix4, definition: Definition | undefined, seen: Set<number>) => {
       result.push({ model, path, matrix, inverse: matrix.clone().invert(), definition });
       for (const instance of model.allInstances()) {
         const def = this.definitions.get(instance.definition);
         if (!def || seen.has(def.id)) continue;
+        // A hidden tag takes its instances (and what is inside them) out of sight: no drawing, picking or snapping.
+        if (instance.tag && hidden.has(instance.tag)) continue;
         const m = matrix.clone().multiply(this.instanceMatrix(instance, def, matrix, eye));
         visit(def.model, [...path, instance.id], m, def, new Set([...seen, def.id]));
       }
     };
     visit(this.model, [], new THREE.Matrix4(), undefined, new Set());
     return result;
+  }
+
+  /** The ids of the tags that are switched off. */
+  hiddenTags(): Set<string> {
+    return new Set(this.drawingSettings.tags.filter((t) => !t.visible).map((t) => t.id));
+  }
+
+  /**
+   * Shows or hides tags without an undo step (it is a view state, like the camera; scenes remember it).
+   * `hidden` lists the tags to hide; every other tag is shown.
+   */
+  setHiddenTags(hidden: Iterable<string>): void {
+    const off = new Set(hidden);
+    const tags = this.drawingSettings.tags.map((t) => ({ ...t, visible: !off.has(t.id) }));
+    if (tags.every((t, i) => t.visible === this.drawingSettings.tags[i].visible)) return;
+    this.drawingSettings = { ...this.drawingSettings, tags };
+    this.settingsChanged.emit();
+    this.geometryChanged.emit();
   }
 
   /** The placement at a path of instance ids, or null if it no longer exists. */
@@ -327,7 +348,7 @@ export class Document {
       copyBetweenModels(source, geometry, faces, edges, new THREE.Matrix4(), false);
       for (const id of instances) {
         const inst = source.instance(id);
-        geometry.addInstance(inst.definition, new THREE.Matrix4().fromArray(inst.matrix));
+        geometry.addInstance(inst.definition, new THREE.Matrix4().fromArray(inst.matrix), inst.tag);
       }
     });
 
@@ -380,7 +401,7 @@ export class Document {
       true,
     );
     for (const child of src.allInstances()) {
-      target.addInstance(child.definition, matrix.clone().multiply(new THREE.Matrix4().fromArray(child.matrix)));
+      target.addInstance(child.definition, matrix.clone().multiply(new THREE.Matrix4().fromArray(child.matrix)), child.tag);
     }
   }
 

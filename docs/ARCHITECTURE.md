@@ -178,6 +178,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 | 46 | Schalen en spiegelen is één bewerking: een matrix met factoren per as om een ankerpunt (`scaleAbout`), een negatief getal spiegelt | Werkt op losse geometrie (`transformVertices`) en op groepen en componenten (de instantiematrix is niet langer alleen rotatie + verplaatsing). Een spiegeling keert de windrichting van de lussen om; daarom keren `transformVertices`, `copyEntities` en `copyBetweenModels` de lussen terug zodra de determinant negatief is, anders staan de normalen verkeerd (de test faalt zonder die omkering). 3D weergave volgde al de normaal; platslaan voor de tekeningen gaat via `copyBetweenModels`. Het gereedschap (S): klik een basispunt, klik een referentiepunt en beweeg (rondt af op kwarten), of typ `2`, `0,5` of `x,y,z` (`1,-1,1` spiegelt langs y). Gereedschappen werken in wereldcoördinaten: schalen met verschillende factoren in een gedraaide groep geeft in de lokale ruimte een scheve (affiene) matrix. |
 
+| 47 | Tags (lagen) hangen aan groepen en componenten (`Instance.tag`), niet aan losse vlakken; zichtbaarheid is een weergavestatus | Tags horen bij instanties zoals dat in SketchUp als goede werkwijze geldt; losse geometrie blijft altijd zichtbaar. Alles loopt via `Document.placements()`, dat verborgen instanties (en wat erin zit) overslaat: dus ook 3D, picker, snappen, grenzen en de tekeningen volgen vanzelf. Aan- en uitzetten (`setHiddenTags`) is geen undo-stap (zoals de camera) en een scene onthoudt de verborgen tags en past ze toe bij het heen vliegen; het plaatje van een scene op een blad wordt met die tags gerenderd en daarna wordt de weergave teruggezet. Tags toevoegen, hernoemen, verwijderen en toewijzen zijn wel ongedaan te maken. |
+
 ---
 
 ## 8. Bekende beperkingen
@@ -186,6 +188,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
 - Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- Tags: alleen voor groepen en componenten; een tekening op een blad gebruikt de huidige zichtbaarheid (alleen 3D-aanzichten volgen hun scene); geen kleur per tag.
 - Schalen: ongelijke factoren in een gedraaide context geven een scheve matrix voor groepen; geen schaalgrepen om te slepen (alleen basispunt + referentie of getypte factoren); het snelmenu voor spiegelen ontbreekt (typ een negatieve factor).
 - Follow Me: het profiel moet (bijna) loodrecht op het eerste segment staan en het pad moet één keten zijn; profielen met gaten, paden die terugkeren op zichzelf en paden met vertakkingen worden geweigerd; geen 3D-gebogen paden met een afgeronde verstek (bochten blijven hoekig).
 - Arcering: vijf patronen, alleen in tekeningen (geen texturen in 3D); de patroonrichting volgt het vlakraam (niet instelbaar) en loopt niet door over aangrenzende vlakken.

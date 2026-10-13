@@ -51,7 +51,7 @@ export function createMoveTool(ctx: ToolContext): Tool {
       const m = local(d.clone().multiplyScalar(divide ? i / count : i));
       for (const id of t.instances) {
         const inst = model.instance(id);
-        model.addInstance(inst.definition, m.clone().multiply(new THREE.Matrix4().fromArray(inst.matrix)));
+        model.addInstance(inst.definition, m.clone().multiply(new THREE.Matrix4().fromArray(inst.matrix)), inst.tag);
       }
       copyEntities(model, t.faces, t.edges, m);
     }
