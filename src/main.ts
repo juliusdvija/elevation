@@ -33,7 +33,10 @@ import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
 import { applyCamera, cameraData, openDocument, saveDocument } from './io/files';
 import { buildUnderlay } from './io/dxf';
+import type { ImportMessage, ImportRequest } from './io/importWorker';
+import { ProgressDialog } from './ui/ProgressDialog';
 import { buildModel } from './io/obj';
+import { Model } from './kernel/Model';
 import { exportObj } from './io/objExport';
 import { askImportOptions, chooseObjFiles, isModelFile, readModelFiles } from './ui/ImportDialog';
 import { restoreAutosave, startAutosave } from './io/autosave';
@@ -305,6 +308,45 @@ async function open() {
   }
 }
 
+/**
+ * Builds the imported model in a Web Worker so the page stays alive, with a progress bar and Cancel.
+ * Resolves to null when cancelled. Falls back to building on this thread where workers are missing.
+ */
+function buildInWorker(choice: Awaited<ReturnType<typeof askImportOptions>> & object): Promise<Model | null> {
+  if (typeof Worker === 'undefined') {
+    return Promise.resolve(choice.drawing ? buildUnderlay(choice.drawing, choice.options.scale, choice.options.recenter) : buildModel(choice.mesh, choice.options));
+  }
+  return new Promise((resolve, reject) => {
+    const worker = new Worker(new URL('./io/importWorker.ts', import.meta.url), { type: 'module' });
+    const progress = new ProgressDialog(`Importing ${choice.name}`, () => {
+      worker.terminate();
+      resolve(null);
+    });
+    worker.onmessage = (event: MessageEvent<ImportMessage>) => {
+      const message = event.data;
+      if (message.type === 'progress') {
+        progress.update(message.fraction, message.stage);
+        return;
+      }
+      progress.close();
+      worker.terminate();
+      if (message.type === 'error') {
+        reject(new Error(message.message));
+        return;
+      }
+      const model = new Model();
+      model.load(message.data);
+      resolve(model);
+    };
+    worker.onerror = (event) => {
+      progress.close();
+      worker.terminate();
+      reject(new Error(event.message || 'The import worker failed.'));
+    };
+    worker.postMessage({ mesh: choice.mesh, drawing: choice.drawing, options: choice.options } satisfies ImportRequest);
+  });
+}
+
 /** Imports a model file (OBJ with its .mtl, STL, glTF) as a group in the current context. Lossy: only geometry and colours come across. */
 async function importObj(files: File[] | null) {
   if (!files) return;
@@ -316,11 +358,12 @@ async function importObj(files: File[] | null) {
     }
     const choice = await askImportOptions(source);
     if (!choice) return;
-    ctx.setHint(`Importing ${source.name}…`);
-    // Let the hint paint before the (synchronous) build starts.
-    await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
     const started = performance.now();
-    const imported = choice.drawing ? buildUnderlay(choice.drawing, choice.options.scale, choice.options.recenter) : buildModel(choice.mesh, choice.options);
+    const imported = await buildInWorker(choice);
+    if (!imported) {
+      ctx.setHint('Import cancelled.');
+      return;
+    }
     doc.run('Import', () => doc.addGroupFromModel(imported, choice.name));
     navigator.zoomExtents();
     ctx.setHint(`Imported ${choice.name}: ${choice.drawing ? `${imported.edgeCount.toLocaleString()} lines` : `${imported.faceCount.toLocaleString()} faces`} in ${((performance.now() - started) / 1000).toFixed(1)} s.`);

@@ -1028,3 +1028,19 @@ input.swatch.custom {
   color: var(--ink);
   background: var(--hover);
 }
+
+.progress-bar {
+  height: 6px;
+  margin: 4px 0 6px;
+  border-radius: 3px;
+  background: var(--hover);
+  overflow: hidden;
+}
+
+.progress-bar i {
+  display: block;
+  width: 0;
+  height: 100%;
+  background: var(--active);
+  transition: width 120ms ease;
+}

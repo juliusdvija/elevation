@@ -149,7 +149,7 @@ export function parseDxf(text: string): DxfDrawing {
  * A model of loose edges (no faces) from a drawing: an underlay to snap to and trace over. `scale` is
  * millimetres per file unit; `recenter` moves the drawing's lower-left corner to the origin.
  */
-export function buildUnderlay(drawing: DxfDrawing, scale: number, recenter = false): Model {
+export function buildUnderlay(drawing: DxfDrawing, scale: number, recenter = false, progress: (fraction: number, stage: string) => void = () => {}): Model {
   const model = new Model();
   model.edit(() => {
     let shift = new THREE.Vector3();
@@ -166,7 +166,9 @@ export function buildUnderlay(drawing: DxfDrawing, scale: number, recenter = fal
       if (id === undefined) byCell.set(key, (id = model.addVertex(q)));
       return id;
     };
+    let done = 0;
     for (const path of drawing.paths) {
+      if (++done % 500 === 0) progress(done / drawing.paths.length, 'Drawing lines');
       const ids = path.points.map(vertex);
       const count = path.closed ? ids.length : ids.length - 1;
       for (let i = 0; i < count; i++) {

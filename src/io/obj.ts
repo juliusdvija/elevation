@@ -138,7 +138,9 @@ const GROUP_FLATNESS = 8e-3; // mm: how far any vertex of a merged face may lie 
  * faces (with holes where there are any), paints the faces from their material, and settles
  * the result so it satisfies the kernel's invariants (T-junctions split, and so on).
  */
-export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
+export type Progress = (fraction: number, stage: string) => void;
+
+export function buildModel(mesh: ObjMesh, options: ImportOptions, progress: Progress = () => {}): Model {
   const model = new Model();
   model.edit(() => {
     // Transform the positions: units, then Y-up to Z-up (a rotation, so winding is kept).
@@ -175,6 +177,7 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
       return (welded[index] = id);
     };
 
+    progress(0.02, 'Reading triangles');
     // Triangles (polygons are fanned), without slivers.
     const triangles: Triangle[] = [];
     const seenTriangles = new Set<string>();
@@ -198,6 +201,7 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
       }
     }
 
+    progress(0.15, 'Finding flat surfaces');
     // Group triangles that share an edge and lie in one plane, facing one way, in one colour.
     const parent = triangles.map((_, i) => i);
     const find = (i: number): number => (parent[i] === i ? i : (parent[i] = find(parent[i])));
@@ -229,7 +233,10 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
       model.putFace({ outer, holes, normal, color, opacity });
     };
 
+    progress(0.3, 'Building faces');
+    let built = 0;
     for (const members of groups.values()) {
+      if (++built % 400 === 0) progress(0.3 + 0.25 * (built / groups.size), 'Building faces');
       const first = triangles[members[0]];
       const merged = members.length > 1 ? mergeGroup(model, members.map((i) => triangles[i]), first) : null;
       if (merged) for (const f of merged) addFace(f.outer, f.holes, first.normal, first.color, first.opacity);
@@ -237,8 +244,10 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
     }
 
     // T-junctions and the like: the kernel's own settle splits and welds what is left.
-    splitTJunctions(model);
-    settleCrossings(model);
+    progress(0.55, 'Joining edges');
+    splitTJunctions(model, (f) => progress(0.55 + 0.2 * f, 'Joining edges'));
+    settleCrossings(model, (f) => progress(0.75 + 0.24 * f, 'Checking crossings'));
+    progress(1, 'Done');
   });
   return model;
 }
@@ -247,9 +256,11 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
  * Splits every edge that has a vertex lying in its interior (a T-junction: the mesh was not conforming),
  * so faces on both sides meet at the same points. Uses the model's spatial grid, so it stays fast.
  */
-function splitTJunctions(model: Model): void {
+function splitTJunctions(model: Model, progress: (fraction: number) => void): void {
   const queue = model.allVertices().map((v) => v.id);
+  const total = queue.length;
   while (queue.length > 0) {
+    if (queue.length % 500 === 0) progress(1 - queue.length / total);
     const id = queue.pop()!;
     if (!model.hasVertex(id)) continue;
     for (let guard = 0; guard < 8; guard++) {
@@ -267,9 +278,12 @@ function splitTJunctions(model: Model): void {
  * Where edges of separate parts cross each other (a pane through a wall), the kernel needs a vertex at
  * the crossing. Finds those edges with the spatial grid and lets `settle` split them, only there.
  */
-function settleCrossings(model: Model): void {
+function settleCrossings(model: Model, progress: (fraction: number) => void): void {
   const around = new Set<Id>();
-  for (const edge of model.allEdges()) {
+  const edges = model.allEdges();
+  let checked = 0;
+  for (const edge of edges) {
+    if (++checked % 500 === 0) progress(checked / edges.length);
     const a = model.position(edge.a);
     const b = model.position(edge.b);
     const length = a.distanceTo(b);

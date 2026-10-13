@@ -172,6 +172,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 | 43 | Een materiaal in het palet is kleur + dekking + arcering; de arcering (`Face.hatch`) wordt pas in de tekening uitgerekend, op schaal | Het vlak bewaart alleen de naam van het patroon (`brick`, `boards`, `tiles`, `concrete`, `grass`), net als verf en dekking (bestand, kopieën, splitsen, undo, Push/Pull geven het door; vlakken met verschillende arcering worden niet samengevoegd). `drawing/hatch.ts` maakt de lijnstukken in het vlak van de wand zelf (metselwerk loopt dus horizontaal, planken verticaal) met een modulemaat in mm; de maat wordt opgerekt tot het patroon op papier minstens `paperMin` mm is en een vlak niet meer dan ~700 lijnen krijgt. Op het blad is het één pad (donkerder tint van de kleur, dun, deels doorzichtig) met een knippad op het vlak. Alleen aan de voorkant van een vlak. Het palet heeft een knop "Patterns" om de arcering uit te zetten; in 3D blijft het kleur. |
 
+| 44 | Importeren draait in een Web Worker (`io/importWorker.ts`) met voortgang en Annuleren | De bouw (lassen, vlakken samenvoegen, T-aansluitingen, kruisingen) duurt voor ~8.500 polygonen ~5 s; op de hoofddraad bevriest dat de pagina. De worker stuurt een gestructureerde kopie van de mesh in en krijgt het model terug als gewone data (`Model.toData`), dat de pagina met `load` in een nieuw model zet; voortgang komt per fase (~12 keer per seconde begrensd). Annuleren beëindigt de worker. Zonder `Worker` (testomgeving) valt het terug op de hoofddraad. Een verborgen browservenster remt de worker flink af (24 s tegen 5 s). |
+
 ---
 
 ## 8. Bekende beperkingen
