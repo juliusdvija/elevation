@@ -1,11 +1,10 @@
 import * as THREE from 'three';
 import type { Operation } from '../core/history';
 import { formatLength } from '../core/units';
-import { scaleAbout, transformVertices } from '../kernel/transform';
 import { PreviewLines } from './overlay';
 import { previewEdit } from './preview';
-import { space } from './space';
-import { highlightOf, targetVertices, targetsAt, type Targets } from './targets';
+import { scaleTargets } from './selectionOps';
+import { highlightOf, targetsAt, type Targets } from './targets';
 import type { Tool, ToolContext } from './Tool';
 import { theme } from '../viewport/theme';
 
@@ -40,13 +39,7 @@ export function createScaleTool(ctx: ToolContext): Tool {
   let factor = 1;
   let preview: Operation | null = null;
 
-  const perform = (t: Targets, a: THREE.Vector3, f: THREE.Vector3) => {
-    const s = space(ctx);
-    const model = s.model;
-    const m = s.matrixToLocal(scaleAbout(a, f));
-    for (const id of t.instances) model.setInstanceMatrix(id, m.clone().multiply(new THREE.Matrix4().fromArray(model.instance(id).matrix)));
-    transformVertices(model, targetVertices(ctx, t), m);
-  };
+  const perform = (t: Targets, a: THREE.Vector3, f: THREE.Vector3) => scaleTargets(ctx, t, a, f);
 
   const revertPreview = () => {
     preview?.revert();

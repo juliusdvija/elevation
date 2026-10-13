@@ -60,10 +60,37 @@ export function trimNumber(value: number, decimals: number): string {
   return trimmed === '-0' ? '0' : trimmed;
 }
 
+/** A length as a plain number in the display unit, for an input that has the unit beside it. */
+export function formatNumber(mm: number): string {
+  return trimNumber(mm / UNIT_INFO[display.unit].mm, display.decimals);
+}
+
 /** A length in the display unit with its suffix: "12.5 mm", "1.234 m". */
 export function formatLength(mm: number): string {
   const info = UNIT_INFO[display.unit];
   return `${trimNumber(mm / info.mm, display.decimals)} ${info.suffix}`;
+}
+
+/**
+ * An area in the display unit squared ("288 mm²", "1.25 m²"); in millimetres it moves up to m² past a square metre
+ * so large areas stay readable.
+ */
+export function formatArea(mm2: number): string {
+  const { unit, decimals } = display;
+  if (unit === 'mm' && Math.abs(mm2) >= 1e6) return `${trimNumber(mm2 / 1e6, Math.max(decimals, 2))} m²`;
+  const info = UNIT_INFO[unit];
+  return `${trimNumber(mm2 / (info.mm * info.mm), decimals)} ${info.suffix}²`;
+}
+
+/** A volume in the display unit cubed ("1.2 cm³" for millimetres past a cubic centimetre-ish, then m³). */
+export function formatVolume(mm3: number): string {
+  const { unit, decimals } = display;
+  if (unit === 'mm') {
+    if (Math.abs(mm3) >= 1e9) return `${trimNumber(mm3 / 1e9, Math.max(decimals, 2))} m³`;
+    if (Math.abs(mm3) >= 1e6) return `${trimNumber(mm3 / 1e3, decimals)} cm³`;
+  }
+  const info = UNIT_INFO[unit];
+  return `${trimNumber(mm3 / info.mm ** 3, decimals)} ${info.suffix}³`;
 }
 
 /** Drawing scales (the denominator: 100 is 1:100, 0.5 is 2:1). Enlarging scales are for small parts. */

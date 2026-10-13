@@ -1,3 +1,4 @@
+import { enclosedVolume } from './kernel/measure';
 import * as THREE from 'three';
 import { Emitter } from './core/emitter';
 import { History, type Operation, type Transaction } from './core/history';
@@ -403,6 +404,25 @@ export class Document {
     for (const child of src.allInstances()) {
       target.addInstance(child.definition, matrix.clone().multiply(new THREE.Matrix4().fromArray(child.matrix)), child.tag);
     }
+  }
+
+  /**
+   * World-space bounds and enclosed volume of a group or component in the edited model, with everything
+   * inside it. The volume is null when some geometry in it is not a closed solid.
+   */
+  instanceStats(instanceId: Id): { bounds: THREE.Box3; volume: number | null } {
+    const prefix = [...this.contextPath, instanceId];
+    const bounds = new THREE.Box3();
+    let volume: number | null = 0;
+    for (const p of this.placements()) {
+      if (p.path.length < prefix.length || !prefix.every((id, i) => p.path[i] === id)) continue;
+      for (const v of p.model.allVertices()) bounds.expandByPoint(v.position.clone().applyMatrix4(p.matrix));
+      const faces = p.model.allFaces().map((f) => f.id);
+      if (faces.length === 0) continue;
+      const enclosed = enclosedVolume(p.model, faces);
+      volume = enclosed === null || volume === null ? null : volume + enclosed * Math.abs(p.matrix.determinant());
+    }
+    return { bounds, volume };
   }
 
   /** World-space bounds of everything. */

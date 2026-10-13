@@ -30,6 +30,7 @@ import { createScaleTool } from './tools/ScaleTool';
 import { createPaintTool, PaintState } from './tools/PaintTool';
 import { PaintPalette } from './ui/PaintPalette';
 import { ScenesBar } from './ui/ScenesBar';
+import { InfoPanel } from './ui/InfoPanel';
 import { TagsPanel } from './ui/TagsPanel';
 import type { Scene } from './drawing/settings';
 import type { ToolContext } from './tools/Tool';
@@ -299,6 +300,12 @@ function flyTo(scene: Scene) {
 }
 // Taking over the camera cancels a flight in progress.
 for (const type of ['pointerdown', 'wheel'] as const) shell.viewport.addEventListener(type, () => cancelAnimationFrame(flight), { capture: true, passive: true });
+const infoPanel = new InfoPanel(ctx, doc, selection);
+shell.viewport.append(infoPanel.el);
+shell.infoToggle.addEventListener('click', () => {
+  infoPanel.setVisible(!infoPanel.isVisible);
+  shell.infoToggle.setAttribute('aria-pressed', String(infoPanel.isVisible));
+});
 const tagsPanel = new TagsPanel(doc);
 shell.viewport.append(tagsPanel.el);
 shell.tagsToggle.addEventListener('click', () => {
