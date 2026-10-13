@@ -34,7 +34,7 @@ import { DrawingPanel } from './ui/DrawingPanel';
 import { applyCamera, cameraData, openDocument, saveDocument } from './io/files';
 import { buildModel } from './io/obj';
 import { exportObj } from './io/objExport';
-import { askImportOptions, chooseObjFiles, readObjFiles } from './ui/ImportDialog';
+import { askImportOptions, chooseObjFiles, isModelFile, readModelFiles } from './ui/ImportDialog';
 import { restoreAutosave, startAutosave } from './io/autosave';
 import { CutPlaneGizmo } from './viewport/CutPlaneGizmo';
 import { GroupBar } from './ui/GroupBar';
@@ -304,13 +304,13 @@ async function open() {
   }
 }
 
-/** Imports an OBJ (and its .mtl) as a group in the current context. Lossy: only geometry and colours come across. */
+/** Imports a model file (OBJ with its .mtl, STL, glTF) as a group in the current context. Lossy: only geometry and colours come across. */
 async function importObj(files: File[] | null) {
   if (!files) return;
   try {
-    const source = await readObjFiles(files);
+    const source = await readModelFiles(files);
     if (!source) {
-      window.alert('Choose a .obj file (and optionally its .mtl).');
+      window.alert('Choose an .obj, .stl, .glb or .gltf file (an OBJ may come with its .mtl).');
       return;
     }
     const choice = await askImportOptions(source);
@@ -358,7 +358,7 @@ window.addEventListener('dragover', (e) => e.preventDefault());
 window.addEventListener('drop', (e) => {
   e.preventDefault();
   const files = e.dataTransfer ? [...e.dataTransfer.files] : [];
-  if (files.some((f) => /\.obj$/i.test(f.name))) void importObj(files);
+  if (files.some(isModelFile)) void importObj(files);
 });
 
 async function newDocument() {

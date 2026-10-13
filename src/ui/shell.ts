@@ -103,7 +103,7 @@ export function buildShell(
   const docName = el('div', 'doc-name');
   const newDoc = iconButton(FilePlus, 'New');
   const openDoc = iconButton(FolderOpen, 'Open… (⌘O)');
-  const importDoc = iconButton(Import, 'Import an OBJ file…');
+  const importDoc = iconButton(Import, 'Import a model: OBJ, STL or glTF…');
   const exportDoc = iconButton(FileOutput, 'Export as OBJ (metres, Y up, with colours)');
   const saveDoc = iconButton(Save, 'Save (⌘S)');
   const fileGroup = el('div', 'group');
