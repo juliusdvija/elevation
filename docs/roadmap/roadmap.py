@@ -66,8 +66,23 @@ DATA = {
       ("later","Callouts and enlarged detail views",""),
       ("later","2D symbols (sprites) for furniture and people in plans and elevations",""),
       ("later","Wish: parametric 2D symbols (a table that resizes, a door that swings)","")]},
+    {"name":"Ideas from Rayon","blurb":"Worth adopting, ranked by fit with precise small-scale modelling.","items":[
+      ("next","Dimensions that stay attached to the geometry and follow it when it moves",""),
+      ("next","Radius, diameter and angle dimensions",""),
+      ("next","Per-drawing overrides on a sheet: hide tags or restyle in one drawing only",""),
+      ("next","Crop window and own scale per drawing: enlarged detail views and callouts",""),
+      ("next","Schedules: parts list with count, size, area and volume, exported as CSV",""),
+      ("next","Array, polar array, mirror-copy and align tools",""),
+      ("later","Text notes and leaders on drawings; arrows",""),
+      ("later","Page list with order and a one-click export of all sheets",""),
+      ("later","Export drawings as DXF for CAD, with layers",""),
+      ("later","Image underlay: trace over a photo or scanned sketch",""),
+      ("later","Line weight per tag; wireframe draft mode for fast drawing",""),
+      ("later","Custom hatch rotation and offset; reusable sheet templates",""),
+      ("later","Component families and parametric 2D symbols",""),
+      ("later","Command bar: type a tool and its numbers",""),]},
   ],
-  "log":[("Now","Reviewing the new drawing look with you; next: pale context (ground, trees, people)."),("Just finished","Rayon-inspired drawing style: finer lines, solid thin cuts, hatched earth, new title block."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
+  "log":[("Now","Studied Rayon: a ranked list of features to adopt is on the roadmap."),("Just finished","Rayon-inspired drawing style: finer lines, solid thin cuts, hatched earth, new title block."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
 }
 
 def render(d):
