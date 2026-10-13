@@ -112,23 +112,26 @@ def render(d):
     return TEMPLATE.replace("%%STATS%%",stats).replace("%%PHASES%%",phases).replace("%%LOG%%",log).replace("%%PCT%%",str(pct)).replace("%%DONE%%",str(done)).replace("%%TOTAL%%",str(total))
 
 TEMPLATE = """<title>Elevation Roadmap</title>
-<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Instrument+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@400;500&display=swap">
 <style>
+/* Typography follows bobvanboekel.nl: Maison Neue, falling back to Helvetica Neue / Arial where the font cannot load. */
+@font-face{font-family:maisonNeue;src:url(https://bobvanboekel.nl/_next/static/immutable/media/MaisonNeue_Light-s.p.36yhntup0vpj6.ttf) format("truetype");font-weight:300;font-display:swap}
+@font-face{font-family:maisonNeue;src:url(https://bobvanboekel.nl/_next/static/immutable/media/MaisonNeue_Book-s.p.0wxz7g_buw-5b.ttf) format("truetype");font-weight:400;font-display:swap}
+@font-face{font-family:maisonNeue;src:url(https://bobvanboekel.nl/_next/static/immutable/media/MaisonNeue_Bold-s.p.3m_onx_5zbmcp.ttf) format("truetype");font-weight:700;font-display:swap}
 /* Layout: a status header, then one column per workstream; items carry a state chip and the commit that finished them. */
 :root{
   --bg:#f6f7f8; --surface:#ffffff; --fg:#1b2025; --muted:#66707a; --line:#dde1e5;
   --accent:#2f6fde; --done:#2e8b57; --doing:#c27a12; --next:#2f6fde; --later:#8a939c;
-  --done-bg:#e4f3ea; --doing-bg:#fbefd9; --next-bg:#e3ecfb; --later-bg:#eceef0;
-  --font:'Instrument Sans',system-ui,-apple-system,'Segoe UI',sans-serif; --mono:'JetBrains Mono',ui-monospace,Menlo,monospace;
+  --panel:#e9ebee; --head:#1f7a45; --done-bg:#e4f3ea; --doing-bg:#fbefd9; --next-bg:#e3ecfb; --later-bg:#eceef0;
+  --font:'maisonNeue','Helvetica Neue',Arial,sans-serif; --mono:var(--font);
 }
 @media (prefers-color-scheme: dark){:root:not([data-theme="light"]){
   --bg:#13171b; --surface:#1b2026; --fg:#e7eaed; --muted:#98a1ab; --line:#2b323a;
   --accent:#6b9cf0; --done:#5cc48a; --doing:#e3a948; --next:#7ea6f2; --later:#8d97a1;
-  --done-bg:#1d3327; --doing-bg:#3a2d14; --next-bg:#1c2b47; --later-bg:#252b32; color-scheme:dark}}
+  --panel:#262c33; --head:#5cc48a; --done-bg:#1d3327; --doing-bg:#3a2d14; --next-bg:#1c2b47; --later-bg:#252b32; color-scheme:dark}}
 :root[data-theme="dark"]{
   --bg:#13171b; --surface:#1b2026; --fg:#e7eaed; --muted:#98a1ab; --line:#2b323a;
   --accent:#6b9cf0; --done:#5cc48a; --doing:#e3a948; --next:#7ea6f2; --later:#8d97a1;
-  --done-bg:#1d3327; --doing-bg:#3a2d14; --next-bg:#1c2b47; --later-bg:#252b32; color-scheme:dark}
+  --panel:#262c33; --head:#5cc48a; --done-bg:#1d3327; --doing-bg:#3a2d14; --next-bg:#1c2b47; --later-bg:#252b32; color-scheme:dark}
 body{background:var(--bg);color:var(--fg);font-family:var(--font);font-size:14px;line-height:1.5;padding-inline:16px}
 .wrap{max-width:1080px;margin:0 auto;padding-block:28px 40px;display:flex;flex-direction:column;gap:24px}
 h1{margin:0;font-size:26px;font-weight:600;letter-spacing:-.01em;text-wrap:balance}
@@ -141,11 +144,11 @@ h1{margin:0;font-size:26px;font-weight:600;letter-spacing:-.01em;text-wrap:balan
 .stat{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:12px 14px;display:flex;flex-direction:column;gap:2px;min-width:0}
 .stat b{font-size:22px;font-weight:600;font-variant-numeric:tabular-nums}
 .stat span{color:var(--muted);font-size:12px}
-.now{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:14px 16px}
-.now h3{margin:0 0 8px;font-size:12px;text-transform:uppercase;letter-spacing:.08em;color:var(--muted);font-weight:500}
-.now ul{margin:0;padding:0;list-style:none;display:grid;gap:6px}
-.now li{display:flex;flex-wrap:wrap;gap:4px 12px}
-.now li span{width:110px;font-family:var(--font);font-size:13px;font-weight:700;color:var(--fg);flex:none}
+.now{background:var(--panel);border-radius:16px;padding:24px 28px}
+.now h3{margin:0 0 16px;font-size:34px;line-height:1.1;letter-spacing:-.02em;color:var(--head);font-weight:700}
+.now ul{margin:0;padding:0;list-style:none;display:grid;gap:12px}
+.now li{display:flex;flex-wrap:wrap;gap:4px 16px;font-size:15px}
+.now li span{width:150px;font-size:16px;font-weight:700;letter-spacing:.01em;color:var(--fg);flex:none}
 .grid{display:grid;grid-template-columns:repeat(auto-fit,minmax(min(100%,460px),1fr));gap:16px}
 .phase{background:var(--surface);border:1px solid var(--line);border-radius:8px;padding:16px;display:flex;flex-direction:column;gap:8px;min-width:0}
 .phase header{display:flex;justify-content:space-between;align-items:baseline;gap:12px}

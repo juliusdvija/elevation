@@ -28,7 +28,7 @@ In the dev server, `window.__elevation` exposes `doc`, `model`, `picker`, `tools
 The user follows progress in a live roadmap artifact, not in the terminal log. Treat it as part of the work:
 
 - The data is in `docs/roadmap/roadmap.py` (`DATA`: stats, phases with items, and a short activity log). Each item is `(status, short description, commit)` with status `done | doing | next | later`; each phase has a header (`name`) and a one-line `blurb`.
-- Update it whenever something starts, finishes, is dropped or is re-prioritised, and always before ending a turn in which work landed: mark the item `doing` when you start it, `done` with its commit when it lands, and refresh the "Now / Just finished / Known issue / Direction" log lines and the stats (tests passing, decisions logged).
+- Update it whenever something starts, finishes, is dropped or is re-prioritised, and always before ending a turn in which work landed: mark the item `doing` when you start it, `done` with its commit when it lands, and refresh all four "Now / Just finished / Known issue / Direction" log lines every time (never leave one stale; Direction is your pick for the best next step) and the stats (tests passing, decisions logged).
 - Descriptions are plain language a non-developer can follow: what the user can now do, not which functions changed.
 - Publish: `python3 docs/roadmap/roadmap.py <scratchpad>/roadmap.html`, then publish that file with the Artifact tool to https://claude.ai/artifact/RA2SCFVDcE8cwgbrhi93Td (same file path keeps the URL).
 - After a turn, summarise in the chat in a few plain sentences (what was done, what is next); details belong in the commit and the decision log.
