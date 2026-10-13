@@ -1,4 +1,5 @@
 import * as THREE from 'three';
+import { Emitter } from '../core/emitter';
 import { CameraRig, WORLD_UP } from './CameraRig';
 import { AdaptiveGrid, Ground, NorthArrow, createAxes, niceSpacing } from './helpers';
 import { theme } from './theme';
@@ -41,6 +42,18 @@ export class Viewport {
   private readonly north = new NorthArrow();
   private northAngle: number | null = null;
   private readonly sun = new THREE.DirectionalLight(0xffffff, SUN_INTENSITY);
+  /** Dimensions drawn highlighted: the selected ones and the one under the cursor. */
+  readonly dimensionHighlight = { selected: new Set<string>(), hover: null as string | null };
+  readonly dimensionHighlightChanged = new Emitter<void>();
+  setDimensionHighlight(selected: Iterable<string>, hover: string | null): void {
+    const next = new Set(selected);
+    const same = hover === this.dimensionHighlight.hover && next.size === this.dimensionHighlight.selected.size && [...next].every((id) => this.dimensionHighlight.selected.has(id));
+    if (same) return;
+    this.dimensionHighlight.selected = next;
+    this.dimensionHighlight.hover = hover;
+    this.dimensionHighlightChanged.emit();
+    this.requestRender();
+  }
   /** Whether the snap grid is drawn on the ground. */
   gridVisible = false;
   /** Whether the sun casts shadows. */

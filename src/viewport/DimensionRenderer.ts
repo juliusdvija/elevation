@@ -1,6 +1,8 @@
 import * as THREE from 'three';
 import type { Document } from '../document';
 import { dimensionShape } from '../drawing/dimensions';
+import { theme } from './theme';
+import { ThickLines } from './thickLines';
 import type { Viewport } from './Viewport';
 
 const COLOR = 0x1d1d1b;
@@ -17,6 +19,7 @@ export class DimensionRenderer {
     this.group.renderOrder = 8;
     viewport.overlay.add(this.group);
     doc.settingsChanged.on(() => this.rebuild());
+    viewport.dimensionHighlightChanged.on(() => this.rebuild());
     this.rebuild();
   }
 
@@ -27,13 +30,24 @@ export class DimensionRenderer {
     }
     const thin: THREE.Vector3[] = [];
     const thick: THREE.Vector3[] = [];
+    const picked: THREE.Vector3[] = [];
+    const { selected, hover } = this.viewport.dimensionHighlight;
     for (const d of this.doc.drawingSettings.dimensions) {
       const s = dimensionShape(d);
-      thin.push(s.a, s.a2, s.b, s.b2);
-      thick.push(s.a2, s.b2);
+      // Selected and hovered dimensions are drawn in the selection blue, heavier.
+      const highlighted = selected.has(d.id) || d.id === hover;
+      (highlighted ? picked : thin).push(s.a, s.a2, s.b, s.b2);
+      (highlighted ? picked : thick).push(s.a2, s.b2);
       this.group.add(label(s.text, s.mid));
     }
     this.group.add(lines(thin, MUTED), lines(thick, COLOR));
+    if (picked.length > 0) {
+      const heavy = new ThickLines(theme.selection, 3);
+      (heavy.material as THREE.Material).depthTest = false;
+      heavy.renderOrder = 10;
+      heavy.setSegments(picked.flatMap((p) => [p.x, p.y, p.z]));
+      this.group.add(heavy);
+    }
     this.viewport.requestRender();
   }
 }

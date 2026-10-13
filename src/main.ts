@@ -206,7 +206,11 @@ tools.changed.on((tool) => {
 for (const [id, button] of shell.toolButtons) button.addEventListener('click', () => tools.activate(id));
 tools.activate('select');
 
-selection.changed.on(() => renderer.setSelection({ faces: selection.faces, edges: selection.edges, instances: selection.instances }));
+selection.changed.on(() => {
+  renderer.setSelection({ faces: selection.faces, edges: selection.edges, instances: selection.instances });
+  viewport.setDimensionHighlight(selection.dimensions, null);
+});
+doc.settingsChanged.on(() => selection.pruneDimensions(new Set(doc.drawingSettings.dimensions.map((d) => d.id))));
 doc.geometryChanged.on(() => selection.prune(doc.context.model));
 doc.contextChanged.on(() => {
   tools.cancel();

@@ -4,6 +4,7 @@ import type { Id } from '../kernel/Model';
 import { within } from '../viewport/ModelRenderer';
 import { boxFrom, boxMode, edgeInBox, polygonInBox, type BoxMode } from './boxSelect';
 import type { EntityRef } from './Selection';
+import { deleteDimensions, dimensionAt } from './dimensionPick';
 import { entityOf } from './targets';
 import type { Tool, ToolContext } from './Tool';
 
@@ -20,8 +21,17 @@ export function createSelectTool(ctx: ToolContext): Tool {
   let dragging = false;
   let lastClick: { at: THREE.Vector2; time: number } | null = null;
 
-  const entityAt = (e: PointerEvent): EntityRef | null =>
-    entityOf(ctx, ctx.picker.pick(e.clientX, e.clientY, { vertices: false, guides: false }));
+  /** A dimension under the cursor wins over the model behind it; otherwise what the picker finds. */
+  const entityAt = (e: PointerEvent): EntityRef | null => {
+    const dimension = dimensionAt(ctx, e.clientX, e.clientY);
+    if (dimension) return { kind: 'dimension', id: dimension };
+    return entityOf(ctx, ctx.picker.pick(e.clientX, e.clientY, { vertices: false, guides: false }));
+  };
+
+  const hover = (ref: EntityRef | null) => {
+    ctx.viewport.setDimensionHighlight(ctx.selection.dimensions, ref?.kind === 'dimension' ? ref.id : null);
+    ctx.renderer.setHover(ref && ref.kind !== 'dimension' ? highlightOf([ref]) : null);
+  };
 
   /** Everything in the edited model inside (window) or touching (crossing) a client-space box. */
   const entitiesIn = (box: THREE.Box2, mode: BoxMode): EntityRef[] => {
@@ -61,9 +71,9 @@ export function createSelectTool(ctx: ToolContext): Tool {
   };
 
   const highlightOf = (refs: EntityRef[]) => ({
-    faces: refs.filter((r) => r.kind === 'face').map((r) => r.id),
-    edges: refs.filter((r) => r.kind === 'edge').map((r) => r.id),
-    instances: refs.filter((r) => r.kind === 'instance').map((r) => r.id),
+    faces: refs.filter((r) => r.kind === 'face').map((r) => r.id as number),
+    edges: refs.filter((r) => r.kind === 'edge').map((r) => r.id as number),
+    instances: refs.filter((r) => r.kind === 'instance').map((r) => r.id as number),
   });
 
   const showBox = (start: THREE.Vector2, end: THREE.Vector2) => {
@@ -85,6 +95,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
     dragging = false;
     boxEl.hidden = true;
     ctx.renderer.setHover(null);
+    ctx.viewport.setDimensionHighlight(ctx.selection.dimensions, null);
   };
 
   /** Double-click: open a group for editing, or close the one being edited. */
@@ -102,7 +113,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
     id: 'select',
     label: 'Select',
     shortcut: 'Space',
-    hint: 'Click to select, drag a box to select several (left to right: fully inside; right to left: touching). Double-click a group to edit it. Delete erases.',
+    hint: 'Click to select (dimensions too), drag a box to select several (left to right: fully inside; right to left: touching). Double-click a group to edit it. Delete erases.',
     cursor: 'default',
 
     pointerDown(e) {
@@ -120,8 +131,7 @@ export function createSelectTool(ctx: ToolContext): Tool {
         }
         return;
       }
-      const ref = entityAt(e);
-      ctx.renderer.setHover(ref && highlightOf([ref]));
+      hover(entityAt(e));
     },
 
     pointerUp(e) {
@@ -162,13 +172,17 @@ export function createSelectTool(ctx: ToolContext): Tool {
       }
       if ((e.key === 'Delete' || e.key === 'Backspace') && !ctx.selection.empty) {
         const model = ctx.doc.context.model;
-        const { faces, edges, instances } = ctx.selection;
-        ctx.doc.run('Erase', () => {
-          for (const id of instances) model.removeInstance(id);
-          eraseFaces(model, [...faces]);
-          eraseEdges(model, [...edges]);
-        });
+        const { faces, edges, instances, dimensions } = ctx.selection;
+        if (faces.size + edges.size + instances.size > 0) {
+          ctx.doc.run('Erase', () => {
+            for (const id of instances) model.removeInstance(id);
+            eraseFaces(model, [...faces]);
+            eraseEdges(model, [...edges]);
+          });
+        }
+        const gone = [...dimensions];
         ctx.selection.clear();
+        deleteDimensions(ctx, gone);
         return true;
       }
       return false;
