@@ -3,7 +3,7 @@ import type { DefinitionData } from '../document';
 import type { DrawingSettings } from '../drawing/settings';
 
 /** Version of the .elev file format written by this build. */
-export const FORMAT_VERSION = 3;
+export const FORMAT_VERSION = 4;
 
 export interface CameraData {
   position: [number, number, number];
@@ -20,7 +20,7 @@ export interface ElevationFile {
   model: ModelData;
   /** Groups and components (format 2). */
   definitions?: DefinitionData[];
-  /** Levels, plan cut height and sections (format 3). */
+  /** Levels, plan cut height, sections (format 3) and layouts (format 4). */
   drawing?: DrawingSettings;
   camera?: CameraData;
 }

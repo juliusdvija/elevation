@@ -1,12 +1,13 @@
-import { Download, Layers, Plus, Trash2, createElement, type IconNode } from 'lucide';
+import { Download, Layers, LayoutGrid, Plus, Trash2, createElement, type IconNode } from 'lucide';
 import { Emitter } from '../core/emitter';
 import type { Document } from '../document';
 import { buildSheets } from '../drawing/build';
+import { addViewport, composeLayout, nextLayout, tidyLayout, type Layout, type LayoutPaper } from '../drawing/layout';
 import { sheetsToPdf } from '../drawing/pdf';
 import { allViews, nextLevel, sectionCoordinate, sortedLevels, type DrawingSettings, type ViewRef } from '../drawing/settings';
 import type { Paper } from '../drawing/sheet';
 import { sheetToSvg } from '../drawing/svg';
-import type { ViewKind, ViewSetup } from '../drawing/views';
+import { viewSetup, type ViewKind, type ViewSetup } from '../drawing/views';
 
 const TABS: [ViewKind, string][] = [
   ['plan', 'Plan'],
@@ -17,7 +18,8 @@ const TABS: [ViewKind, string][] = [
   ['section', 'Section'],
 ];
 
-const SCALES = [50, 100, 200, 500];
+const SCALES = [20, 50, 100, 200, 500];
+const LAYOUT_PAPERS: LayoutPaper[] = ['A4', 'A3', 'A2', 'A1'];
 const PAPERS: [Paper, string][] = [
   ['fit', 'Fit'],
   ['A4', 'A4'],
@@ -87,10 +89,15 @@ export class DrawingPanel {
   private frame = 0;
   private visible = true;
   private editingLevels = false;
+  /** Showing the layout pages instead of one drawing. */
+  private sheetsMode = false;
+  private layoutId: string | null = null;
+  private tabSheets!: HTMLButtonElement;
 
   private readonly tabs = new Map<ViewKind, HTMLButtonElement>();
   private readonly controls = el('div', 'drawings-controls');
   private readonly levelsEditor = el('div', 'levels-editor');
+  private readonly viewportsEditor = el('div', 'levels-editor');
   private readonly stage = el('div', 'drawings-stage');
   private readonly sheet = el('div', 'drawings-sheet');
   private readonly empty = el('div', 'drawings-empty', 'Draw something to see its drawings here.');
@@ -108,11 +115,17 @@ export class DrawingPanel {
       this.tabs.set(kind, button);
       tabs.append(button);
     }
+    this.tabSheets = el('button', 'text-button');
+    this.tabSheets.type = 'button';
+    this.tabSheets.title = 'Pages with several drawings';
+    this.tabSheets.append(createElement(LayoutGrid, { width: 14, height: 14 }), ' Sheets');
+    this.tabSheets.addEventListener('click', () => this.setSheets());
+    tabs.append(this.tabSheets);
     header.append(tabs);
 
     this.buildExportMenu();
     this.stage.append(this.sheet, this.empty);
-    this.el.append(header, this.controls, this.levelsEditor, this.stage);
+    this.el.append(header, this.controls, this.levelsEditor, this.viewportsEditor, this.stage);
     this.bindStage();
 
     doc.geometryChanged.on(() => this.schedule());
@@ -120,6 +133,7 @@ export class DrawingPanel {
       this.preview = null;
       this.renderControls();
       this.renderLevelsEditor();
+      this.renderViewportsEditor();
       this.schedule();
     });
     this.setKind('plan');
@@ -165,12 +179,59 @@ export class DrawingPanel {
 
   private setKind(kind: ViewKind): void {
     this.kind = kind;
+    this.sheetsMode = false;
     for (const [k, button] of this.tabs) button.setAttribute('aria-pressed', String(k === kind));
+    this.tabSheets.setAttribute('aria-pressed', 'false');
+    this.fillExportMenu();
     this.renderControls();
     this.renderLevelsEditor();
+    this.renderViewportsEditor();
     this.view = { x: 0, y: 0, zoom: 1 };
     this.applyView();
     this.schedule();
+  }
+
+  private setSheets(): void {
+    this.sheetsMode = true;
+    for (const button of this.tabs.values()) button.setAttribute('aria-pressed', 'false');
+    this.tabSheets.setAttribute('aria-pressed', 'true');
+    this.fillExportMenu();
+    this.renderControls();
+    this.renderLevelsEditor();
+    this.renderViewportsEditor();
+    this.view = { x: 0, y: 0, zoom: 1 };
+    this.applyView();
+    this.schedule();
+  }
+
+  /** The selected layout (falls back to the first). */
+  private currentLayout(): Layout | undefined {
+    const layouts = this.settings.layouts;
+    return layouts.find((l) => l.id === this.layoutId) ?? layouts[0];
+  }
+
+  /** Changes the selected layout as one undo step. */
+  private commitLayout(label: string, change: (layout: Layout) => Layout | void): void {
+    const current = this.currentLayout();
+    if (!current) return;
+    this.commit(label, (n) => {
+      const i = n.layouts.findIndex((l) => l.id === current.id);
+      n.layouts[i] = change(n.layouts[i]) ?? n.layouts[i];
+    });
+  }
+
+  /** Adds the drawing on show to the selected layout, creating the first one when there is none. */
+  private addCurrentToSheet(): void {
+    let layout = this.currentLayout();
+    const created = !layout;
+    layout ??= nextLayout(this.doc.drawingSettings.layouts);
+    const updated = addViewport(this.doc, layout, this.currentRef(), this.scale, this.settings);
+    this.layoutId = updated.id;
+    this.commit('Add Drawing to Sheet', (n) => {
+      if (created) n.layouts.push(updated);
+      else n.layouts[n.layouts.findIndex((l) => l.id === updated.id)] = updated;
+    });
+    this.status.textContent = `Added to ${updated.name}`;
   }
 
   /** Commits a settings change (one undo step). */
@@ -183,6 +244,11 @@ export class DrawingPanel {
   private renderControls(): void {
     this.controls.replaceChildren();
     const s = this.settings;
+
+    if (this.sheetsMode) {
+      this.renderSheetControls();
+      return;
+    }
 
     if (this.kind === 'plan') {
       const select = el('select');
@@ -286,6 +352,14 @@ export class DrawingPanel {
     auto.title = 'Dimension every drawing: overall size and a chain along the cut walls';
     auto.setAttribute('aria-pressed', String(s.autoDimensions));
     auto.addEventListener('click', () => this.commit('Auto Dimensions', (n) => (n.autoDimensions = !n.autoDimensions)));
+    const addToSheet = el('button', 'pill-button', 'Add to sheet');
+    addToSheet.type = 'button';
+    addToSheet.title = 'Put this drawing, at this scale, on a sheet with other drawings';
+    addToSheet.addEventListener('click', () => this.addCurrentToSheet());
+    this.controls.append(el('div', 'spacer'), this.status, auto, addToSheet, field('Scale', scale), field('Paper', paper), this.exportControl());
+  }
+
+  private exportControl(): HTMLElement {
     const exportButton = iconButton(Download, 'Export');
     exportButton.addEventListener('click', (e) => {
       e.stopPropagation();
@@ -293,7 +367,86 @@ export class DrawingPanel {
     });
     const exportWrap = el('div', 'export-wrap');
     exportWrap.append(exportButton, this.exportMenu);
-    this.controls.append(el('div', 'spacer'), this.status, auto, field('Scale', scale), field('Paper', paper), exportWrap);
+    return exportWrap;
+  }
+
+  private renderSheetControls(): void {
+    const layouts = this.settings.layouts;
+    const layout = this.currentLayout();
+    const select = el('select');
+    for (const l of layouts) {
+      const option = el('option', undefined, l.name);
+      option.value = l.id;
+      option.selected = l.id === layout?.id;
+      select.append(option);
+    }
+    select.disabled = layouts.length === 0;
+    select.addEventListener('change', () => {
+      this.layoutId = select.value;
+      this.renderControls();
+      this.renderViewportsEditor();
+      this.schedule();
+    });
+    const add = iconButton(Plus, 'New sheet');
+    add.addEventListener('click', () => {
+      const created = nextLayout(this.doc.drawingSettings.layouts, layout?.paper ?? 'A3');
+      this.layoutId = created.id;
+      this.commit('Add Sheet', (n) => n.layouts.push(created));
+    });
+    this.controls.append(field('Sheet', select), add);
+    if (layout) {
+      const name = el('input');
+      name.value = layout.name;
+      name.addEventListener('change', () => this.commitLayout('Rename Sheet', (l) => ({ ...l, name: name.value.trim() || l.name })));
+      const paper = el('select');
+      for (const value of LAYOUT_PAPERS) {
+        const option = el('option', undefined, value);
+        option.value = value;
+        option.selected = value === layout.paper;
+        paper.append(option);
+      }
+      paper.addEventListener('change', () => this.commitLayout('Sheet Paper', (l) => ({ ...l, paper: paper.value as LayoutPaper })));
+      const tidy = el('button', 'pill-button', 'Tidy');
+      tidy.type = 'button';
+      tidy.title = 'Place the drawings again, side by side without overlap';
+      tidy.addEventListener('click', () => this.commitLayout('Tidy Sheet', (l) => tidyLayout(this.doc, l, this.settings)));
+      const remove = iconButton(Trash2, 'Delete sheet');
+      remove.addEventListener('click', () => this.commit('Delete Sheet', (n) => (n.layouts = n.layouts.filter((l) => l.id !== layout.id))));
+      this.controls.append(field('Name', name), field('Paper', paper), tidy, remove);
+    }
+    this.controls.append(el('div', 'spacer'), this.status, this.exportControl());
+  }
+
+  /** The drawings on the selected sheet: scale, position, remove. */
+  private renderViewportsEditor(): void {
+    this.viewportsEditor.replaceChildren();
+    const layout = this.currentLayout();
+    this.viewportsEditor.hidden = !this.sheetsMode || !layout;
+    if (this.viewportsEditor.hidden || !layout) return;
+    const bounds = this.doc.bounds();
+    for (const viewport of layout.viewports) {
+      const change = (label: string, patch: Partial<typeof viewport>) =>
+        this.commitLayout(label, (l) => ({ ...l, viewports: l.viewports.map((v) => (v.id === viewport.id ? { ...v, ...patch } : v)) }));
+      const row = el('div', 'level-row');
+      row.append(el('span', 'unit', viewSetup(viewport.view, this.settings, bounds).title));
+      const scale = el('select');
+      for (const value of new Set([...SCALES, viewport.scale].sort((a, b) => a - b))) {
+        const option = el('option', undefined, `1:${value}`);
+        option.value = String(value);
+        option.selected = value === viewport.scale;
+        scale.append(option);
+      }
+      scale.addEventListener('change', () => change('Viewport Scale', { scale: Number(scale.value) }));
+      const x = numberInput(viewport.x, 5);
+      x.addEventListener('change', () => Number.isFinite(Number(x.value)) && change('Move Drawing', { x: Number(x.value) }));
+      const y = numberInput(viewport.y, 5);
+      y.addEventListener('change', () => Number.isFinite(Number(y.value)) && change('Move Drawing', { y: Number(y.value) }));
+      const remove = iconButton(Trash2, 'Remove from sheet');
+      remove.addEventListener('click', () => this.commitLayout('Remove Drawing', (l) => ({ ...l, viewports: l.viewports.filter((v) => v.id !== viewport.id) })));
+      row.append(scale, field('x', x, 'mm'), field('y', y, 'mm'), remove);
+      this.viewportsEditor.append(row);
+    }
+    if (layout.viewports.length === 0) this.viewportsEditor.append(el('span', 'unit', 'Open a drawing and choose "Add to sheet".'));
   }
 
   private renderLevelsEditor(): void {
@@ -331,6 +484,13 @@ export class DrawingPanel {
 
   private buildExportMenu(): void {
     this.exportMenu.hidden = true;
+    document.addEventListener('click', () => (this.exportMenu.hidden = true));
+    this.fillExportMenu();
+  }
+
+  /** The menu follows the mode: one drawing and the whole set, or one sheet and all sheets. */
+  private fillExportMenu(): void {
+    this.exportMenu.replaceChildren();
     const item = (label: string, action: () => void) => {
       const b = el('button', 'menu-item', label);
       b.type = 'button';
@@ -340,10 +500,15 @@ export class DrawingPanel {
       });
       this.exportMenu.append(b);
     };
-    item('This drawing as SVG', () => this.exportSvg());
-    item('This drawing as PDF', () => this.exportPdf(false));
-    item('All drawings as PDF', () => this.exportPdf(true));
-    document.addEventListener('click', () => (this.exportMenu.hidden = true));
+    if (this.sheetsMode) {
+      item('This sheet as SVG', () => this.exportSvg());
+      item('This sheet as PDF', () => this.exportLayoutPdf(false));
+      item('All sheets as PDF', () => this.exportLayoutPdf(true));
+    } else {
+      item('This drawing as SVG', () => this.exportSvg());
+      item('This drawing as PDF', () => this.exportPdf(false));
+      item('All drawings as PDF', () => this.exportPdf(true));
+    }
   }
 
   private fileBase(): string {
@@ -351,8 +516,24 @@ export class DrawingPanel {
   }
 
   private exportSvg(): void {
-    if (!this.svg || !this.setup) return;
+    if (!this.svg) return;
+    if (this.sheetsMode) {
+      download(this.svg, 'image/svg+xml', `${this.fileBase()} - ${this.currentLayout()?.name ?? 'sheet'}.svg`);
+      return;
+    }
+    if (!this.setup) return;
     download(this.svg, 'image/svg+xml', `${this.fileBase()} - ${this.setup.title} 1-${this.scale}.svg`);
+  }
+
+  private exportLayoutPdf(all: boolean): void {
+    const layouts = all ? this.doc.drawingSettings.layouts : [this.currentLayout()].filter((l): l is Layout => !!l);
+    if (layouts.length === 0) return;
+    const flat = this.doc.flatten();
+    const pdf = sheetsToPdf(
+      layouts.map((layout) => composeLayout(this.doc, layout, this.doc.drawingSettings, flat).sheet),
+      this.doc.name,
+    );
+    download(pdf.slice().buffer, 'application/pdf', all ? `${this.fileBase()} - sheets.pdf` : `${this.fileBase()} - ${layouts[0].name}.pdf`);
   }
 
   private exportPdf(all: boolean): void {
@@ -378,6 +559,11 @@ export class DrawingPanel {
   private update(): void {
     const start = performance.now();
     const flat = this.doc.flatten();
+    if (this.sheetsMode) {
+      this.updateSheets(flat, start);
+      return;
+    }
+    this.empty.textContent = 'Draw something to see its drawings here.';
     const [built] = buildSheets(this.doc, [this.currentRef()], { scale: this.scale, paper: this.paper }, flat, this.settings);
     this.setup = built.setup;
     this.viewChanged.emit(this.setup);
@@ -395,6 +581,27 @@ export class DrawingPanel {
     const ms = Math.max(1, Math.round(performance.now() - start));
     this.status.textContent = built.sheet.fits ? `Live · ${ms} ms` : `Too big for ${this.paper} at 1:${this.scale}`;
     this.status.dataset.warn = String(!built.sheet.fits);
+  }
+
+  private updateSheets(flat: ReturnType<Document['flatten']>, start: number): void {
+    this.setup = null;
+    this.viewChanged.emit(null);
+    const layout = this.currentLayout();
+    const isEmpty = !layout || layout.viewports.length === 0;
+    this.empty.textContent = layout ? 'Open a drawing and choose "Add to sheet" to place it here.' : 'Press + to make a sheet, then add drawings to it.';
+    this.empty.hidden = !isEmpty;
+    this.sheet.hidden = isEmpty;
+    if (!layout || isEmpty) {
+      this.status.textContent = '';
+      this.svg = '';
+      return;
+    }
+    const { sheet, fits } = composeLayout(this.doc, layout, this.settings, flat);
+    this.svg = sheetToSvg(sheet);
+    this.sheet.innerHTML = this.svg;
+    const ms = Math.max(1, Math.round(performance.now() - start));
+    this.status.textContent = fits ? `Live · ${ms} ms` : `A drawing does not fit on ${layout.paper}`;
+    this.status.dataset.warn = String(!fits);
   }
 
   /** Wheel zooms around the cursor, drag pans, double-click resets. */

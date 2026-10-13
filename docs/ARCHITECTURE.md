@@ -86,6 +86,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - **Hidden-line removal is exact en analytisch**: elke rand wordt geprojecteerd en weggeknipt waar een vlak ervoor ligt (intervalrekening per vlak). Samenvallende lijnstukken worden samengevoegd (dichtstbijzijnde diepte wint).
 - **Snede**: het snijvlak wordt met alle vlakken gesneden; stukken worden aan elkaar geschakeld tot gesloten lussen en gevuld (poché, even-odd).
 - **Sheet-opmaak** (`sheet.ts`): zet een tekening om naar **papier-primitieven** (lijnen, vlakken, tekst in papier-mm) met poché, grondlijn, **peilmarkeringen** (▼ naam + peil, in aanzichten en doorsneden), **snijsymbolen** (streep-stippellijn, zware uiteinden, pijlen in kijkrichting en de letter, in plattegronden), titelblok en schaalbalk; op "passend" formaat of op A4–A1 liggend (met een waarschuwing als het niet past). Stijl is een set tokens (`MINIMAL`): lijndiktes in **papier-mm**, diepte-fading over 12 m.
+- **Bladen** (`drawing/layout.ts`): een blad (A4–A1) bevat **viewports**: een tekening (`ViewRef`) met eigen schaal en een plek in papier-mm. Elke viewport wordt als gewone `layoutSheet` (met titel en schaalbalk) gebouwd en verschoven op de pagina gezet (`composeLayout`); er komt een kader en een bladtitel bij. Nieuwe viewports komen op de eerste vrije plek (`addViewport`), `tidyLayout` pakt alles opnieuw in; past iets niet, dan komt het onder de pagina en meldt het blad dat het niet past. Bladen horen bij de tekeninginstellingen (undo, bestand).
 - **Renderers**: `svg.ts` (scherm en SVG-export) en `pdf.ts`, een **eigen PDF-schrijver**: echte vectorpaden, even-odd-vullingen, streepjes en Helvetica (standaard-PDF-lettertype, niets ingesloten), meerdere pagina's per bestand. `build.ts` bouwt sheets voor één of alle views (de **tekeningenset**).
 - Live: het paneel herberekent bij elke wijziging (max. één keer per frame), ook tijdens tool-previews.
 
@@ -102,7 +103,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 ## 6. Bestanden (`src/io`)
 
-- Formaat **`.elev`**: leesbare JSON `{ format, version, units: 'mm', model, definitions, drawing, camera }`. Versie 2 voegde definities toe, **3** de tekeninginstellingen. Nieuwere versies worden geweigerd met een duidelijke melding.
+- Formaat **`.elev`**: leesbare JSON `{ format, version, units: 'mm', model, definitions, drawing, camera }`. Versie 2 voegde definities toe, **3** de tekeninginstellingen, **4** de bladen (`drawing.layouts`). Nieuwere versies worden geweigerd met een duidelijke melding.
 - Opslaan via de **File System Access API** waar beschikbaar (schrijft terug naar hetzelfde bestand), anders download/bestandskiezer.
 - Een **herstelkopie** in `localStorage` vangt herladen op; het bestand blijft de echte opslag.
 
@@ -146,6 +147,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 | 31 | Ruimtelijk raster (`kernel/spatial.ts`) op hoekpunten en randen, bijgehouden in `Model.set` | Zoeken naar een hoekpunt of rand bij een punt (`findVertex`, `findEdgeContaining`) en het snijden van een nieuw lijnstuk (`insertSegment`) lopen niet meer over het hele model. Alle schrijfacties (ook undo) lopen via `set`, dus het raster blijft kloppen; een rand wordt opnieuw geplaatst als een eindpunt verschuift. Zeer lange randen staan in een korte lijst die elke zoekopdracht controleert. |
 | 32 | `rebuildPlane` rekent plaatslidmaatschap per hoekpunt en snoeit met omhullende vakken | Dat was de grootste kostenpost bij het tekenen in grote modellen. Het scant nog steeds alle randen per vlak: een lokale herbouw (alleen de samenhangende component rond de nieuwe randen plus omsluitende vlakken) is de volgende stap. |
 
+| 33 | Een blad is een lijst viewports, elk een gewone tekening op eigen schaal, geplaatst in papier-mm | Hergebruikt `layoutSheet` ongewijzigd (annotaties, titel, schaalbalk per tekening), dus een tekening ziet er op een blad hetzelfde uit als los. Positie is opgeslagen (verschuifbaar en undo-baar) in plaats van elke keer berekend; automatisch plaatsen gebeurt alleen bij toevoegen en bij "Tidy". |
+
 ---
 
 ## 8. Bekende beperkingen
@@ -153,5 +156,5 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Een volume wegduwen terwijl er iets aan vastzit: het deel dat blijft staan wordt nu dichtgemaakt als het model eerst gesloten was (besluit 26). In de solids-fuzz faalt nog ~1% van de reeksen van 40 stappen (was ~22% bij 30 stappen): zeldzame losse randen zonder vlakken, een rand die door een vlak prikt en oriëntatiefouten in lange reeksen. Randen met vier vlakken (twee volumes die elkaar langs een rand raken) zijn toegestaan. Een Push/Pull die een gesloten model open zou laten, wordt geweigerd (besluit 28).
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
-- Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), en er zijn nog geen meerdere tekeningen per blad; tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), en op een blad liggen de tekeningen nog niet te slepen (positie via x/y-velden); tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
 - Prestaties (`npm run bench`, raster van huisjes): bij 4.000 vlakken kost een Push/Pull ~35 ms en een tekening 40–70 ms; bij 9.000 vlakken ~100 ms en 170–350 ms; een tekenstap in het model ~45 ms gemiddeld. Wat nog kwadratisch is: `rebuildPlane` scant per vlak alle randen en vlakken, de validator (`validateModel`, alleen voor tests en fuzz) kost bij 9.000 vlakken ~50 s, en tekeningen rekenen bij elke wijziging alles opnieuw.

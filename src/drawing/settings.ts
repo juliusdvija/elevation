@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { Layout } from './layout';
 
 /** A storey: plans are cut relative to its floor. */
 export interface Level {
@@ -37,6 +38,8 @@ export interface DrawingSettings {
   dimensions: Dimension[];
   /** Add overall dimensions (and a chain along cut walls) to every drawing. */
   autoDimensions: boolean;
+  /** Pages with several drawings each (format 4). */
+  layouts: Layout[];
 }
 
 export const DEFAULT_SETTINGS: DrawingSettings = {
@@ -48,6 +51,7 @@ export const DEFAULT_SETTINGS: DrawingSettings = {
   ],
   dimensions: [],
   autoDimensions: false,
+  layouts: [],
 };
 
 /** Which drawing: a plan of a level, an elevation, or a section. */
