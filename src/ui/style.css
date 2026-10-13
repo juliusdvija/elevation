@@ -1142,3 +1142,13 @@ input.swatch.custom {
   color: var(--ink);
   padding: 0 8px;
 }
+
+.status-select {
+  height: 24px;
+  padding: 0 4px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font: 12px var(--font);
+  color: var(--ink-muted);
+}

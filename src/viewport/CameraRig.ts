@@ -130,7 +130,7 @@ export class CameraRig {
     } else {
       const distanceToPoint = this.position.distanceTo(point);
       // Do not fly through the point or out to infinity.
-      if (factor < 1 && distanceToPoint * factor < 10) return;
+      if (factor < 1 && distanceToPoint * factor < 0.05) return;
       if (factor > 1 && distanceToPoint * factor > 5e7) return;
       this.position.sub(point).multiplyScalar(factor).add(point);
       this.target.sub(point).multiplyScalar(factor).add(point);
@@ -152,7 +152,8 @@ export class CameraRig {
   fit(box: THREE.Box3, margin = 1.15): void {
     if (box.isEmpty()) return;
     const sphere = box.getBoundingSphere(new THREE.Sphere());
-    const radius = Math.max(sphere.radius, 100) * margin;
+    // (A part a few millimetres across fills the view; only an empty-ish point keeps a floor.)
+    const radius = Math.max(sphere.radius, 0.5) * margin;
     const dir = this.direction();
     const halfV = THREE.MathUtils.degToRad(FOV / 2);
     const halfH = Math.atan(Math.tan(halfV) * this.aspect);
@@ -181,7 +182,7 @@ export class CameraRig {
   /** World units per CSS pixel at the depth of `point`. */
   worldPerPixel(viewportHeight: number, point: THREE.Vector3): number {
     if (this.isOrtho) return this.orthoHeight / viewportHeight;
-    const depth = Math.max(new THREE.Vector3().subVectors(point, this.position).dot(this.direction()), 1);
+    const depth = Math.max(new THREE.Vector3().subVectors(point, this.position).dot(this.direction()), 0.01);
     return (2 * depth * Math.tan(THREE.MathUtils.degToRad(FOV / 2))) / viewportHeight;
   }
 
@@ -198,11 +199,13 @@ export class CameraRig {
     // edges drawn on faces (polygon offset needs a linear-ish depth buffer).
     const distance = this.distance;
     this.perspective.aspect = this.aspect;
-    this.perspective.near = THREE.MathUtils.clamp(distance / 1000, 1, 1e4);
-    this.perspective.far = Math.max(distance * 1000, 1e6);
+    // (Scaled with the distance all the way down to a few hundredths of a millimetre, so a small part can fill the view.)
+    this.perspective.near = THREE.MathUtils.clamp(distance / 1000, 0.005, 1e4);
+    this.perspective.far = Math.max(distance * 1000, 1e5);
     this.perspective.updateProjectionMatrix();
 
-    const depth = Math.max(distance * 50, 1e6);
+    // Depth range for the parallel view: wide enough for the scene, no wider, so edges do not fight faces on small parts.
+    const depth = Math.max(distance * 20, this.orthoHeight * 5, 100);
     this.orthographic.near = -depth;
     this.orthographic.far = depth;
 

@@ -2,7 +2,6 @@ import * as THREE from 'three';
 import { theme } from './theme';
 
 const AXIS_LENGTH = 1_000_000; // 1 km
-const GRID_SIZE = 200_000; // 200 m
 
 /** Red/green/blue model axes: solid on the positive side, dashed on the negative. */
 export function createAxes(): THREE.Group {
@@ -30,19 +29,50 @@ export function createAxes(): THREE.Group {
   return group;
 }
 
-/** Subtle ground grid on the XY plane: 1 m cells with a heavier 10 m grid. */
-export function createGrid(): THREE.Group {
-  const group = new THREE.Group();
-  group.name = 'grid';
+/** The smallest 1-2-5 step (…, 0.5, 1, 2, 5, 10, 20, 50 …) that is at least `raw`, within [min, max]. */
+export function niceSpacing(raw: number, min = 0.1, max = 100_000): number {
+  if (!(raw > 0)) return min;
+  const decade = 10 ** Math.floor(Math.log10(raw));
+  const m = raw / decade;
+  const step = (m <= 1 ? 1 : m <= 2 ? 2 : m <= 5 ? 5 : 10) * decade;
+  return Math.min(max, Math.max(min, Math.round(step * 1e6) / 1e6));
+}
 
-  const minor = new THREE.GridHelper(GRID_SIZE, GRID_SIZE / 1000, theme.gridMinor, theme.gridMinor);
-  const major = new THREE.GridHelper(GRID_SIZE, GRID_SIZE / 10_000, theme.gridMajor, theme.gridMajor);
-  for (const grid of [minor, major]) {
-    grid.rotation.x = Math.PI / 2;
-    const material = grid.material as THREE.Material;
-    material.depthWrite = false;
-    grid.renderOrder = -1;
-    group.add(grid);
+const GRID_CELLS = 300; // cells each way: enough to fill the view at the default zoom, few enough to rebuild at any scale
+
+/**
+ * Subtle ground grid on the XY plane that follows the snap spacing: cells of `spacing` with a heavier
+ * line every ten, centred on the camera target. Rebuilt only when the spacing changes, so a grid of 1 mm
+ * cells is as cheap as one of 1 m.
+ */
+export class AdaptiveGrid {
+  readonly group = new THREE.Group();
+  private spacing = 0;
+
+  constructor() {
+    this.group.name = 'grid';
   }
-  return group;
+
+  update(spacing: number, center: THREE.Vector3): void {
+    if (spacing !== this.spacing) {
+      this.spacing = spacing;
+      for (const child of [...this.group.children]) {
+        this.group.remove(child);
+        (child as THREE.GridHelper).geometry.dispose();
+      }
+      const size = spacing * GRID_CELLS;
+      const minor = new THREE.GridHelper(size, GRID_CELLS, theme.gridMinor, theme.gridMinor);
+      const major = new THREE.GridHelper(size, GRID_CELLS / 10, theme.gridMajor, theme.gridMajor);
+      for (const grid of [minor, major]) {
+        grid.rotation.x = Math.PI / 2;
+        const material = grid.material as THREE.Material;
+        material.depthWrite = false;
+        grid.renderOrder = -1;
+        this.group.add(grid);
+      }
+    }
+    // Follow the target in whole major cells, so lines stay on the same coordinates.
+    const step = this.spacing * 10;
+    this.group.position.set(Math.round(center.x / step) * step, Math.round(center.y / step) * step, 0);
+  }
 }

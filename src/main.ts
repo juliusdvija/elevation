@@ -35,6 +35,7 @@ import type { Scene } from './drawing/settings';
 import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
+import { displaySettings, setDisplaySettings, UNIT_INFO, type DisplayUnit } from './core/units';
 import { applyCamera, cameraData, openDocument, saveDocument } from './io/files';
 import { buildUnderlay } from './io/dxf';
 import type { ImportMessage, ImportRequest } from './io/importWorker';
@@ -81,6 +82,46 @@ const selection = new Selection();
 const marker = new SnapMarker(viewport);
 const inference = new Inference(picker, viewport);
 const feedback = new InferenceFeedback(viewport, marker);
+
+// Display units and precision, remembered between sessions.
+const DISPLAY_KEY = 'elevation.display';
+try {
+  const saved = JSON.parse(localStorage.getItem(DISPLAY_KEY) ?? 'null');
+  if (saved && saved.unit in UNIT_INFO && Number.isInteger(saved.decimals)) setDisplaySettings(saved);
+} catch {
+  /* private window or damaged value: keep the defaults */
+}
+shell.unitSelect.value = displaySettings().unit;
+shell.decimalsSelect.value = String(displaySettings().decimals);
+const changeDisplay = () => {
+  setDisplaySettings({ unit: shell.unitSelect.value as DisplayUnit, decimals: Number(shell.decimalsSelect.value) });
+  try {
+    localStorage.setItem(DISPLAY_KEY, JSON.stringify(displaySettings()));
+  } catch {
+    /* not remembered */
+  }
+};
+// Snap and grid spacing: automatic from the zoom, or a fixed step.
+const GRID_MODE_KEY = 'elevation.gridMode';
+try {
+  const saved = localStorage.getItem(GRID_MODE_KEY);
+  if (saved && [...shell.gridSelect.options].some((o) => o.value === saved)) shell.gridSelect.value = saved;
+} catch {
+  /* keep auto */
+}
+const applyGridMode = () => {
+  viewport.gridMode = shell.gridSelect.value === 'auto' ? 'auto' : Number(shell.gridSelect.value);
+  viewport.requestRender();
+  try {
+    localStorage.setItem(GRID_MODE_KEY, shell.gridSelect.value);
+  } catch {
+    /* not remembered */
+  }
+};
+shell.gridSelect.addEventListener('change', applyGridMode);
+applyGridMode();
+shell.unitSelect.addEventListener('change', changeDisplay);
+shell.decimalsSelect.addEventListener('change', changeDisplay);
 
 // Measurements box: shows live values from the active tool, or what the user types.
 let typed = '';

@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Document } from '../document';
+import { formatDimension } from '../core/units';
 import type { Model } from '../kernel/Model';
 import { computeDrawing } from './project';
 import { sortedLevels, type DrawingSettings, type ViewRef } from './settings';
@@ -40,7 +41,7 @@ function dimensionMarkers(settings: DrawingSettings, setup: ViewSetup): Dimensio
     .filter((d) => parallelToView(d, setup.w) && d.a[2] >= floor - 1 && d.a[2] < ceiling - 1)
     .map((d) => {
       const s = dimensionShape(d);
-      return { a: uv(s.a), b: uv(s.b), a2: uv(s.a2), b2: uv(s.b2), text: String(Math.round(s.length)) };
+      return { a: uv(s.a), b: uv(s.b), a2: uv(s.a2), b2: uv(s.b2), text: formatDimension(s.length) };
     });
 }
 

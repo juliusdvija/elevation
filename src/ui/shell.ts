@@ -1,3 +1,4 @@
+import { UNIT_INFO } from '../core/units';
 import { createLogo } from './logo';
 import {
   ArrowUpFromLine,
@@ -58,6 +59,9 @@ export interface ShellElements {
   redo: HTMLButtonElement;
   hint: HTMLElement;
   measurements: HTMLInputElement;
+  unitSelect: HTMLSelectElement;
+  gridSelect: HTMLSelectElement;
+  decimalsSelect: HTMLSelectElement;
 }
 
 const TOOL_ICONS: Record<string, IconNode> = {
@@ -193,10 +197,21 @@ export function buildShell(
   measurements.tabIndex = -1;
   measurements.spellcheck = false;
   measureWrap.append(measurements);
-  statusbar.append(hint, measureWrap);
+  // How lengths are shown and what a bare typed number means.
+  const unitSelect = el('select', 'status-select');
+  unitSelect.title = 'Units for lengths (a typed number without a unit uses this)';
+  for (const [id, info] of Object.entries(UNIT_INFO)) unitSelect.append(Object.assign(el('option', undefined, info.suffix), { value: id }));
+  const decimalsSelect = el('select', 'status-select');
+  decimalsSelect.title = 'Decimals shown (trailing zeros are dropped)';
+  for (const n of [0, 1, 2, 3, 4]) decimalsSelect.append(Object.assign(el('option', undefined, n === 0 ? '0' : `0.${'0'.repeat(n)}`), { value: String(n) }));
+  const gridSelect = el('select', 'status-select');
+  gridSelect.title = 'Snap and grid spacing: automatic from the zoom, or a fixed step';
+  gridSelect.append(Object.assign(el('option', undefined, 'Grid: auto'), { value: 'auto' }));
+  for (const mm of [0.1, 0.5, 1, 5, 10, 50, 100, 500, 1000]) gridSelect.append(Object.assign(el('option', undefined, `Grid: ${mm} mm`), { value: String(mm) }));
+  statusbar.append(hint, gridSelect, unitSelect, decimalsSelect, measureWrap);
 
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, decimalsSelect };
 }

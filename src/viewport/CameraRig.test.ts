@@ -77,3 +77,26 @@ describe('CameraRig', () => {
     }
   });
 });
+
+describe('small parts', () => {
+  it('frames a part a few millimetres across and lets the camera get close to it', () => {
+    const rig = new CameraRig();
+    rig.setAspect(1.5);
+    rig.fit(new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(12, 8, 5)));
+    expect(rig.distance).toBeLessThan(100);
+    expect(rig.perspective.near).toBeLessThan(0.2);
+    expect(rig.perspective.near).toBeGreaterThan(0);
+    // Zooming in towards a point still works well below a centimetre.
+    const point = rig.target.clone();
+    for (let i = 0; i < 30; i++) rig.zoomAt(point, 0.8);
+    expect(rig.distance).toBeLessThan(1);
+    expect(rig.distance).toBeGreaterThanOrEqual(0.05 - 1e-9);
+  });
+
+  it('keeps the parallel view\'s depth range proportional to the scene', () => {
+    const rig = new CameraRig();
+    rig.fit(new THREE.Box3(new THREE.Vector3(0, 0, 0), new THREE.Vector3(12, 8, 5)));
+    rig.toggleProjection();
+    expect(rig.orthographic.far).toBeLessThan(10_000);
+  });
+});

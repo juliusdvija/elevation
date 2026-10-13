@@ -1,5 +1,6 @@
 import * as THREE from 'three';
 import type { Drawing } from './project';
+import { formatDimension, scaleLabel, trimNumber } from '../core/units';
 import { hatchSegments } from './hatch';
 import type { Level } from './settings';
 import type { ViewSetup } from './views';
@@ -162,7 +163,7 @@ function autoDimensionMarkers(drawing: Drawing, b: THREE.Box2, s: number): Dimen
   if (db.isEmpty() || (db.max.x - db.min.x < 1 && db.max.y - db.min.y < 1)) return [];
   const out: DimensionMarker[] = [];
   const V = (x: number, y: number) => new THREE.Vector2(x, y);
-  const text = (mm: number) => String(Math.round(mm));
+  const text = (mm: number) => formatDimension(mm);
   const bottom = b.min.y;
   const left = db.min.x;
   const width = db.max.x - db.min.x;
@@ -360,7 +361,7 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
   // Title block and scale bar.
   const ty = height - MARGIN - TITLE_BLOCK + 9;
   out.push({ type: 'text', x: MARGIN, y: ty, text: setup.title.toUpperCase(), size: 3.2, bold: true, color: style.ink, letterSpacing: 0.3 });
-  const subtitle = [setup.subtitle, `1:${s}`].filter(Boolean).join('  ·  ');
+  const subtitle = [setup.subtitle, scaleLabel(s)].filter(Boolean).join('  ·  ');
   out.push({ type: 'text', x: MARGIN, y: ty + 4.6, text: subtitle, size: 2.2, color: style.muted });
   out.push(...scaleBar(s, style, width - MARGIN, ty - 3));
 
@@ -369,7 +370,7 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
 
 /** A scale bar with round metre ticks, right-aligned at `right`. */
 function scaleBar(scale: number, style: DrawingStyle, right: number, y: number): Primitive[] {
-  const steps = [1000, 2000, 5000, 10000, 20000, 50000];
+  const steps = [0.1, 0.2, 0.5, 1, 2, 5, 10, 20, 50, 100, 200, 500, 1000, 2000, 5000, 10000, 20000, 50000];
   const step = steps.find((st) => st / scale >= 8) ?? steps.at(-1)!;
   const segments = 4;
   const seg = step / scale;
@@ -381,6 +382,6 @@ function scaleBar(scale: number, style: DrawingStyle, right: number, y: number):
     out.push({ type: 'path', lines: [box], closed: true, fill: i % 2 ? style.paper : style.ink, stroke: style.ink, width: 0.15 });
   }
   out.push({ type: 'text', x, y: y + 4.2, text: '0', size: 2.2, color: style.muted, anchor: 'middle' });
-  out.push({ type: 'text', x: right, y: y + 4.2, text: `${(step * segments) / 1000} m`, size: 2.2, color: style.muted, anchor: 'middle' });
+  out.push({ type: 'text', x: right, y: y + 4.2, text: step * segments >= 1000 ? `${trimNumber((step * segments) / 1000, 2)} m` : `${trimNumber(step * segments, 2)} mm`, size: 2.2, color: style.muted, anchor: 'middle' });
   return out;
 }

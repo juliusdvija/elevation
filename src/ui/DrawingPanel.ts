@@ -1,6 +1,7 @@
 import { Download, Layers, LayoutGrid, Plus, Trash2, createElement, type IconNode } from 'lucide';
 import type { CameraData } from '../io/format';
 import { Emitter } from '../core/emitter';
+import { DRAWING_SCALES, scaleLabel } from '../core/units';
 import type { Document } from '../document';
 import { buildSheets } from '../drawing/build';
 import { addSceneViewport, addViewport, composeLayout, isScene, nextLayout, nextScene, tidyLayout, type ImageProvider, type Layout, type LayoutPaper, type PageItem, type RenderedImage } from '../drawing/layout';
@@ -19,7 +20,7 @@ const TABS: [ViewKind, string][] = [
   ['section', 'Section'],
 ];
 
-const SCALES = [20, 50, 100, 200, 500];
+const SCALES = DRAWING_SCALES;
 const LAYOUT_PAPERS: LayoutPaper[] = ['A4', 'A3', 'A2', 'A1'];
 const PAPERS: [Paper, string][] = [
   ['fit', 'Fit'],
@@ -378,7 +379,7 @@ export class DrawingPanel {
 
     const scale = el('select');
     for (const value of SCALES) {
-      const option = el('option', undefined, `1:${value}`);
+      const option = el('option', undefined, scaleLabel(value));
       option.value = String(value);
       option.selected = value === this.scale;
       scale.append(option);
@@ -520,7 +521,7 @@ export class DrawingPanel {
       row.append(el('span', 'unit', viewSetup(viewport.view, this.settings, bounds).title));
       const scale = el('select');
       for (const value of new Set([...SCALES, viewport.scale].sort((a, b) => a - b))) {
-        const option = el('option', undefined, `1:${value}`);
+        const option = el('option', undefined, scaleLabel(value));
         option.value = String(value);
         option.selected = value === viewport.scale;
         scale.append(option);
@@ -747,7 +748,7 @@ export class DrawingPanel {
     this.svg = sheetToSvg(built.sheet);
     this.sheet.innerHTML = this.svg;
     const ms = Math.max(1, Math.round(performance.now() - start));
-    this.status.textContent = built.sheet.fits ? `Live · ${ms} ms` : `Too big for ${this.paper} at 1:${this.scale}`;
+    this.status.textContent = built.sheet.fits ? `Live · ${ms} ms` : `Too big for ${this.paper} at ${scaleLabel(this.scale)}`;
     this.status.dataset.warn = String(!built.sheet.fits);
   }
 

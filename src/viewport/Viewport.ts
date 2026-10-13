@@ -1,6 +1,6 @@
 import * as THREE from 'three';
 import { CameraRig, WORLD_UP } from './CameraRig';
-import { createAxes, createGrid } from './helpers';
+import { AdaptiveGrid, createAxes, niceSpacing } from './helpers';
 import { theme } from './theme';
 
 const GROUND = new THREE.Plane(WORLD_UP.clone(), 0);
@@ -29,7 +29,11 @@ export class Viewport {
   /** Things that are not part of the model picture (selection, hover, guides) hide themselves while a snapshot renders. */
   readonly snapshotHooks: ((rendering: boolean) => void)[] = [];
 
+  /** 'auto' picks a 1-2-5 spacing from the zoom; a number fixes the snap and grid spacing (mm). */
+  gridMode: 'auto' | number = 'auto';
+
   private readonly raycaster = new THREE.Raycaster();
+  private readonly adaptiveGrid = new AdaptiveGrid();
   private readonly helpers: THREE.Object3D[];
   private dirty = true;
   /** Runs just before a frame is drawn, so things that follow the camera can update. */
@@ -42,10 +46,9 @@ export class Viewport {
     container.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(theme.background);
-    const grid = createGrid();
     const axes = createAxes();
-    this.helpers = [grid, axes, this.overlay];
-    this.scene.add(grid, axes, this.content, this.overlay);
+    this.helpers = [this.adaptiveGrid.group, axes, this.overlay];
+    this.scene.add(this.adaptiveGrid.group, axes, this.content, this.overlay);
 
     const hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 2.4);
     hemisphere.position.copy(WORLD_UP);
@@ -64,6 +67,12 @@ export class Viewport {
 
   get height(): number {
     return this.container.clientHeight;
+  }
+
+  /** The grid and snap spacing (mm) near a point: fixed, or about 36 pixels on screen. */
+  gridSpacingAt(point: THREE.Vector3): number {
+    if (typeof this.gridMode === 'number') return this.gridMode;
+    return niceSpacing(this.rig.worldPerPixel(this.height, point) * 36);
   }
 
   requestRender(): void {
@@ -193,6 +202,7 @@ export class Viewport {
     if (!this.dirty) return;
     this.dirty = false;
     this.beforeRender?.();
+    this.adaptiveGrid.update(this.gridSpacingAt(this.rig.target), this.rig.target);
     this.renderer.render(this.scene, this.rig.camera);
   }
 }

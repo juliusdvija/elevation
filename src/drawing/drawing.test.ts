@@ -9,6 +9,7 @@ import { buildSheets } from './build';
 import { sheetToSvg } from './svg';
 import { sheetsToPdf } from './pdf';
 import { hatchSegments, HATCHES } from './hatch';
+import { DRAWING_SCALES, scaleLabel } from '../core/units';
 import { faceArea } from '../kernel/faces';
 import { signedArea } from '../kernel/math';
 import { computeDrawing, type Drawing } from './project';
@@ -367,6 +368,41 @@ describe('shading', () => {
       // The same wall seen from behind (the hatch is on its front only) has no pattern.
       const back = computeDrawing(model, viewSetup({ kind: 'back' }, DEFAULT_SETTINGS, model.bounds()));
       expect(back.fills.some((f) => f.hatch)).toBe(false);
+    });
+  });
+
+  describe('small parts', () => {
+    function part(): Document {
+      const doc = new Document();
+      doc.run('Part', () => {
+        drawPolygon(doc.model, [v(0, 0), v(24, 0), v(24, 12), v(0, 12)]);
+        pushPull(doc.model, doc.model.allFaces()[0].id, -8);
+      });
+      for (const i of doc.model.allInstances()) doc.run('No figure', () => doc.model.removeInstance(i.id));
+      return doc;
+    }
+
+    it('draws an enlarged 2:1 elevation with millimetre dimensions and scale bar', () => {
+      const doc = part();
+      doc.updateDrawingSettings('Dims', { ...doc.drawingSettings, autoDimensions: true });
+      const [{ sheet }] = buildSheets(doc, [{ kind: 'front' }], { scale: 0.5 });
+      const texts = sheet.primitives.flatMap((p) => (p.type === 'text' ? [p.text] : []));
+      expect(texts).toContain('2:1');
+      expect(texts).toContain('24');
+      expect(texts).toContain('8');
+      // 4 segments of 5 mm: the bar reads 20 mm.
+      expect(texts).toContain('20 mm');
+      // Twice life size: the 24 mm part is 48 mm wide on paper, inside the margins.
+      expect(sheet.width).toBeGreaterThan(48);
+      expect(sheet.width).toBeLessThan(150);
+    });
+
+    it('labels scales the way drafters write them', () => {
+      expect(scaleLabel(100)).toBe('1:100');
+      expect(scaleLabel(1)).toBe('1:1');
+      expect(scaleLabel(0.5)).toBe('2:1');
+      expect(scaleLabel(0.1)).toBe('10:1');
+      expect(DRAWING_SCALES).toContain(0.2);
     });
   });
 });

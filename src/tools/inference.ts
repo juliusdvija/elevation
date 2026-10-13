@@ -33,8 +33,6 @@ const DIRECTION_RADIUS = 12; // px
 const ALIGN_RADIUS = 8; // px
 const MIN_DRAG = 16; // px from the start point before directions kick in
 const MAX_POINTS = 4;
-/** Spacing of the ground grid drawn in the viewport (mm). */
-export const GRID_SPACING = 1000;
 const GRID_RADIUS = 8; // px
 
 const AXES: { kind: SnapKind; dir: THREE.Vector3; color: number; arrow: string }[] = [
@@ -257,8 +255,9 @@ export class Inference {
    */
   gridPoint(point: THREE.Vector3, plane: Plane, px: (p: THREE.Vector3) => number): THREE.Vector3 | null {
     if (!this.gridSnap) return null;
-    const g = gridPointInPlane(point, plane, GRID_SPACING);
-    if (!this.gridVisible(g, gridSteps(plane, GRID_SPACING))) return null;
+    const spacing = this.viewport.gridSpacingAt(point);
+    const g = gridPointInPlane(point, plane, spacing);
+    if (!this.gridVisible(g, gridSteps(plane, spacing))) return null;
     return px(g) < GRID_RADIUS ? g : null;
   }
 
@@ -266,9 +265,10 @@ export class Inference {
   private gridOnLine(line: Line3, point: THREE.Vector3, px: (p: THREE.Vector3) => number): THREE.Vector3 | null {
     if (!this.gridSnap) return null;
     let best: { point: THREE.Vector3; d: number } | null = null;
-    for (const q of gridCrossingsOnLine(line, point, GRID_SPACING)) {
+    const spacing = this.viewport.gridSpacingAt(point);
+    for (const q of gridCrossingsOnLine(line, point, spacing)) {
       // Steps along the line between neighbouring crossings must be visible.
-      const step = line.direction.clone().multiplyScalar(GRID_SPACING / Math.max(...[line.direction.x, line.direction.y, line.direction.z].map(Math.abs)));
+      const step = line.direction.clone().multiplyScalar(spacing / Math.max(...[line.direction.x, line.direction.y, line.direction.z].map(Math.abs)));
       if (!this.gridVisible(q, [step])) continue;
       const d = px(q);
       if (d < GRID_RADIUS && (!best || d < best.d)) best = { point: q, d };

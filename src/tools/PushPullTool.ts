@@ -4,7 +4,6 @@ import type { Id, ModelEdit } from '../kernel/Model';
 import { closestBetweenSegments } from '../kernel/math';
 import { pushPull } from '../kernel/pushPull';
 import type { Tool, ToolContext } from './Tool';
-import { GRID_SPACING } from './inference';
 import { worldFacePlane } from './space';
 
 const HINT_START = 'Click a face to push or pull it.';
@@ -74,10 +73,11 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     const axis = (['x', 'y', 'z'] as const).find((a) => Math.abs(normal[a]) > 0.9999);
     if (!axis) return null;
     const position = anchor[axis] + normal[axis] * raw;
-    const target = Math.round(position / GRID_SPACING) * GRID_SPACING;
+    const spacing = ctx.viewport.gridSpacingAt(anchor);
+    const target = Math.round(position / spacing) * spacing;
     const d = (target - anchor[axis]) / normal[axis];
     const snapped = ctx.viewport.toScreen(anchor.clone().addScaledVector(normal, d));
-    const step = ctx.viewport.toScreen(anchor.clone().addScaledVector(normal, d + GRID_SPACING));
+    const step = ctx.viewport.toScreen(anchor.clone().addScaledVector(normal, d + spacing));
     if (!snapped || !step || snapped.distanceTo(step) < 24) return null;
     return snapped.distanceTo(new THREE.Vector2(e.clientX, e.clientY)) < 10 ? d : null;
   };
@@ -109,7 +109,7 @@ export function createPushPullTool(ctx: ToolContext): Tool {
         ctx.feedback.show({ point: pick.point, kind: pick.kind, pick, guides: [{ from: pick.point, to: onNormal }] });
         showPreview(d);
       } else {
-        // Land the face on a whole metre from the origin when its plane is axis-aligned.
+        // Land the face on a grid step from the origin when its plane is axis-aligned.
         const grid = gridDistance(anchor, normal, raw, e);
         if (grid !== null) {
           const at = anchor.clone().addScaledVector(normal, grid);
