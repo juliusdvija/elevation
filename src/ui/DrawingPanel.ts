@@ -1,8 +1,9 @@
 import { Download, Layers, LayoutGrid, Plus, Trash2, createElement, type IconNode } from 'lucide';
+import type { CameraData } from '../io/format';
 import { Emitter } from '../core/emitter';
 import type { Document } from '../document';
 import { buildSheets } from '../drawing/build';
-import { addViewport, composeLayout, nextLayout, tidyLayout, type Layout, type LayoutPaper, type PageItem } from '../drawing/layout';
+import { addSceneViewport, addViewport, composeLayout, isScene, nextLayout, nextScene, tidyLayout, type ImageProvider, type Layout, type LayoutPaper, type PageItem, type RenderedImage } from '../drawing/layout';
 import { sheetsToPdf } from '../drawing/pdf';
 import { allViews, nextLevel, sectionCoordinate, sortedLevels, type DrawingSettings, type ViewRef } from '../drawing/settings';
 import type { Paper } from '../drawing/sheet';
@@ -67,6 +68,19 @@ function download(data: BlobPart, type: string, name: string): void {
   URL.revokeObjectURL(link.href);
 }
 
+/** What the panel needs from the 3D viewport to put pictures of it on sheets. */
+export interface ScenePort {
+  /** Where the camera stands now. */
+  camera(): CameraData;
+  /** The viewport's height / width, for the shape of a new picture. */
+  ratio(): number;
+  /** Renders a picture of the model from a camera. */
+  snapshot(camera: CameraData, width: number, height: number): RenderedImage | null;
+}
+
+const PREVIEW_DPI = 110;
+const EXPORT_DPI = 220;
+
 /**
  * Side panel with the 2D drawings: plans per level, elevations and sections,
  * recomputed live whenever the model changes (at most once per frame). Exports
@@ -96,6 +110,12 @@ export class DrawingPanel {
   /** Page size (paper mm) and the draggable things on it, from the last composed sheet. */
   private page: { width: number; height: number; items: PageItem[] } | null = null;
 
+  /** Pictures already rendered, by scene camera, size and model version; and when each scene was last rendered. */
+  private readonly pictures = new Map<string, RenderedImage>();
+  private readonly lastPicture = new Map<string, { image: RenderedImage; at: number }>();
+  private modelVersion = 0;
+  private pictureTimer = 0;
+
   private readonly tabs = new Map<ViewKind, HTMLButtonElement>();
   private readonly controls = el('div', 'drawings-controls');
   private readonly levelsEditor = el('div', 'levels-editor');
@@ -107,7 +127,10 @@ export class DrawingPanel {
   private readonly exportMenu = el('div', 'export-menu');
   private view = { x: 0, y: 0, zoom: 1 };
 
-  constructor(private readonly doc: Document) {
+  constructor(
+    private readonly doc: Document,
+    private readonly port?: ScenePort,
+  ) {
     const header = el('div', 'drawings-header');
     const tabs = el('div', 'group segmented');
     for (const [kind, label] of TABS) {
@@ -130,7 +153,10 @@ export class DrawingPanel {
     this.el.append(header, this.controls, this.levelsEditor, this.viewportsEditor, this.stage);
     this.bindStage();
 
-    doc.geometryChanged.on(() => this.schedule());
+    doc.geometryChanged.on(() => {
+      this.modelVersion++;
+      this.schedule();
+    });
     doc.settingsChanged.on(() => {
       this.preview = null;
       this.renderControls();
@@ -234,6 +260,23 @@ export class DrawingPanel {
       else n.layouts[n.layouts.findIndex((l) => l.id === updated.id)] = updated;
     });
     this.status.textContent = `Added to ${updated.name}`;
+  }
+
+  /** Adds a picture of the 3D view as it is now to the selected sheet. */
+  private addSceneToSheet(): void {
+    const port = this.port;
+    const layout = this.currentLayout();
+    if (!port || !layout) return;
+    const scene = nextScene(this.doc.drawingSettings.scenes, port.camera());
+    // About a third of the page wide, in the shape of the 3D view on screen.
+    const pageWidth = { A4: 297, A3: 420, A2: 594, A1: 841 }[layout.paper];
+    const ratio = Math.min(1.1, Math.max(0.45, port.ratio()));
+    const withScene = { ...structuredClone(this.doc.drawingSettings), scenes: [...this.doc.drawingSettings.scenes, scene] };
+    const updated = addSceneViewport(this.doc, layout, scene, Math.round(pageWidth * 0.36), ratio, withScene);
+    this.commit('Add 3D View to Sheet', (n) => {
+      n.scenes.push(scene);
+      n.layouts[n.layouts.findIndex((l) => l.id === layout.id)] = updated;
+    });
   }
 
   /** Commits a settings change (one undo step). */
@@ -432,9 +475,44 @@ export class DrawingPanel {
     if (this.viewportsEditor.hidden || !layout) return;
     const bounds = this.doc.bounds();
     for (const viewport of layout.viewports) {
-      const change = (label: string, patch: Partial<typeof viewport>) =>
+      const change = (label: string, patch: Record<string, unknown>) =>
         this.commitLayout(label, (l) => ({ ...l, viewports: l.viewports.map((v) => (v.id === viewport.id ? { ...v, ...patch } : v)) }));
       const row = el('div', 'level-row');
+      if (isScene(viewport)) {
+        const scene = this.settings.scenes.find((x) => x.id === viewport.scene);
+        const name = el('input');
+        name.value = scene?.name ?? 'Scene';
+        name.title = 'Name of the 3D view';
+        name.addEventListener('change', () => this.commit('Rename 3D View', (n) => {
+          const target = n.scenes.find((x) => x.id === viewport.scene);
+          if (target) target.name = name.value.trim() || target.name;
+        }));
+        const width = numberInput(viewport.width, 5);
+        width.addEventListener('change', () => Number(width.value) >= 20 && change('3D View Width', { width: Number(width.value) }));
+        const update = el('button', 'pill-button', 'Use current camera');
+        update.type = 'button';
+        update.title = 'Show this 3D view from where the camera is now';
+        update.addEventListener('click', () => {
+          if (this.port) this.commit('Update 3D View', (n) => {
+            const target = n.scenes.find((x) => x.id === viewport.scene);
+            if (target) target.camera = this.port!.camera();
+          });
+        });
+        const x = numberInput(viewport.x, 5);
+        x.addEventListener('change', () => Number.isFinite(Number(x.value)) && change('Move 3D View', { x: Number(x.value) }));
+        const y = numberInput(viewport.y, 5);
+        y.addEventListener('change', () => Number.isFinite(Number(y.value)) && change('Move 3D View', { y: Number(y.value) }));
+        const remove = iconButton(Trash2, 'Remove from sheet');
+        remove.addEventListener('click', () => this.commit('Remove 3D View', (n) => {
+          const target = n.layouts.find((l) => l.id === layout.id);
+          if (target) target.viewports = target.viewports.filter((v) => v.id !== viewport.id);
+          // A scene no sheet shows any more is forgotten.
+          n.scenes = n.scenes.filter((sc) => n.layouts.some((l) => l.viewports.some((v) => isScene(v) && v.scene === sc.id)));
+        }));
+        row.append(name, field('width', width, 'mm'), update, field('x', x, 'mm'), field('y', y, 'mm'), remove);
+        this.viewportsEditor.append(row);
+        continue;
+      }
       row.append(el('span', 'unit', viewSetup(viewport.view, this.settings, bounds).title));
       const scale = el('select');
       for (const value of new Set([...SCALES, viewport.scale].sort((a, b) => a - b))) {
@@ -453,7 +531,7 @@ export class DrawingPanel {
       row.append(scale, field('x', x, 'mm'), field('y', y, 'mm'), remove);
       this.viewportsEditor.append(row);
     }
-    if (layout.viewports.length === 0) this.viewportsEditor.append(el('span', 'unit', 'Open a drawing and choose "Add to sheet".'));
+    if (layout.viewports.length === 0) this.viewportsEditor.append(el('span', 'unit', 'Open a drawing and choose "Add to sheet", or add a 3D view.'));
 
     for (const note of layout.texts ?? []) {
       const patch = (label: string, change: Partial<typeof note>) =>
@@ -494,8 +572,14 @@ export class DrawingPanel {
       const [width] = layout.north ? [0] : [{ A4: 297, A3: 420, A2: 594, A1: 841 }[layout.paper]];
       this.commitLayout('North Arrow', (l) => ({ ...l, north: l.north ? undefined : { x: width - 24, y: 24 } }));
     });
+    const addScene = el('button', 'pill-button');
+    addScene.type = 'button';
+    addScene.append(createElement(Plus, { width: 14, height: 14 }), ' 3D view');
+    addScene.title = 'Put a picture of the 3D view, as it is now, on the sheet';
+    addScene.disabled = !this.port;
+    addScene.addEventListener('click', () => this.addSceneToSheet());
     const actions = el('div', 'level-row');
-    actions.append(addNote, north);
+    actions.append(addNote, addScene, north);
     this.viewportsEditor.append(actions);
   }
 
@@ -570,7 +654,8 @@ export class DrawingPanel {
   private exportSvg(): void {
     if (!this.svg) return;
     if (this.sheetsMode) {
-      download(this.svg, 'image/svg+xml', `${this.fileBase()} - ${this.currentLayout()?.name ?? 'sheet'}.svg`);
+      const layout = this.currentLayout();
+      if (layout) download(this.layoutSvg(layout), 'image/svg+xml', `${this.fileBase()} - ${layout.name}.svg`);
       return;
     }
     if (!this.setup) return;
@@ -579,7 +664,8 @@ export class DrawingPanel {
 
   /** Renders the SVG on show to a PNG at 200 dpi (paper size from the SVG's own millimetres). */
   private exportPng(name: string): void {
-    const svg = this.svg;
+    const layout = this.currentLayout();
+    const svg = this.sheetsMode && layout ? this.layoutSvg(layout) : this.svg;
     if (!svg) return;
     const match = /width="([\d.]+)mm" height="([\d.]+)mm"/.exec(svg);
     if (!match) return;
@@ -608,7 +694,7 @@ export class DrawingPanel {
     if (layouts.length === 0) return;
     const flat = this.doc.flatten();
     const pdf = sheetsToPdf(
-      layouts.map((layout) => composeLayout(this.doc, layout, this.doc.drawingSettings, flat).sheet),
+      layouts.map((layout) => composeLayout(this.doc, layout, this.doc.drawingSettings, flat, this.pictureProvider(EXPORT_DPI, true)).sheet),
       this.doc.name,
     );
     download(pdf.slice().buffer, 'application/pdf', all ? `${this.fileBase()} - sheets.pdf` : `${this.fileBase()} - ${layouts[0].name}.pdf`);
@@ -661,6 +747,40 @@ export class DrawingPanel {
     this.status.dataset.warn = String(!built.sheet.fits);
   }
 
+  /**
+   * Pictures for scenes on a sheet. Renders are cached by camera, size and model version; while the model is
+   * changing a recent picture is reused for a moment (and refreshed shortly after), so dragging stays smooth.
+   */
+  private pictureProvider(dpi: number, fresh = false): ImageProvider | undefined {
+    const port = this.port;
+    if (!port) return undefined;
+    return (scene, widthMm, heightMm) => {
+      const pixels: [number, number] = [Math.round((widthMm / 25.4) * dpi), Math.round((heightMm / 25.4) * dpi)];
+      const key = `${JSON.stringify(scene.camera)}|${pixels.join('x')}|${this.modelVersion}`;
+      const cached = this.pictures.get(key);
+      if (cached) return cached;
+      const last = this.lastPicture.get(scene.id);
+      if (!fresh && last && performance.now() - last.at < 400) {
+        // Too soon after the last render: show that one and refresh when things settle.
+        window.clearTimeout(this.pictureTimer);
+        this.pictureTimer = window.setTimeout(() => this.schedule(), 420);
+        return last.image;
+      }
+      const image = port.snapshot(scene.camera, pixels[0], pixels[1]);
+      if (!image) return null;
+      if (this.pictures.size > 12) this.pictures.clear();
+      this.pictures.set(key, image);
+      this.lastPicture.set(scene.id, { image, at: performance.now() });
+      return image;
+    };
+  }
+
+  /** The current sheet as SVG at export quality. */
+  private layoutSvg(layout: Layout): string {
+    const { sheet } = composeLayout(this.doc, layout, this.doc.drawingSettings, this.doc.flatten(), this.pictureProvider(EXPORT_DPI, true));
+    return sheetToSvg(sheet);
+  }
+
   private updateSheets(flat: ReturnType<Document['flatten']>, start: number): void {
     this.setup = null;
     this.page = null;
@@ -675,7 +795,7 @@ export class DrawingPanel {
       this.svg = '';
       return;
     }
-    const { sheet, fits, rects } = composeLayout(this.doc, layout, this.settings, flat);
+    const { sheet, fits, rects } = composeLayout(this.doc, layout, this.settings, flat, this.pictureProvider(PREVIEW_DPI));
     this.page = { width: sheet.width, height: sheet.height, items: rects };
     this.svg = sheetToSvg(sheet);
     this.sheet.innerHTML = this.svg;

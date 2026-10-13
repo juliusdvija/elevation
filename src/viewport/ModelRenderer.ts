@@ -138,6 +138,11 @@ export class ModelRenderer {
     );
     viewport.content.add(this.group);
 
+    // Selection, hover and guides are working marks, not part of a picture of the model.
+    viewport.snapshotHooks.push((rendering) => {
+      for (const obj of [this.selectionFaces, this.selectionEdges, this.hoverFaces, this.hoverEdges, this.guideLines, this.guidePoints]) obj.visible = !rendering;
+    });
+
     doc.geometryChanged.on(() => this.rebuild());
     this.rebuild();
   }

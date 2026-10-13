@@ -29,7 +29,7 @@ import { PaintPalette } from './ui/PaintPalette';
 import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
-import { openDocument, saveDocument } from './io/files';
+import { cameraData, openDocument, saveDocument } from './io/files';
 import { buildModel } from './io/obj';
 import { askImportOptions, chooseObjFiles, readObjFiles } from './ui/ImportDialog';
 import { restoreAutosave, startAutosave } from './io/autosave';
@@ -196,7 +196,11 @@ shell.componentsToggle.addEventListener('click', () => {
 });
 
 // Drawings
-const drawings = new DrawingPanel(doc);
+const drawings = new DrawingPanel(doc, {
+  camera: () => cameraData(viewport.rig),
+  ratio: () => viewport.container.clientHeight / Math.max(1, viewport.container.clientWidth),
+  snapshot: (camera, width, height) => viewport.snapshot(camera, width, height),
+});
 shell.workspace.append(drawings.el);
 const cutPlane = new CutPlaneGizmo(viewport);
 drawings.viewChanged.on((setup) => cutPlane.show(setup, doc.bounds()));

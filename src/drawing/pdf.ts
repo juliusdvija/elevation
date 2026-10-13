@@ -1,5 +1,5 @@
 import * as THREE from 'three';
-import { textWidth, type Sheet } from './sheet';
+import { textWidth, type Primitive, type Sheet } from './sheet';
 
 const PT_PER_MM = 72 / 25.4;
 const fmt = (n: number) => (Math.round(n * 1000) / 1000).toString();
@@ -25,8 +25,9 @@ function rgb(hex: string): string {
 }
 
 /** The page content stream for a sheet, in PDF points with y up, and the opacities it uses (graphics states /GS1, /GS2, ...). */
-function contentStream(sheet: Sheet): { stream: string; opacities: number[] } {
+function contentStream(sheet: Sheet): { stream: string; opacities: number[]; images: Extract<Primitive, { type: 'image' }>[] } {
   const opacities: number[] = [];
+  const images: Extract<Primitive, { type: 'image' }>[] = [];
   const stateOf = (opacity: number) => {
     let i = opacities.indexOf(opacity);
     if (i < 0) i = opacities.push(opacity) - 1;
@@ -56,6 +57,10 @@ function contentStream(sheet: Sheet): { stream: string; opacities: number[] } {
       } else {
         ops.push(painted);
       }
+    } else if (p.type === 'image') {
+      // The picture is a unit square scaled and placed by the matrix; sheet y runs down, PDF y up.
+      images.push(p);
+      ops.push(`q ${fmt(p.w * k)} 0 0 ${fmt(p.h * k)} ${X(p.x)} ${Y(p.y + p.h)} cm /Im${images.length} Do Q`);
     } else {
       const font = p.bold ? '/F2' : '/F1';
       const w = textWidth(p.text, p.size, p.bold, p.letterSpacing ?? 0);
@@ -71,17 +76,33 @@ function contentStream(sheet: Sheet): { stream: string; opacities: number[] } {
       );
     }
   }
-  return { stream: ops.join('\n'), opacities };
+  return { stream: ops.join('\n'), opacities, images };
+}
+
+/** Bytes of a base64 data URL's payload. */
+function dataUrlBytes(href: string): Uint8Array {
+  const binary = atob(href.slice(href.indexOf(',') + 1));
+  const bytes = new Uint8Array(binary.length);
+  for (let i = 0; i < binary.length; i++) bytes[i] = binary.charCodeAt(i);
+  return bytes;
+}
+
+/** A PDF object: ASCII text, optionally followed by a binary stream. */
+interface PdfObject {
+  head: string;
+  data?: Uint8Array;
+  tail?: string;
 }
 
 /**
  * Writes sheets as a vector PDF, one page per sheet, each page the sheet's
- * paper size. Uses the standard Helvetica fonts, so nothing is embedded.
+ * paper size. Uses the standard Helvetica fonts, so nothing is embedded;
+ * pictures (rendered 3D views) are embedded as JPEG.
  */
 export function sheetsToPdf(sheets: Sheet[], title = 'Elevation drawings'): Uint8Array {
-  const objects: string[] = [];
-  const add = (body: string) => {
-    objects.push(body);
+  const objects: PdfObject[] = [];
+  const add = (head: string, data?: Uint8Array, tail?: string) => {
+    objects.push({ head, data, tail });
     return objects.length; // object number
   };
 
@@ -94,29 +115,53 @@ export function sheetsToPdf(sheets: Sheet[], title = 'Elevation drawings'): Uint
   const solid = add('<< /Type /ExtGState /ca 1 /CA 1 >>');
   const pageIds: number[] = [];
   for (const sheet of sheets) {
-    const { stream, opacities } = contentStream(sheet);
+    const { stream, opacities, images } = contentStream(sheet);
     const content = add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
     const states = [`/GS0 ${solid} 0 R`, ...opacities.map((o, i) => `/GS${i + 1} ${add(`<< /Type /ExtGState /ca ${fmt(o)} /CA ${fmt(o)} >>`)} 0 R`)];
+    const xobjects = images.map((image, i) => {
+      const bytes = dataUrlBytes(image.href);
+      const id = add(`<< /Type /XObject /Subtype /Image /Width ${image.pixels[0]} /Height ${image.pixels[1]} /ColorSpace /DeviceRGB /BitsPerComponent 8 /Filter /DCTDecode /Length ${bytes.length} >>\nstream\n`, bytes, '\nendstream');
+      return `/Im${i + 1} ${id} 0 R`;
+    });
     pageIds.push(
       add(
         `<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${fmt(sheet.width * PT_PER_MM)} ${fmt(sheet.height * PT_PER_MM)}] ` +
-          `/Resources << /Font << /F1 ${helvetica} 0 R /F2 ${helveticaBold} 0 R >> /ExtGState << ${states.join(' ')} >> >> /Contents ${content} 0 R >>`,
+          `/Resources << /Font << /F1 ${helvetica} 0 R /F2 ${helveticaBold} 0 R >> /ExtGState << ${states.join(' ')} >>` +
+          `${xobjects.length > 0 ? ` /XObject << ${xobjects.join(' ')} >>` : ''} >> /Contents ${content} 0 R >>`,
       ),
     );
   }
-  objects[catalog - 1] = `<< /Type /Catalog /Pages ${pages} 0 R >>`;
-  objects[pages - 1] = `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>`;
+  objects[catalog - 1] = { head: `<< /Type /Catalog /Pages ${pages} 0 R >>` };
+  objects[pages - 1] = { head: `<< /Type /Pages /Kids [${pageIds.map((id) => `${id} 0 R`).join(' ')}] /Count ${pageIds.length} >>` };
 
-  // Everything is ASCII, so string length equals byte length for the offsets.
-  let pdf = '%PDF-1.4\n';
+  // Text parts are ASCII (one byte per character); picture data is copied as bytes.
+  const encoder = new TextEncoder();
+  const chunks: Uint8Array[] = [];
+  let length = 0;
+  const write = (part: string | Uint8Array) => {
+    const bytes = typeof part === 'string' ? encoder.encode(part) : part;
+    chunks.push(bytes);
+    length += bytes.length;
+  };
+  write('%PDF-1.4\n');
   const offsets: number[] = [];
-  objects.forEach((body, i) => {
-    offsets.push(pdf.length);
-    pdf += `${i + 1} 0 obj\n${body}\nendobj\n`;
+  objects.forEach((object, i) => {
+    offsets.push(length);
+    write(`${i + 1} 0 obj\n${object.head}`);
+    if (object.data) write(object.data);
+    write(`${object.tail ?? ''}\nendobj\n`);
   });
-  const xref = pdf.length;
-  pdf += `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
-  for (const offset of offsets) pdf += `${String(offset).padStart(10, '0')} 00000 n \n`;
-  pdf += `trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R /Info ${info} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
-  return new TextEncoder().encode(pdf);
+  const xref = length;
+  let table = `xref\n0 ${objects.length + 1}\n0000000000 65535 f \n`;
+  for (const offset of offsets) table += `${String(offset).padStart(10, '0')} 00000 n \n`;
+  table += `trailer\n<< /Size ${objects.length + 1} /Root ${catalog} 0 R /Info ${info} 0 R >>\nstartxref\n${xref}\n%%EOF\n`;
+  write(table);
+
+  const out = new Uint8Array(length);
+  let at = 0;
+  for (const chunk of chunks) {
+    out.set(chunk, at);
+    at += chunk.length;
+  }
+  return out;
 }

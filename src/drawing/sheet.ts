@@ -52,6 +52,17 @@ export type Primitive =
       clip?: THREE.Vector2[][];
     }
   | {
+      /** A picture (a rendered 3D view): a JPEG data URL placed in a box, paper mm. */
+      type: 'image';
+      x: number;
+      y: number;
+      w: number;
+      h: number;
+      href: string;
+      /** Pixel size of the JPEG, for PDF. */
+      pixels: [number, number];
+    }
+  | {
       type: 'text';
       x: number;
       y: number;

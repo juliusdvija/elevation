@@ -35,6 +35,8 @@ export function sheetToSvg(sheet: Sheet): string {
         clipAttr,
       ];
       out.push(`<path ${attrs.filter(Boolean).join(' ')}/>`);
+    } else if (p.type === 'image') {
+      out.push(`<image x="${fmt(p.x)}" y="${fmt(p.y)}" width="${fmt(p.w)}" height="${fmt(p.h)}" href="${p.href}"/>`);
     } else {
       const attrs = [
         `x="${fmt(p.x)}"`,

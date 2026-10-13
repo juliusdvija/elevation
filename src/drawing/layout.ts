@@ -2,13 +2,13 @@ import * as THREE from 'three';
 import type { Document } from '../document';
 import type { Model } from '../kernel/Model';
 import { buildSheets } from './build';
-import type { DrawingSettings, ViewRef } from './settings';
+import type { DrawingSettings, Scene, ViewRef } from './settings';
 import { MINIMAL, PAPER_SIZES, textWidth, type Primitive, type Sheet } from './sheet';
 
 export type LayoutPaper = keyof typeof PAPER_SIZES;
 
 /** A drawing placed on a layout page: which view, at what scale, and where (paper mm from the page's top left). */
-export interface Viewport {
+export interface DrawingViewport {
   id: string;
   view: ViewRef;
   /** Scale denominator: 100 means 1:100. */
@@ -16,6 +16,29 @@ export interface Viewport {
   x: number;
   y: number;
 }
+
+/** A rendered 3D view placed on a page: which saved scene, how wide on paper (mm), and the picture's height / width. */
+export interface SceneViewport {
+  id: string;
+  scene: string;
+  width: number;
+  ratio: number;
+  x: number;
+  y: number;
+}
+
+export type Viewport = DrawingViewport | SceneViewport;
+
+export const isScene = (viewport: Viewport): viewport is SceneViewport => 'scene' in viewport;
+
+/** A rendered picture to place on a page. */
+export interface RenderedImage {
+  href: string;
+  pixels: [number, number];
+}
+
+/** Renders a scene for a page; null when pictures are not available (tests, no WebGL). */
+export type ImageProvider = (scene: Scene, widthMm: number, heightMm: number) => RenderedImage | null;
 
 /** A note on the page: text (lines split by \n) at a paper position, `size` in paper mm. */
 export interface LayoutText {
@@ -58,16 +81,48 @@ export interface ViewportSheet {
 }
 
 function shift(primitive: Primitive, dx: number, dy: number): Primitive {
-  if (primitive.type === 'text') return { ...primitive, x: primitive.x + dx, y: primitive.y + dy };
+  if (primitive.type === 'text' || primitive.type === 'image') return { ...primitive, x: primitive.x + dx, y: primitive.y + dy };
   return { ...primitive, lines: primitive.lines.map((line) => line.map((p) => new THREE.Vector2(p.x + dx, p.y + dy))) };
 }
 
 /** Each viewport's own sheet (its drawing with annotations, title and scale bar), at its scale. */
-export function viewportSheets(doc: Document, layout: Layout, settings: DrawingSettings = doc.drawingSettings, flat: Model = doc.flatten()): ViewportSheet[] {
+export function viewportSheets(
+  doc: Document,
+  layout: Layout,
+  settings: DrawingSettings = doc.drawingSettings,
+  flat: Model = doc.flatten(),
+  images?: ImageProvider,
+): ViewportSheet[] {
   return layout.viewports.map((viewport) => {
+    if (isScene(viewport)) return sceneSheet(viewport, settings.scenes.find((s) => s.id === viewport.scene), images);
     const [built] = buildSheets(doc, [viewport.view], { scale: viewport.scale, paper: 'fit' }, flat, settings);
     return { viewport, sheet: built.sheet, empty: built.empty, title: built.setup.title };
   });
+}
+
+const VIEW_MARGIN = 12; // paper mm around a viewport's content, as in a drawing's own sheet
+const VIEW_TITLE = 16; // paper mm below it for the caption
+
+/** A scene's sheet: its picture in the same frame as a drawing, with the scene's name as the caption. */
+function sceneSheet(viewport: SceneViewport, scene: Scene | undefined, images: ImageProvider | undefined): ViewportSheet {
+  const style = MINIMAL;
+  const w = viewport.width;
+  const h = viewport.width * viewport.ratio;
+  const primitives: Primitive[] = [];
+  const image = scene && images ? images(scene, w, h) : null;
+  if (image) {
+    primitives.push({ type: 'image', x: VIEW_MARGIN, y: VIEW_MARGIN, w, h, href: image.href, pixels: image.pixels });
+  } else {
+    // No picture available: a placeholder box where it will go.
+    const corner = (x: number, y: number) => new THREE.Vector2(VIEW_MARGIN + x, VIEW_MARGIN + y);
+    primitives.push({ type: 'path', lines: [[corner(0, 0), corner(w, 0), corner(w, h), corner(0, h)]], closed: true, stroke: style.annotation.color, width: style.annotation.width, dash: [2, 1.2] });
+    primitives.push({ type: 'text', x: VIEW_MARGIN + w / 2, y: VIEW_MARGIN + h / 2, text: scene ? '3D view' : 'Scene missing', size: 3, color: style.muted, anchor: 'middle' });
+  }
+  const title = scene?.name ?? 'Scene';
+  const ty = VIEW_MARGIN + h + 9;
+  primitives.push({ type: 'text', x: VIEW_MARGIN, y: ty, text: title.toUpperCase(), size: 3.2, bold: true, color: style.ink, letterSpacing: 0.3 });
+  primitives.push({ type: 'text', x: VIEW_MARGIN, y: ty + 4.6, text: '3D view', size: 2.2, color: style.muted });
+  return { viewport, sheet: { width: w + VIEW_MARGIN * 2, height: h + VIEW_MARGIN * 2 + VIEW_TITLE, background: style.paper, primitives, fits: true, font: style.font }, empty: false, title };
 }
 
 interface Rect {
@@ -108,6 +163,24 @@ export function addViewport(doc: Document, layout: Layout, view: ViewRef, scale:
   return { ...layout, viewports: [...layout.viewports, { id: `vp-${n}`, view, scale, x: spot.x, y: spot.y }] };
 }
 
+/** Adds a rendered 3D view of a scene to a layout, `width` mm wide with the picture's `ratio` (height / width). */
+export function addSceneViewport(doc: Document, layout: Layout, scene: Scene, width: number, ratio: number, settings: DrawingSettings = doc.drawingSettings): Layout {
+  const placed = viewportSheets(doc, layout, settings).map(({ viewport, sheet }) => ({ x: viewport.x, y: viewport.y, w: sheet.width, h: sheet.height }));
+  const spot = freeSpot(placed, width + VIEW_MARGIN * 2, width * ratio + VIEW_MARGIN * 2 + VIEW_TITLE, layout.paper);
+  let n = layout.viewports.length + 1;
+  const ids = new Set(layout.viewports.map((v) => v.id));
+  while (ids.has(`vp-${n}`)) n++;
+  return { ...layout, viewports: [...layout.viewports, { id: `vp-${n}`, scene: scene.id, width, ratio, x: spot.x, y: spot.y }] };
+}
+
+/** A new scene (id and default name) for a camera. */
+export function nextScene(scenes: readonly Scene[], camera: Scene['camera']): Scene {
+  let n = scenes.length + 1;
+  const ids = new Set(scenes.map((s) => s.id));
+  while (ids.has(`scene-${n}`)) n++;
+  return { id: `scene-${n}`, name: `View ${n}`, camera };
+}
+
 /** Places every viewport again, in order, in the first free spots. */
 export function tidyLayout(doc: Document, layout: Layout, settings: DrawingSettings = doc.drawingSettings): Layout {
   const sheets = viewportSheets(doc, layout, settings);
@@ -126,6 +199,7 @@ export function composeLayout(
   layout: Layout,
   settings: DrawingSettings = doc.drawingSettings,
   flat: Model = doc.flatten(),
+  images?: ImageProvider,
 ): { sheet: Sheet; fits: boolean; rects: PageItem[] } {
   const [width, height] = PAPER_SIZES[layout.paper];
   const style = MINIMAL;
@@ -141,7 +215,7 @@ export function composeLayout(
 
   let fits = true;
   const rects: PageItem[] = [];
-  for (const { viewport, sheet, empty } of viewportSheets(doc, layout, settings, flat)) {
+  for (const { viewport, sheet, empty } of viewportSheets(doc, layout, settings, flat, images)) {
     rects.push({ kind: 'viewport', id: viewport.id, x: viewport.x, y: viewport.y, w: sheet.width, h: sheet.height });
     if (empty) continue;
     fits &&= viewport.x >= FRAME - 1e-6 && viewport.y >= FRAME - 1e-6 && viewport.x + sheet.width <= width - FRAME + 1e-6 && viewport.y + sheet.height <= height - FRAME - PAGE_TITLE + 1e-6;

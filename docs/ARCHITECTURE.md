@@ -103,7 +103,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 ## 6. Bestanden (`src/io`)
 
-- Formaat **`.elev`**: leesbare JSON `{ format, version, units: 'mm', model, definitions, drawing, camera }`. Versie 2 voegde definities toe, **3** de tekeninginstellingen, **4** de bladen (`drawing.layouts`). Nieuwere versies worden geweigerd met een duidelijke melding.
+- Formaat **`.elev`**: leesbare JSON `{ format, version, units: 'mm', model, definitions, drawing, camera }`. Versie 2 voegde definities toe, **3** de tekeninginstellingen, **4** de bladen (`drawing.layouts`), **5** de opgeslagen 3D-aanzichten (`drawing.scenes`). Nieuwere versies worden geweigerd met een duidelijke melding.
 - **OBJ-import** (`io/obj.ts`, dialoog in `ui/ImportDialog.ts`): knop in de werkbalk of een .obj (met .mtl) op het venster slepen. Verliesgevend: geometrie, kleuren (`Kd`) en doorzichtigheid (`d`/`Tr`) komen mee; teksturen, normalen en groepen niet. Eenheid wordt geraden uit de afmetingen, Y-omhoog wordt Z-omhoog. Het resultaat wordt een groep in de huidige context, één undo-stap.
 - Opslaan via de **File System Access API** waar beschikbaar (schrijft terug naar hetzelfde bestand), anders download/bestandskiezer.
 - Een **herstelkopie** in `localStorage` vangt herladen op; het bestand blijft de echte opslag.
@@ -163,6 +163,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 | 40 | Schaduwwerking in tekeningen is een instelling (`shading`) met één vast licht (`LIGHT`: van boven, voor en links); schaduwen worden per ontvangend vlak berekend en met een knippad op dat vlak getekend | Elk vlak krijgt een tint naar zijn stand ten opzichte van het licht (`lightOn`); bovendien werpt elk ondoorzichtig vlak zijn omtrek langs het licht op het vlak van elk verlicht vlak (`drawing/shadows.ts`, ruimtelijk raster, bereik 12 m); gaten laten licht door (tegen de klok in voor buitenlus, met de klok mee voor gat: niet-nul-regel). De schaduw is een doorschijnend zwart pad met `clip` (SVG `clipPath`, PDF `W* n`) zodat hij exact op het vlak blijft zonder polygoon-snijden. Vlakken die van het licht af staan krijgen geen schaduw (ze zijn al donker). Plattegronden op maaiveld krijgen daarnaast een slagschaduw op de grond (alle vlakken, één pad). Daardoor zie je dorpels, overstekken en ramen in een aanzicht. Eén vast licht houdt tekeningen onderling consistent; een instelbare zonnestand is een logische uitbreiding. |
 
+| 41 | Een 3D-aanzicht op een blad is een `Scene` (naam + camera) die als JPEG-plaatje wordt gerenderd; het PDF-schrijven werkt nu op bytes | `Viewport.snapshot` rendert het model buiten beeld (render target met 4× MSAA, papierkleurige achtergrond, zonder raster, assen, selectie, hover en hulplijnen) en zet de camera daarna terug. Op het blad is het een `SceneViewport` naast de gewone tekeningen (zelfde kader, bijschrift, slepen, tidy, undo). Het plaatje is een primitief `image`: SVG `<image>` en een PDF-`XObject` met DCT (de JPEG-bytes ongewijzigd). Voorbeeld op 110 dpi, export op 220 dpi; renders worden gecachet op camera, grootte en modelversie en na een wijziging even hergebruikt zodat slepen soepel blijft. Een scene die geen blad meer toont, wordt vergeten. Het plaatje hangt van WebGL af, dus tests gebruiken een `ImageProvider`. |
+
 ---
 
 ## 8. Bekende beperkingen
@@ -171,6 +173,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
 - Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- 3D-aanzichten op bladen: maten en gereedschapsfeedback staan niet in het plaatje; het plaatje is een raster (niet schaalbaar) en toont geen cast shadows (3D-weergave heeft een eigen eenvoudige verlichting); geen perspectiefcorrectie of zonnestand.
 - Schaduwen: één vaste lichtrichting; schaduw valt alleen op vlakken, niet op de grond in aanzichten; glas laat licht volledig door (geen getinte schaduw); gaten met meerdere onderdelen die door het snijvlak lopen kunnen ruwe randen geven.
 - OBJ-import: bij bronnen met dubbele of elkaar rakende geometrie blijven enkele vlakken overlappen (validator: `overlapping-faces`), en open meshes blijven open; er is nog geen STL-, glTF- of DXF-import en geen export.
 - Verf: de wanden en bovenkant van een Push/Pull nemen de kleur van het getrokken vlak over; andere nieuwe vlakken zonder ouder zijn onbeschilderd. Schaduw, patronen/arceringen en texturen bestaan nog niet.

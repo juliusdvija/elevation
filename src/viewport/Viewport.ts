@@ -5,6 +5,14 @@ import { theme } from './theme';
 
 const GROUND = new THREE.Plane(WORLD_UP.clone(), 0);
 
+/** Where a snapshot's camera stands (the saved form of a scene's camera). */
+export interface SnapshotCamera {
+  position: [number, number, number];
+  target: [number, number, number];
+  ortho: boolean;
+  orthoHeight: number;
+}
+
 /**
  * Owns the WebGL renderer, the scene and the camera rig. Renders on demand:
  * call `requestRender()` after anything visible changes.
@@ -18,7 +26,11 @@ export class Viewport {
   readonly overlay = new THREE.Group();
   readonly rig = new CameraRig();
 
+  /** Things that are not part of the model picture (selection, hover, guides) hide themselves while a snapshot renders. */
+  readonly snapshotHooks: ((rendering: boolean) => void)[] = [];
+
   private readonly raycaster = new THREE.Raycaster();
+  private readonly helpers: THREE.Object3D[];
   private dirty = true;
   /** Runs just before a frame is drawn, so things that follow the camera can update. */
   beforeRender: (() => void) | null = null;
@@ -30,7 +42,10 @@ export class Viewport {
     container.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(theme.background);
-    this.scene.add(createGrid(), createAxes(), this.content, this.overlay);
+    const grid = createGrid();
+    const axes = createAxes();
+    this.helpers = [grid, axes, this.overlay];
+    this.scene.add(grid, axes, this.content, this.overlay);
 
     const hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 2.4);
     hemisphere.position.copy(WORLD_UP);
@@ -99,6 +114,71 @@ export class Viewport {
   ray(clientX: number, clientY: number): THREE.Ray {
     this.raycaster.setFromCamera(this.ndc(clientX, clientY), this.rig.camera);
     return this.raycaster.ray.clone();
+  }
+
+  /**
+   * Renders the model from `camera` into a picture of `width` x `height` pixels on the paper colour,
+   * without the grid, axes, selection or tool feedback, and returns it as a JPEG. The viewport's own
+   * camera is put back afterwards. Null when the picture cannot be made (no GPU memory, odd size).
+   */
+  snapshot(camera: SnapshotCamera, width: number, height: number): { href: string; pixels: [number, number] } | null {
+    const max = this.renderer.capabilities.maxTextureSize;
+    width = Math.min(Math.round(width), max);
+    height = Math.min(Math.round(height), max);
+    if (width < 2 || height < 2 || width * height > 16_000_000) return null;
+
+    const rig = this.rig;
+    const saved = {
+      position: rig.position.clone(),
+      target: rig.target.clone(),
+      ortho: rig.isOrtho,
+      orthoHeight: rig.orthoHeight,
+      aspect: this.container.clientWidth / Math.max(1, this.container.clientHeight),
+    };
+    const background = this.scene.background;
+    const target = new THREE.WebGLRenderTarget(width, height, { samples: 4 });
+    target.texture.colorSpace = THREE.SRGBColorSpace;
+    try {
+      rig.position.set(...camera.position);
+      rig.target.set(...camera.target);
+      rig.orthoHeight = camera.orthoHeight;
+      if (rig.isOrtho !== camera.ortho) rig.toggleProjection();
+      rig.setAspect(width / height);
+      for (const helper of this.helpers) helper.visible = false;
+      for (const hook of this.snapshotHooks) hook(true);
+      this.scene.background = new THREE.Color(theme.face);
+      this.renderer.setRenderTarget(target);
+      this.renderer.render(this.scene, rig.camera);
+      const pixels = new Uint8Array(width * height * 4);
+      this.renderer.readRenderTargetPixels(target, 0, 0, width, height, pixels);
+      // Pixels come bottom row first; flip them into a canvas.
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (!context) return null;
+      const image = context.createImageData(width, height);
+      for (let row = 0; row < height; row++) {
+        image.data.set(pixels.subarray((height - 1 - row) * width * 4, (height - row) * width * 4), row * width * 4);
+      }
+      context.putImageData(image, 0, 0);
+      return { href: canvas.toDataURL('image/jpeg', 0.92), pixels: [width, height] };
+    } catch {
+      return null;
+    } finally {
+      this.renderer.setRenderTarget(null);
+      target.dispose();
+      this.scene.background = background;
+      for (const helper of this.helpers) helper.visible = true;
+      for (const hook of this.snapshotHooks) hook(false);
+      rig.position.copy(saved.position);
+      rig.target.copy(saved.target);
+      rig.orthoHeight = saved.orthoHeight;
+      if (rig.isOrtho !== saved.ortho) rig.toggleProjection();
+      rig.orthoHeight = saved.orthoHeight;
+      rig.setAspect(saved.aspect);
+      this.requestRender();
+    }
   }
 
   private resize(): void {

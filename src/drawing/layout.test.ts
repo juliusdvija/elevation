@@ -3,7 +3,7 @@ import * as THREE from 'three';
 import { Document } from '../document';
 import { drawPolygon } from '../kernel/draw';
 import { pushPull } from '../kernel/pushPull';
-import { addViewport, composeLayout, nextLayout, tidyLayout, viewportSheets, type Layout } from './layout';
+import { addSceneViewport, addViewport, composeLayout, isScene, nextLayout, nextScene, tidyLayout, viewportSheets, type ImageProvider, type Layout } from './layout';
 import { sheetsToPdf } from './pdf';
 import { DEFAULT_SETTINGS } from './settings';
 import { sheetToSvg } from './svg';
@@ -125,4 +125,89 @@ describe('layouts', () => {
     old.load(m.toData(), 'old', null, { drawing: beforeLayouts as never });
     expect(old.drawingSettings.layouts).toEqual([]);
   });
+
+describe('3D views on a sheet', () => {
+  // A 1 x 1 JPEG: enough to check that picture bytes survive into SVG and PDF.
+  const JPEG = 'data:image/jpeg;base64,/9j/4AAQSkZJRgABAQEASABIAAD/2wBDAP//////////////////////////////////////////////////////////////////////////////////////wgALCAABAAEBAREA/8QAFBABAAAAAAAAAAAAAAAAAAAAAP/aAAgBAQABPxA=';
+  const camera = { position: [9000, -14000, 8000] as [number, number, number], target: [0, 0, 1000] as [number, number, number], ortho: false, orthoHeight: 10000 };
+
+  it('puts a rendered picture in a frame with its name, and a dashed placeholder without one', () => {
+    const doc = house();
+    const scene = nextScene([], camera);
+    doc.updateDrawingSettings('Scene', { ...doc.drawingSettings, scenes: [scene] });
+    const layout = addSceneViewport(doc, nextLayout([], 'A3'), scene, 150, 0.6);
+    expect(isScene(layout.viewports[0])).toBe(true);
+
+    let asked: [number, number] | null = null;
+    const provider: ImageProvider = (_scene, w, h) => {
+      asked = [w, h];
+      return { href: JPEG, pixels: [10, 6] };
+    };
+    const withPicture = composeLayout(doc, layout, doc.drawingSettings, doc.flatten(), provider).sheet;
+    expect(asked).toEqual([150, 90]);
+    const image = withPicture.primitives.find((p) => p.type === 'image');
+    expect(image).toMatchObject({ w: 150, h: 90, pixels: [10, 6] });
+    expect(withPicture.primitives.some((p) => p.type === 'text' && p.text === 'VIEW 1')).toBe(true);
+
+    const placeholder = composeLayout(doc, layout, doc.drawingSettings, doc.flatten()).sheet;
+    expect(placeholder.primitives.some((p) => p.type === 'image')).toBe(false);
+    expect(placeholder.primitives.some((p) => p.type === 'text' && p.text === '3D view')).toBe(true);
+  });
+
+  it('places scenes beside drawings without overlap, and tidies them', () => {
+    const doc = house();
+    const scene = nextScene([], camera);
+    doc.updateDrawingSettings('Scene', { ...doc.drawingSettings, scenes: [scene] });
+    let layout = addViewport(doc, nextLayout([], 'A2'), { kind: 'front' }, 100);
+    layout = addSceneViewport(doc, layout, scene, 150, 0.6);
+    const r = rects(doc, layout);
+    expect(overlap(r[0], r[1])).toBe(false);
+    const tidy = tidyLayout(doc, { ...layout, viewports: layout.viewports.map((vp) => ({ ...vp, x: 10, y: 10 })) });
+    const t = rects(doc, tidy);
+    expect(overlap(t[0], t[1])).toBe(false);
+  });
+
+  it('embeds the picture in SVG and, as the original bytes, in PDF', () => {
+    const doc = house();
+    const scene = nextScene([], camera);
+    doc.updateDrawingSettings('Scene', { ...doc.drawingSettings, scenes: [scene] });
+    const layout = addSceneViewport(doc, nextLayout([], 'A3'), scene, 150, 0.6);
+    const { sheet } = composeLayout(doc, layout, doc.drawingSettings, doc.flatten(), () => ({ href: JPEG, pixels: [1, 1] }));
+    expect(sheetToSvg(sheet)).toContain(`href="${JPEG}"`);
+    const pdf = sheetsToPdf([sheet]);
+    const text = new TextDecoder('latin1').decode(pdf);
+    expect(text).toContain('/Subtype /Image');
+    expect(text).toContain('/Filter /DCTDecode');
+    expect(text).toContain('/Im1 Do');
+    // The JPEG's bytes are in the file untouched (it starts FF D8 and ends FF D9).
+    const bytes = Uint8Array.from(atob(JPEG.slice(JPEG.indexOf(',') + 1)), (c) => c.charCodeAt(0));
+    const find = (hay: Uint8Array, needle: Uint8Array) => {
+      outer: for (let i = 0; i + needle.length <= hay.length; i++) {
+        for (let j = 0; j < needle.length; j++) if (hay[i + j] !== needle[j]) continue outer;
+        return i;
+      }
+      return -1;
+    };
+    expect(find(pdf, bytes)).toBeGreaterThan(0);
+    expect(text.trimEnd().endsWith('%%EOF')).toBe(true);
+    // The cross-reference offsets still point at their objects.
+    const xref = Number(/startxref\n(\d+)/.exec(text)![1]);
+    expect(text.slice(xref, xref + 4)).toBe('xref');
+  });
+
+  it('keeps scenes with the settings when saved', () => {
+    const doc = house();
+    const scene = nextScene([], camera);
+    const layout = addSceneViewport(doc, nextLayout([], 'A3'), scene, 150, 0.6);
+    doc.updateDrawingSettings('Scene', { ...doc.drawingSettings, scenes: [scene], layouts: [layout] });
+    const file = parse(serialize(toFile(new Model().toData(), undefined, [], doc.drawingSettings)));
+    expect(file.drawing?.scenes).toEqual([scene]);
+    expect(file.drawing?.layouts?.[0].viewports[0]).toMatchObject({ scene: scene.id, width: 150, ratio: 0.6 });
+    // Files from before scenes existed load with none.
+    const old = new Document();
+    const { scenes: _omitted, ...beforeScenes } = DEFAULT_SETTINGS;
+    old.load(new Model().toData(), 'old', null, { drawing: beforeScenes as never });
+    expect(old.drawingSettings.scenes).toEqual([]);
+  });
+});
 });

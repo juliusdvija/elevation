@@ -1,4 +1,5 @@
 import type * as THREE from 'three';
+import type { CameraData } from '../io/format';
 import type { Layout } from './layout';
 
 /** A storey: plans are cut relative to its floor. */
@@ -28,6 +29,13 @@ export interface Dimension {
   offset: [number, number, number];
 }
 
+/** A saved 3D view: a name and where the camera stands. Placed on sheets as a picture. */
+export interface Scene {
+  id: string;
+  name: string;
+  camera: CameraData;
+}
+
 /** Drawing settings saved with the document. */
 export interface DrawingSettings {
   levels: Level[];
@@ -40,6 +48,8 @@ export interface DrawingSettings {
   autoDimensions: boolean;
   /** Tint faces by orientation to a fixed light, and cast ground shadows in plans. */
   shading: boolean;
+  /** Saved 3D views (format 5). */
+  scenes: Scene[];
   /** Pages with several drawings each (format 4). */
   layouts: Layout[];
 }
@@ -54,6 +64,7 @@ export const DEFAULT_SETTINGS: DrawingSettings = {
   dimensions: [],
   autoDimensions: false,
   shading: false,
+  scenes: [],
   layouts: [],
 };
 
