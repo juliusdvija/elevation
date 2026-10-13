@@ -46,6 +46,8 @@ export type Primitive =
       fill?: string;
       evenOdd?: boolean;
       dash?: number[];
+      /** Opacity of the fill and stroke, 0 to 1 (absent: solid). */
+      opacity?: number;
     }
   | {
       type: 'text';
@@ -205,7 +207,7 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
   // A hair of stroke in the fill colour hides the seams between neighbours.
   for (const fill of drawing.fills) {
     const color = fill.color ?? style.paper;
-    out.push({ type: 'path', lines: fill.loops.map((loop) => loop.map((p) => P(p.x, p.y))), closed: true, fill: color, stroke: color, width: 0.08, evenOdd: true });
+    out.push({ type: 'path', lines: fill.loops.map((loop) => loop.map((p) => P(p.x, p.y))), closed: true, fill: color, stroke: color, width: 0.08, evenOdd: true, ...(fill.opacity !== undefined ? { opacity: fill.opacity } : {}) });
   }
 
   // Projection lines, far first so near lines draw on top.

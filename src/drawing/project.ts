@@ -33,6 +33,8 @@ export interface Drawing {
 export interface DrawingFill {
   loops: THREE.Vector2[][];
   color: string | null;
+  /** Below 1 for glass. */
+  opacity?: number;
 }
 
 type Interval = [number, number];
@@ -118,6 +120,8 @@ function complement(hidden: Interval[]): Interval[] {
 function buildOccluders(model: Model, setup: ViewSetup): Occluder[] {
   const occluders: Occluder[] = [];
   for (const face of model.allFaces()) {
+    // Glass hides nothing: the edges behind a pane are still drawn.
+    if (face.opacity !== undefined && face.opacity < 1) continue;
     const n = new THREE.Vector3(face.normal.dot(setup.u), face.normal.dot(setup.v), face.normal.dot(setup.w));
     // Faces seen edge-on cover no area.
     if (Math.abs(n.z) < 1e-6) continue;
@@ -161,7 +165,7 @@ function clipPolygon(points: THREE.Vector3[], inside: (p: THREE.Vector3) => numb
  * Empty when nothing is painted, so unpainted models draw as before.
  */
 function buildFills(model: Model, setup: ViewSetup): DrawingFill[] {
-  if (!model.allFaces().some((f) => f.color)) return [];
+  if (!model.allFaces().some((f) => f.color || f.opacity !== undefined)) return [];
   const items: { fill: DrawingFill; depth: number }[] = [];
   for (const face of model.allFaces()) {
     const n = new THREE.Vector3(face.normal.dot(setup.u), face.normal.dot(setup.v), face.normal.dot(setup.w));
@@ -185,6 +189,7 @@ function buildFills(model: Model, setup: ViewSetup): DrawingFill[] {
       fill: {
         loops: [outer, ...holes].map((loop) => loop.map((p) => new THREE.Vector2(p.x, p.y))),
         color: front ? face.color ?? null : null,
+        ...(face.opacity !== undefined && face.opacity < 1 ? { opacity: face.opacity } : {}),
       },
     });
   }

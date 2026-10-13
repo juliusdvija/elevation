@@ -29,6 +29,8 @@ export interface Face {
   readonly normal: THREE.Vector3;
   /** Paint: a `#rrggbb` colour; absent for an unpainted face. */
   readonly color?: string;
+  /** See-through faces (glass): 0 to 1, absent when opaque. */
+  readonly opacity?: number;
 }
 
 /**
@@ -74,7 +76,7 @@ export interface ModelData {
   nextId: number;
   vertices: [Id, number, number, number][];
   edges: [Id, Id, Id][];
-  faces: { id: Id; outer: Id[]; holes: Id[][]; normal: [number, number, number]; color?: string }[];
+  faces: { id: Id; outer: Id[]; holes: Id[][]; normal: [number, number, number]; color?: string; opacity?: number }[];
   guides: ({ id: Id; kind: 'line'; point: [number, number, number]; direction: [number, number, number] } | { id: Id; kind: 'point'; point: [number, number, number] })[];
   instances?: { id: Id; definition: number; matrix: number[] }[];
 }
@@ -305,6 +307,7 @@ export class Model {
         holes: f.holes.map((h) => [...h]),
         normal: f.normal.toArray() as [number, number, number],
         ...(f.color ? { color: f.color } : {}),
+        ...(f.opacity !== undefined ? { opacity: f.opacity } : {}),
       })),
       instances: byId(this.allInstances()).map((i) => ({ id: i.id, definition: i.definition, matrix: [...i.matrix] })),
       guides: byId(this.allGuides()).map((g) =>
@@ -324,7 +327,7 @@ export class Model {
     for (const [id, x, y, z] of data.vertices) this.set('vertices', id, { id, position: new THREE.Vector3(x, y, z) });
     for (const [id, a, b] of data.edges) this.set('edges', id, { id, a, b });
     for (const f of data.faces) {
-      this.set('faces', f.id, { id: f.id, outer: [...f.outer], holes: f.holes.map((h) => [...h]), normal: new THREE.Vector3(...f.normal), ...(f.color ? { color: f.color } : {}) });
+      this.set('faces', f.id, { id: f.id, outer: [...f.outer], holes: f.holes.map((h) => [...h]), normal: new THREE.Vector3(...f.normal), ...(f.color ? { color: f.color } : {}), ...(f.opacity !== undefined ? { opacity: f.opacity } : {}) });
     }
     for (const g of data.guides ?? []) {
       this.set(
@@ -479,6 +482,7 @@ export class Model {
       holes: face.holes.map((h) => [...h]),
       normal: face.normal.clone().normalize(),
       ...(face.color ? { color: face.color } : {}),
+      ...(face.opacity !== undefined && face.opacity < 1 ? { opacity: face.opacity } : {}),
     });
     return id;
   }

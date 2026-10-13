@@ -94,6 +94,21 @@ f 1 2 5\nf 1 5 3\nf 1 3 4\nf 2 6 7\nf 2 7 3\n`;
     expect(guessUnit(house)).toBe('cm'); // 10 m
     expect(guessUnit(parseObj('v 0 0 0\nv 12 3 8\n'))).toBe('m');
     expect(guessUnit(parseObj('v 0 0 0\nv 12000 3000 8000\n'))).toBe('mm');
-    expect(parseMtl('newmtl Brick\nKd 0.5 0.25 0\n').get('Brick')).toBe('#804000');
+    expect(parseMtl('newmtl Brick\nKd 0.5 0.25 0\n').get('Brick')).toEqual({ color: '#804000', opacity: 1 });
+    // Opacity is `d`, or 1 - `Tr`.
+    expect(parseMtl('newmtl A\nKd 0 0 1\nd 0.5\nnewmtl B\nKd 0 0 1\nTr 0.75\n').get('B')?.opacity).toBeCloseTo(0.25);
+    expect(parseMtl('newmtl A\nKd 0 0 1\nd 0.5\n').get('A')?.opacity).toBe(0.5);
+  });
+
+  it('imports glass as see-through faces, and keeps it apart from solid faces of the same plane', () => {
+    const text = BOX.replace('f 1 3 2\nf 1 4 3', 'usemtl glass\nf 1 3 2\nf 1 4 3\nusemtl solid');
+    const mtl = 'newmtl glass\nKd 0.98 0.98 0.98\nd 0.4\nnewmtl solid\nKd 0.2 0.2 0.2\nd 1\n';
+    const m = buildModel(parseObj(text, mtl), { scale: 1, yUp: true });
+    const glass = m.allFaces().filter((f) => f.opacity !== undefined);
+    expect(glass).toHaveLength(1);
+    expect(glass[0].opacity).toBeCloseTo(0.4);
+    expect(glass[0].color).toBe('#fafafa'); // glass keeps its colour even when it is near white
+    const lossy = buildModel(parseObj(text, mtl), { scale: 1, yUp: true, colors: false });
+    expect(lossy.allFaces().some((f) => f.opacity !== undefined)).toBe(false);
   });
 });

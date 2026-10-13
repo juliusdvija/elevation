@@ -24,8 +24,14 @@ function rgb(hex: string): string {
   return `${fmt(c.r)} ${fmt(c.g)} ${fmt(c.b)}`;
 }
 
-/** The page content stream for a sheet, in PDF points with y up. */
-function contentStream(sheet: Sheet): string {
+/** The page content stream for a sheet, in PDF points with y up, and the opacities it uses (graphics states /GS1, /GS2, ...). */
+function contentStream(sheet: Sheet): { stream: string; opacities: number[] } {
+  const opacities: number[] = [];
+  const stateOf = (opacity: number) => {
+    let i = opacities.indexOf(opacity);
+    if (i < 0) i = opacities.push(opacity) - 1;
+    return `/GS${i + 1} gs`;
+  };
   const k = PT_PER_MM;
   const X = (x: number) => fmt(x * k);
   const Y = (y: number) => fmt((sheet.height - y) * k);
@@ -42,7 +48,9 @@ function contentStream(sheet: Sheet): string {
       if (p.stroke) style.push(`${rgb(p.stroke)} RG ${fmt((p.width ?? 0.25) * k)} w`);
       style.push(p.dash ? `[${p.dash.map((d) => fmt(d * k)).join(' ')}] 0 d` : '[] 0 d');
       const paint = p.fill && p.stroke ? (p.evenOdd ? 'B*' : 'B') : p.fill ? (p.evenOdd ? 'f*' : 'f') : 'S';
-      ops.push(`${style.join(' ')} ${path} ${paint}`);
+      // Translucent paths set a graphics state, then restore the solid one.
+      if (p.opacity !== undefined && p.opacity < 1) ops.push(`${stateOf(p.opacity)} ${style.join(' ')} ${path} ${paint} /GS0 gs`);
+      else ops.push(`${style.join(' ')} ${path} ${paint}`);
     } else {
       const font = p.bold ? '/F2' : '/F1';
       const w = textWidth(p.text, p.size, p.bold, p.letterSpacing ?? 0);
@@ -58,7 +66,7 @@ function contentStream(sheet: Sheet): string {
       );
     }
   }
-  return ops.join('\n');
+  return { stream: ops.join('\n'), opacities };
 }
 
 /**
@@ -78,14 +86,16 @@ export function sheetsToPdf(sheets: Sheet[], title = 'Elevation drawings'): Uint
   const helveticaBold = add('<< /Type /Font /Subtype /Type1 /BaseFont /Helvetica-Bold /Encoding /WinAnsiEncoding >>');
   const info = add(`<< /Title ${pdfString(title)} /Producer (Elevation) >>`);
 
+  const solid = add('<< /Type /ExtGState /ca 1 /CA 1 >>');
   const pageIds: number[] = [];
   for (const sheet of sheets) {
-    const stream = contentStream(sheet);
+    const { stream, opacities } = contentStream(sheet);
     const content = add(`<< /Length ${stream.length} >>\nstream\n${stream}\nendstream`);
+    const states = [`/GS0 ${solid} 0 R`, ...opacities.map((o, i) => `/GS${i + 1} ${add(`<< /Type /ExtGState /ca ${fmt(o)} /CA ${fmt(o)} >>`)} 0 R`)];
     pageIds.push(
       add(
         `<< /Type /Page /Parent ${pages} 0 R /MediaBox [0 0 ${fmt(sheet.width * PT_PER_MM)} ${fmt(sheet.height * PT_PER_MM)}] ` +
-          `/Resources << /Font << /F1 ${helvetica} 0 R /F2 ${helveticaBold} 0 R >> >> /Contents ${content} 0 R >>`,
+          `/Resources << /Font << /F1 ${helvetica} 0 R /F2 ${helveticaBold} 0 R >> /ExtGState << ${states.join(' ')} >> >> /Contents ${content} 0 R >>`,
       ),
     );
   }

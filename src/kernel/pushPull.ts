@@ -295,7 +295,7 @@ function extrude(model: Model, face: Face, distance: number): void {
     for (const f of model.allFaces()) {
       if (facesBefore.has(f.id) || f.color) continue;
       const inside = faceInteriorPoint(model, f);
-      if (inside && (sideContaining(inside) || inCap(inside))) model.putFace({ ...f, color: face.color });
+      if (inside && (sideContaining(inside) || inCap(inside))) model.putFace({ ...f, color: face.color, opacity: face.opacity });
     }
   }
 

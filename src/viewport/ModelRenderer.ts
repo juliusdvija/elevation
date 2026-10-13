@@ -32,8 +32,11 @@ export function within(path: Id[], context: Id[]): boolean {
 interface Layer {
   front: THREE.Mesh;
   back: THREE.Mesh;
+  /** See-through faces (glass), drawn after the solid ones. */
+  glass: THREE.Mesh;
   edges: THREE.LineSegments;
   refs: FaceRef[];
+  glassRefs: FaceRef[];
 }
 
 /**
@@ -79,7 +82,13 @@ export class ModelRenderer {
         new THREE.LineBasicMaterial({ color: theme.edge, transparent: opacity < 1, opacity }),
       );
       edges.raycast = () => {};
-      return { front, back, edges, refs: [] };
+      // Per-vertex alpha (an RGBA colour attribute) gives each pane its own opacity.
+      const glass = new THREE.Mesh(
+        new THREE.BufferGeometry(),
+        new THREE.MeshLambertMaterial({ vertexColors: true, transparent: true, side: THREE.DoubleSide, depthWrite: false, opacity }),
+      );
+      glass.renderOrder = 1;
+      return { front, back, glass, edges, refs: [], glassRefs: [] };
     };
     this.active = layer(1);
     this.faded = layer(FADED_OPACITY);
@@ -116,9 +125,11 @@ export class ModelRenderer {
       this.guidePoints,
       this.active.front,
       this.active.back,
+      this.active.glass,
       this.active.edges,
       this.faded.front,
       this.faded.back,
+      this.faded.glass,
       this.faded.edges,
       this.hoverFaces,
       this.selectionFaces,
@@ -133,13 +144,13 @@ export class ModelRenderer {
 
   /** Meshes to raycast for picking faces (front and back sides of everything). */
   get pickMeshes(): THREE.Mesh[] {
-    return [this.active.front, this.active.back, this.faded.front, this.faded.back];
+    return [this.active.front, this.active.back, this.active.glass, this.faded.front, this.faded.back, this.faded.glass];
   }
 
   /** The face behind a raycast hit on one of `pickMeshes`. */
   faceOfHit(mesh: THREE.Object3D, triangle: number): FaceRef | undefined {
-    const layer = mesh === this.active.front || mesh === this.active.back ? this.active : this.faded;
-    return layer.refs[triangle];
+    const layer = mesh === this.active.front || mesh === this.active.back || mesh === this.active.glass ? this.active : this.faded;
+    return mesh === layer.glass ? layer.glassRefs[triangle] : layer.refs[triangle];
   }
 
   setSelection(highlight: Highlight): void {
@@ -154,7 +165,15 @@ export class ModelRenderer {
 
   private rebuild(): void {
     const context = this.doc.context.path;
-    const build = { active: { positions: [] as number[], normals: [] as number[], colors: [] as number[], edges: [] as number[], refs: [] as FaceRef[] }, faded: { positions: [] as number[], normals: [] as number[], colors: [] as number[], edges: [] as number[], refs: [] as FaceRef[] } };
+    const buffers = () => ({
+      positions: [] as number[],
+      normals: [] as number[],
+      colors: [] as number[],
+      refs: [] as FaceRef[],
+      glass: { positions: [] as number[], normals: [] as number[], colors: [] as number[], refs: [] as FaceRef[] },
+      edges: [] as number[],
+    });
+    const build = { active: buffers(), faded: buffers() };
 
     for (const placement of this.doc.placements()) {
       const target = within(placement.path, context) ? build.active : build.faded;
@@ -164,17 +183,20 @@ export class ModelRenderer {
         const triangles = triangulateFace(model, face).map((p) => p.clone().applyMatrix4(matrix));
         const n = face.normal.clone().applyMatrix3(normalMatrix).normalize();
         const paint = face.color ? new THREE.Color(face.color) : PLAIN;
+        const glass = face.opacity !== undefined && face.opacity < 1;
+        const sink = glass ? target.glass : target;
         for (let i = 0; i < triangles.length; i += 3) {
           let [a, b, c] = [triangles[i], triangles[i + 1], triangles[i + 2]];
           // Wind triangles to match the face normal so front/back materials work.
           const cross = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
           if (cross.dot(n) < 0) [b, c] = [c, b];
           for (const p of [a, b, c]) {
-            target.positions.push(p.x, p.y, p.z);
-            target.normals.push(n.x, n.y, n.z);
-            target.colors.push(paint.r, paint.g, paint.b);
+            sink.positions.push(p.x, p.y, p.z);
+            sink.normals.push(n.x, n.y, n.z);
+            sink.colors.push(paint.r, paint.g, paint.b);
+            if (glass) sink.colors.push(face.opacity!);
           }
-          target.refs.push({ placement, face: face.id });
+          sink.refs.push({ placement, face: face.id });
         }
       }
       for (const e of model.allEdges()) {
@@ -197,6 +219,14 @@ export class ModelRenderer {
       layer.front.geometry = faces;
       layer.back.geometry = faces;
       layer.refs = data.refs;
+      const glass = new THREE.BufferGeometry();
+      glass.setAttribute('position', new THREE.Float32BufferAttribute(data.glass.positions, 3));
+      glass.setAttribute('normal', new THREE.Float32BufferAttribute(data.glass.normals, 3));
+      glass.setAttribute('color', new THREE.Float32BufferAttribute(data.glass.colors, 4));
+      glass.computeBoundingSphere();
+      layer.glass.geometry.dispose();
+      layer.glass.geometry = glass;
+      layer.glassRefs = data.glass.refs;
       layer.edges.geometry.dispose();
       layer.edges.geometry = new THREE.BufferGeometry();
       layer.edges.geometry.setAttribute('position', new THREE.Float32BufferAttribute(data.edges, 3));

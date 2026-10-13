@@ -63,7 +63,7 @@ export function healEdges(model: Model, edges: Iterable<Id>): void {
     if (!model.hasEdge(id)) continue;
     const faces = model.facesOfEdge(id).map((f) => model.face(f));
     // Faces of different paint stay apart: the edge between them is the edge of the paint.
-    if (faces.length !== 2 || faces[0].color !== faces[1].color || !coplanarSameSide(model, faces[0], faces[1])) continue;
+    if (faces.length !== 2 || faces[0].color !== faces[1].color || faces[0].opacity !== faces[1].opacity || !coplanarSameSide(model, faces[0], faces[1])) continue;
     const edge = model.edge(id);
     const plane = model.facePlane(faces[0]);
     // Other edges between the same two faces end up inside the merged face.
@@ -179,10 +179,12 @@ export function weldVertices(model: Model, vertices: Iterable<Id>): Set<Id> {
 }
 
 /** Paints faces with a `#rrggbb` colour, or clears their paint with `undefined`. */
-export function paintFaces(model: Model, faceIds: Iterable<Id>, color: string | undefined): void {
+export function paintFaces(model: Model, faceIds: Iterable<Id>, color: string | undefined, opacity?: number): void {
   for (const id of faceIds) {
     if (!model.hasFace(id)) continue;
     const face = model.face(id);
-    if (face.color !== color) model.putFace({ ...face, color });
+    // Painting without an opacity makes the face opaque again; clearing paint clears the glass too.
+    const next = color === undefined || opacity === undefined || opacity >= 1 ? undefined : opacity;
+    if (face.color !== color || face.opacity !== next) model.putFace({ ...face, color, opacity: next });
   }
 }

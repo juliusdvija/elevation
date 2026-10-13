@@ -10,15 +10,15 @@ export class PaintPalette {
   constructor(private readonly state: PaintState) {
     this.el.className = 'paint-palette';
     this.el.hidden = true;
-    for (const { name, color } of PALETTE) {
+    for (const { name, color, opacity } of PALETTE) {
       const b = document.createElement('button');
       b.type = 'button';
       b.className = 'swatch';
       b.title = name;
       b.setAttribute('aria-label', name);
       b.style.background = color;
-      b.addEventListener('click', () => (state.color = color));
-      this.swatches.set(color, b);
+      b.addEventListener('click', () => state.set(color, opacity));
+      this.swatches.set(`${color}${opacity ?? ''}`, b);
       this.el.append(b);
     }
     this.custom.type = 'color';
@@ -41,7 +41,7 @@ export class PaintPalette {
 
   private sync(): void {
     const current = this.state.color;
-    for (const [color, button] of this.swatches) button.setAttribute('aria-pressed', String(color === current));
+    for (const [key, button] of this.swatches) button.setAttribute('aria-pressed', String(key === `${current}${this.state.opacity ?? ''}`));
     this.clear.setAttribute('aria-pressed', String(current === undefined));
     if (current) this.custom.value = current;
   }

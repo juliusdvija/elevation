@@ -6,6 +6,8 @@ import { pushPull } from '../kernel/pushPull';
 import { paintFaces } from '../kernel/cleanup';
 import { Document } from '../document';
 import { buildSheets } from './build';
+import { sheetToSvg } from './svg';
+import { sheetsToPdf } from './pdf';
 import { faceArea } from '../kernel/faces';
 import { signedArea } from '../kernel/math';
 import { computeDrawing, type Drawing } from './project';
@@ -195,5 +197,36 @@ describe('colour fills', () => {
     const firstLine = sheet.primitives.findIndex((p) => p.type === 'path' && p.stroke && !p.fill);
     expect(firstFill).toBeGreaterThanOrEqual(0);
     expect(firstFill).toBeLessThan(firstLine);
+  });
+
+  it('lets edges show through glass, and fills the glass translucently', () => {
+    const m = new Model();
+    // A wide box, and a small one standing behind it: seen from the front it is hidden by the wall.
+    m.edit(() => drawPolygon(m, [v(0, 0), v(6000, 0), v(6000, 1000), v(0, 1000)]));
+    m.edit(() => pushPull(m, m.allFaces()[0].id, -3000));
+    m.edit(() => drawPolygon(m, [v(2000, 4000), v(3000, 4000), v(3000, 5000), v(2000, 5000)]));
+    m.edit(() => pushPull(m, m.allFaces().find((f) => f.normal.z < -0.99 && m.position(f.outer[0]).y >= 4000)!.id, -2000));
+    const setup = viewSetup({ kind: 'front' }, DEFAULT_SETTINGS, m.bounds());
+    const solid = computeDrawing(m, setup);
+    const walls = m.allFaces().filter((f) => Math.abs(f.normal.y) > 0.99 && m.position(f.outer[0]).y < 1500);
+    m.edit(() => paintFaces(m, walls.map((f) => f.id), '#9fc3d6', 0.4));
+    const glassy = computeDrawing(m, setup);
+    // The small box's outline is hidden by the walls until they are glass.
+    expect(glassy.lines.length).toBeGreaterThan(solid.lines.length);
+    expect(glassy.fills.some((f) => f.opacity === 0.4 && f.color === '#9fc3d6')).toBe(true);
+  });
+
+  it('writes the opacity to SVG and PDF', () => {
+    const doc = new Document();
+    doc.run('Box', () => {
+      drawPolygon(doc.model, [v(0, 0), v(4000, 0), v(4000, 3000), v(0, 3000)]);
+      pushPull(doc.model, doc.model.allFaces()[0].id, -3000);
+      paintFaces(doc.model, doc.model.allFaces().filter((f) => f.normal.y < -0.99).map((f) => f.id), '#9fc3d6', 0.4);
+    });
+    const [{ sheet }] = buildSheets(doc, [{ kind: 'front' }], { scale: 100 });
+    expect(sheetToSvg(sheet)).toContain('opacity="0.4"');
+    const pdf = new TextDecoder().decode(sheetsToPdf([sheet]));
+    expect(pdf).toContain('/ca 0.4');
+    expect(pdf).toContain('/GS1 gs');
   });
 });

@@ -9,8 +9,8 @@ import { settle } from '../kernel/transform';
 export interface ObjMesh {
   positions: [number, number, number][];
   faces: { indices: number[]; material: string }[];
-  /** Diffuse colours by material name, `#rrggbb`. */
-  materials: Map<string, string>;
+  /** Diffuse colour (`#rrggbb`) and opacity (1 = solid) by material name. */
+  materials: Map<string, { color: string; opacity: number }>;
 }
 
 export interface ImportOptions {
@@ -18,7 +18,7 @@ export interface ImportOptions {
   scale: number;
   /** OBJ files are usually Y-up; Elevation is Z-up. */
   yUp: boolean;
-  /** Paint faces with their material's colour. Everything else a material holds (textures, transparency) is dropped. */
+  /** Paint faces with their material's colour and opacity. Everything else a material holds (textures, ...) is dropped. */
   colors?: boolean;
   /** Move the model so its footprint is centred on the origin and its lowest point is on the ground. */
   recenter?: boolean;
@@ -32,21 +32,32 @@ export const UNITS: { id: string; label: string; mm: number }[] = [
   { id: 'ft', label: 'Feet', mm: 304.8 },
 ];
 
-/** Reads the colours (`Kd`) of a .mtl file. Near-white diffuse colours are what an exporter writes for "no material". */
-export function parseMtl(text: string): Map<string, string> {
-  const materials = new Map<string, string>();
-  let current: string | null = null;
+/**
+ * Reads the colour (`Kd`) and opacity of the materials in a .mtl file. Opacity is `d` (1 = solid) or
+ * `Tr` (0 = solid). Near-white diffuse colours are what an exporter writes for "no material".
+ */
+export function parseMtl(text: string): Map<string, { color: string; opacity: number }> {
+  const materials = new Map<string, { color: string; opacity: number }>();
+  const entries = new Map<string, { color?: string; opacity: number }>();
+  let current: { color?: string; opacity: number } | null = null;
   for (const raw of text.split(/\r?\n/)) {
     const line = raw.trim();
-    if (line.startsWith('newmtl ')) current = line.slice(7).trim();
+    if (line.startsWith('newmtl ')) entries.set(line.slice(7).trim(), (current = { opacity: 1 }));
     else if (current && line.startsWith('Kd ')) {
       const [r, g, b] = line.slice(3).trim().split(/\s+/).map(Number);
       if ([r, g, b].every(Number.isFinite)) {
         const hex = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, '0');
-        materials.set(current, `#${hex(r)}${hex(g)}${hex(b)}`);
+        current.color = `#${hex(r)}${hex(g)}${hex(b)}`;
       }
+    } else if (current && /^d\s/.test(line)) {
+      const d = Number(line.slice(2));
+      if (Number.isFinite(d)) current.opacity = Math.min(1, Math.max(0, d));
+    } else if (current && /^Tr\s/.test(line)) {
+      const tr = Number(line.slice(3));
+      if (Number.isFinite(tr)) current.opacity = Math.min(1, Math.max(0, 1 - tr));
     }
   }
+  for (const [name, e] of entries) if (e.color) materials.set(name, { color: e.color, opacity: e.opacity });
   return materials;
 }
 
@@ -102,8 +113,7 @@ export function guessUnit(mesh: ObjMesh): string {
 }
 
 /** `Kd` colours that exporters write for "no material" stay unpainted. */
-function paintOf(hex: string | undefined): string | undefined {
-  if (!hex) return undefined;
+function paintOf(hex: string): string | undefined {
   const [r, g, b] = [1, 3, 5].map((i) => parseInt(hex.slice(i, i + 2), 16));
   return r >= 245 && g >= 245 && b >= 245 ? undefined : hex;
 }
@@ -113,6 +123,8 @@ interface Triangle {
   normal: THREE.Vector3;
   d: number;
   color: string | undefined;
+  /** Below 1 for glass. Triangles of different paint are never merged. */
+  opacity: number | undefined;
 }
 
 const WELD = 0.01; // mm: vertices closer than this are one
@@ -167,7 +179,10 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
     const triangles: Triangle[] = [];
     const seenTriangles = new Set<string>();
     for (const face of mesh.faces) {
-      const color = options.colors === false ? undefined : paintOf(mesh.materials.get(face.material));
+      const material = options.colors === false ? undefined : mesh.materials.get(face.material);
+      // Glass keeps its colour even when it is near white; solid near-white faces stay unpainted.
+      const opacity = material && material.opacity < 1 ? material.opacity : undefined;
+      const color = material && (opacity !== undefined ? material.color : paintOf(material.color));
       for (let i = 1; i + 1 < face.indices.length; i++) {
         const v: [Id, Id, Id] = [vertexAt(face.indices[0]), vertexAt(face.indices[i]), vertexAt(face.indices[i + 1])];
         if (v[0] === v[1] || v[1] === v[2] || v[0] === v[2]) continue;
@@ -179,7 +194,7 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
         const normal = new THREE.Vector3().subVectors(b, a).cross(new THREE.Vector3().subVectors(c, a));
         if (normal.length() / 2 < 1e-4) continue;
         normal.normalize();
-        triangles.push({ v, normal, d: normal.dot(a), color });
+        triangles.push({ v, normal, d: normal.dot(a), color, opacity });
       }
     }
 
@@ -198,12 +213,12 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
     for (const users of edgeUsers.values()) {
       if (users.length !== 2) continue;
       const [s, t] = users.map((i) => triangles[i]);
-      if (s.color === t.color && s.normal.dot(t.normal) > 1 - NORMAL_TOLERANCE && Math.abs(s.d - t.d) < PLANE_TOLERANCE) parent[find(users[0])] = find(users[1]);
+      if (s.color === t.color && s.opacity === t.opacity && s.normal.dot(t.normal) > 1 - NORMAL_TOLERANCE && Math.abs(s.d - t.d) < PLANE_TOLERANCE) parent[find(users[0])] = find(users[1]);
     }
     const groups = new Map<number, number[]>();
     triangles.forEach((_, i) => (groups.get(find(i)) ?? groups.set(find(i), []).get(find(i))!).push(i));
 
-    const addFace = (outer: Id[], holes: Id[][], normal: THREE.Vector3, color: string | undefined) => {
+    const addFace = (outer: Id[], holes: Id[][], normal: THREE.Vector3, color: string | undefined, opacity: number | undefined) => {
       for (const loop of [outer, ...holes]) {
         for (let k = 0; k < loop.length; k++) {
           const a = loop[k];
@@ -211,14 +226,14 @@ export function buildModel(mesh: ObjMesh, options: ImportOptions): Model {
           if (model.edgeBetween(a, b) === undefined) model.addEdge(a, b);
         }
       }
-      model.putFace({ outer, holes, normal, color });
+      model.putFace({ outer, holes, normal, color, opacity });
     };
 
     for (const members of groups.values()) {
       const first = triangles[members[0]];
       const merged = members.length > 1 ? mergeGroup(model, members.map((i) => triangles[i]), first) : null;
-      if (merged) for (const f of merged) addFace(f.outer, f.holes, first.normal, first.color);
-      else for (const i of members) addFace([...triangles[i].v], [], triangles[i].normal, triangles[i].color);
+      if (merged) for (const f of merged) addFace(f.outer, f.holes, first.normal, first.color, first.opacity);
+      else for (const i of members) addFace([...triangles[i].v], [], triangles[i].normal, triangles[i].color, triangles[i].opacity);
     }
 
     // T-junctions and the like: the kernel's own settle splits and welds what is left.

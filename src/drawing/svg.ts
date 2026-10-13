@@ -22,6 +22,7 @@ export function sheetToSvg(sheet: Sheet): string {
         p.evenOdd ? 'fill-rule="evenodd"' : '',
         p.stroke ? `stroke="${p.stroke}" stroke-width="${fmt(p.width ?? 0.25)}" stroke-linecap="round" stroke-linejoin="round"` : '',
         p.dash ? `stroke-dasharray="${p.dash.map(fmt).join(' ')}"` : '',
+        p.opacity !== undefined ? `opacity="${fmt(p.opacity)}"` : '',
       ];
       out.push(`<path ${attrs.filter(Boolean).join(' ')}/>`);
     } else {

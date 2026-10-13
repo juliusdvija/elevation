@@ -437,6 +437,23 @@ describe('paint', () => {
     expect(colors(model).filter((c) => c === '#2e86c1').length).toBeGreaterThanOrEqual(5);
   });
 
+  it('keeps glass opacity through save, copy and push/pull, and painting makes it solid again', () => {
+    const model = new Model();
+    model.edit(() => drawPolygon(model, rect(0, 0, 2000, 1000)));
+    const id = model.allFaces()[0].id;
+    model.edit(() => paintFaces(model, [id], '#9fc3d6', 0.4));
+    expect(model.face(id).opacity).toBe(0.4);
+    const copy = new Model();
+    copy.load(model.toData());
+    expect(copy.face(id).opacity).toBe(0.4);
+    model.edit(() => copyEntities(model, [id], [], new THREE.Matrix4().makeTranslation(0, 3000, 0)));
+    expect(model.allFaces().filter((f) => f.opacity === 0.4)).toHaveLength(2);
+    model.edit(() => pushPull(model, id, 1000));
+    expect(model.allFaces().filter((f) => f.opacity === 0.4).length).toBeGreaterThanOrEqual(6);
+    model.edit(() => paintFaces(model, [id], '#ff0000'));
+    expect(model.face(id).opacity).toBeUndefined();
+  });
+
   it('is saved, loaded and cleared again', () => {
     const model = new Model();
     model.edit(() => drawPolygon(model, rect(0, 0, 1000, 1000)));
