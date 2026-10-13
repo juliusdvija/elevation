@@ -365,6 +365,7 @@ const syncSun = () => {
   viewport.setNorth(sun.mode === 'place' ? sun.northAngle! : null);
 };
 doc.settingsChanged.on(syncSun);
+doc.sunMoved.on(syncSun);
 syncSun();
 const scenesBar = new ScenesBar(doc, { camera: () => cameraData(viewport.rig), flyTo });
 shell.viewport.append(scenesBar.el);

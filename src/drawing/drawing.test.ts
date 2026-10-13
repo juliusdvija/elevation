@@ -263,6 +263,20 @@ describe('shading', () => {
     expect(front.fills.every((f) => f.shade !== undefined && f.shade >= 0.72 && f.shade <= 1)).toBe(true);
   });
 
+  it('follows the sun: the light direction turns the lit side, and no direct sun leaves only ambient shade and no shadows', () => {
+    const m = house();
+    const setup = (kind: 'front' | 'right') => viewSetup({ kind }, DEFAULT_SETTINGS, m.bounds());
+    const lit = (d: Drawing) => Math.max(...d.fills.map((f) => f.shade ?? 0));
+    // Light travelling to -x (sun in the east) lights the right wall (+x) and not the front.
+    const east = new THREE.Vector3(-0.8, 0, -0.6).normalize();
+    expect(lit(computeDrawing(m, setup('right'), { shading: true, light: east }))).toBeGreaterThan(0.9);
+    expect(lit(computeDrawing(m, setup('front'), { shading: true, light: east }))).toBeCloseTo(0.72, 5);
+    // The sun down: ambient only, and no ground shadows.
+    const night = computeDrawing(m, viewSetup({ kind: 'plan', level: 'level-0' }, DEFAULT_SETTINGS, m.bounds()), { shading: true, light: null });
+    expect(night.shadows).toEqual([]);
+    expect(night.fills.every((f) => f.shade === 0.72 && !f.shadows)).toBe(true);
+  });
+
   it('throws counter-clockwise ground shadows in a ground-level plan only', () => {
     const m = house();
     const plan = computeDrawing(m, viewSetup({ kind: 'plan', level: 'level-0' }, DEFAULT_SETTINGS, m.bounds()), { shading: true });

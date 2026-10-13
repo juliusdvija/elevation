@@ -73,6 +73,8 @@ export class Document {
   readonly definitions = new Map<number, Definition>();
   /** Fires when levels, plan cut height or sections change. */
   readonly settingsChanged = new Emitter<void>();
+  /** The sun moved during an animation: only the 3D view and the sun panel follow; the drawings wait for `settingsChanged`. */
+  readonly sunMoved = new Emitter<void>();
   /** A group or component was renamed. */
   readonly namesChanged = new Emitter<void>();
   drawingSettings: DrawingSettings = structuredClone(DEFAULT_SETTINGS);
@@ -272,9 +274,9 @@ export class Document {
   }
 
   /** Changes the 3D view's sun without an undo step (a view state, like the camera). */
-  setSun(sun: SunSettings): void {
+  setSun(sun: SunSettings, live = false): void {
     this.drawingSettings = { ...this.drawingSettings, sun };
-    this.settingsChanged.emit();
+    (live ? this.sunMoved : this.settingsChanged).emit();
   }
 
   /** The placement at a path of instance ids, or null if it no longer exists. */

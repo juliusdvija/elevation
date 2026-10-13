@@ -1,3 +1,4 @@
+import * as THREE from 'three';
 import { DEFAULT_SUN, type SunSettings } from './settings';
 
 const RAD = Math.PI / 180;
@@ -43,11 +44,44 @@ export function sunPosition(date: string, minutes: number, latitude: number, lon
   return { azimuth, altitude };
 }
 
+/** Hours the local clock is ahead of UTC on a date: standard time, plus an hour in the summer months where summer time applies. */
+export function clockOffset(sun: Pick<SunSettings, 'utcOffset' | 'summerTime' | 'date' | 'latitude'>): number {
+  const month = Number((sun.date ?? DEFAULT_SUN.date!).split('-')[1]);
+  const north = (sun.latitude ?? 0) >= 0;
+  const summer = north ? month >= 4 && month <= 10 : month >= 10 || month <= 3;
+  return (sun.utcOffset ?? 0) + (sun.summerTime && summer ? 1 : 0);
+}
+
 /** The sun as the viewport needs it: shadows, and the sun's compass direction in the model's own axes. */
 export function resolveSun(settings: SunSettings | undefined): { shadows: boolean; azimuth: number; altitude: number } {
   const sun = { ...DEFAULT_SUN, ...settings };
   if (sun.mode !== 'place') return { shadows: sun.shadows, azimuth: sun.azimuth, altitude: sun.altitude };
-  const { azimuth, altitude } = sunPosition(sun.date!, sun.minutes!, sun.latitude!, sun.longitude!, sun.utcOffset!);
+  const { azimuth, altitude } = sunPosition(sun.date!, sun.minutes!, sun.latitude!, sun.longitude!, clockOffset(sun));
   // A bearing b from true north is at b + northAngle from the model's +Y.
   return { shadows: sun.shadows, azimuth: (((azimuth + sun.northAngle!) % 360) + 360) % 360, altitude };
+}
+
+/**
+ * The way sunlight travels, for the 2D drawings (a unit vector pointing down); null when the sun is at or below the
+ * horizon, so there is no direct light. A low sun is held at 6° so shadows stay a drawable length.
+ */
+export function lightFromSun(sun: { azimuth: number; altitude: number }): THREE.Vector3 | null {
+  if (sun.altitude <= 1) return null;
+  const azimuth = sun.azimuth * RAD;
+  const altitude = Math.max(6, sun.altitude) * RAD;
+  return new THREE.Vector3(-Math.sin(azimuth) * Math.cos(altitude), -Math.cos(azimuth) * Math.cos(altitude), -Math.sin(altitude)).normalize();
+}
+
+/** The clock times (minutes since midnight) of sunrise and sunset for a place and date, or null in polar night or midnight sun. */
+export function daylight(sun: Pick<SunSettings, 'date' | 'latitude' | 'longitude' | 'utcOffset' | 'summerTime'>): { rise: number; set: number } | null {
+  const offset = clockOffset(sun);
+  let rise = -1;
+  let set = -1;
+  for (let m = 0; m <= 1440; m += 5) {
+    if (sunPosition(sun.date!, m, sun.latitude!, sun.longitude!, offset).altitude > 0) {
+      if (rise < 0) rise = m;
+      set = m;
+    }
+  }
+  return rise < 0 || (rise === 0 && set === 1440) ? null : { rise, set };
 }

@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { DEFAULT_SUN } from './settings';
-import { resolveSun, sunPosition } from './sun';
+import { clockOffset, daylight, lightFromSun, resolveSun, sunPosition } from './sun';
 
 describe('sun position', () => {
   it('stands 61 degrees high and due south at solar noon in Amsterdam on midsummer day', () => {
@@ -38,5 +38,32 @@ describe('sun position', () => {
 
   it('gives old files with no sun the default', () => {
     expect(resolveSun(undefined).azimuth).toBe(DEFAULT_SUN.azimuth);
+  });
+
+  it('adds an hour of summer time in the places and months where it applies', () => {
+    const amsterdam = { ...DEFAULT_SUN, utcOffset: 1, summerTime: true, latitude: 52.37 };
+    expect(clockOffset({ ...amsterdam, date: '2026-06-21' })).toBe(2);
+    expect(clockOffset({ ...amsterdam, date: '2026-12-21' })).toBe(1);
+    expect(clockOffset({ ...amsterdam, utcOffset: 9, summerTime: false, date: '2026-06-21' })).toBe(9);
+    // Sydney is in summer time in December.
+    const sydney = { ...DEFAULT_SUN, utcOffset: 10, summerTime: true, latitude: -33.87 };
+    expect(clockOffset({ ...sydney, date: '2026-12-21' })).toBe(11);
+    expect(clockOffset({ ...sydney, date: '2026-06-21' })).toBe(10);
+  });
+
+  it('finds sunrise and sunset, a long day in summer and none in polar night', () => {
+    const summer = daylight({ ...DEFAULT_SUN, date: '2026-06-21' })!;
+    const winter = daylight({ ...DEFAULT_SUN, date: '2026-12-21' })!;
+    expect(summer.set - summer.rise).toBeGreaterThan(15 * 60);
+    expect(winter.set - winter.rise).toBeLessThan(9 * 60);
+    expect(daylight({ ...DEFAULT_SUN, latitude: 80, longitude: 0, utcOffset: 0, summerTime: false, date: '2026-12-21' })).toBeNull();
+  });
+
+  it('turns the sun into the way light travels for drawings, and into none when it is down', () => {
+    const light = lightFromSun({ azimuth: 180, altitude: 45 })!;
+    expect(light.y).toBeGreaterThan(0); // the sun is towards -y (south in a north-up model), so light travels towards +y
+    expect(light.z).toBeLessThan(0);
+    expect(light.length()).toBeCloseTo(1, 6);
+    expect(lightFromSun({ azimuth: 90, altitude: -10 })).toBeNull();
   });
 });

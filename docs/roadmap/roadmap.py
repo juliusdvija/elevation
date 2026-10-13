@@ -2,7 +2,7 @@ import html, json, sys
 
 # status: done | doing | next | later
 DATA = {
-  "stats": [("221","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("53","design decisions logged")],
+  "stats": [("225","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("53","design decisions logged")],
   "phases": [
     {"name":"Engine","blurb":"A kernel that does not corrupt models, and stays fast.","items":[
       ("done","Solid-safe push/pull: refuse edits that would open a closed solid","f1fd617"),
@@ -87,11 +87,13 @@ DATA = {
       ("done","Sun with sharp cast shadows on the model and the ground",""),
       ("done","Sun panel: shadows on/off, sun direction and height, saved with the document",""),
       ("done","Real sun from place, date and time, with true north set on the model; north arrow on the ground",""),
-      ("next","Link the 2D drawings' shading and shadows to the sun; a play-the-day animation",""),
+      ("done","2D drawings follow the sun: shading and cast shadows, none at night",""),
+      ("done","Play the day: the sun moves from sunrise to sunset, drawings update when it stops",""),
+      ("done","UTC offset field removed: summer time is applied automatically",""),,
       ("next","Sky gradient and a softer horizon",""),
       ("later","Line weight setting and line styles (profile edges heavier)","")]},
   ],
-  "log":[("Now","Picking the next feature to build."),("Just finished","Real sun: set from place, date and time, with true north on the model and a north arrow on the ground."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Next best step: dimensions that stay attached to the geometry and follow it when it moves. They make the live drawings trustworthy for precise work, and radius and angle dimensions and schedules build on them.")],
+  "log":[("Now","Picking the next feature to build."),("Just finished","The 2D drawings follow the sun, there is a play-the-day animation, and summer time is automatic."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Next best step: dimensions that stay attached to the geometry and follow it when it moves. They make the live drawings trustworthy for precise work, and radius and angle dimensions and schedules build on them.")],
 }
 
 def render(d):

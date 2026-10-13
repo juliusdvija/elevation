@@ -59,8 +59,10 @@ export interface SunSettings {
   northAngle?: number;
   latitude?: number;
   longitude?: number;
-  /** Hours the local clock is ahead of UTC, including daylight saving. */
+  /** Hours the local clock is ahead of UTC in winter (standard time); set from the place. */
   utcOffset?: number;
+  /** Whether the place changes to summer time (an hour ahead, April to October in the north, October to March in the south). */
+  summerTime?: boolean;
   /** Local date, yyyy-mm-dd. */
   date?: string;
   /** Local clock time, minutes since midnight. */
@@ -75,7 +77,8 @@ export const DEFAULT_SUN: SunSettings = {
   northAngle: 0,
   latitude: 52.37,
   longitude: 4.9,
-  utcOffset: 2,
+  utcOffset: 1,
+  summerTime: true,
   date: '2026-06-21',
   minutes: 840,
 };

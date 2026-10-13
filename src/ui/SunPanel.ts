@@ -1,6 +1,6 @@
 import type { Document } from '../document';
 import { DEFAULT_SUN, type SunSettings } from '../drawing/settings';
-import { sunPosition } from '../drawing/sun';
+import { clockOffset, daylight, sunPosition } from '../drawing/sun';
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
   const node = document.createElement(tag);
@@ -49,7 +49,6 @@ export class SunPanel {
   private readonly place = el('select', 'tag-select');
   private readonly latitude = input('number', { step: '0.01', min: '-90', max: '90' });
   private readonly longitude = input('number', { step: '0.01', min: '-180', max: '180' });
-  private readonly utc = input('number', { step: '0.5', min: '-12', max: '14' });
   private readonly date = input('date');
   private readonly time = input('range', { min: '0', max: '1435', step: '5' });
   private readonly directionLabel = el('span', 'sun-value');
@@ -57,6 +56,8 @@ export class SunPanel {
   private readonly northLabel = el('span', 'sun-value');
   private readonly timeLabel = el('span', 'sun-value');
   private readonly readout = el('p', 'tags-empty');
+  private readonly play = el('button', 'pill-button', 'Play the day');
+  private frame = 0;
   private readonly manualRows: HTMLElement[] = [];
   private readonly placeRows: HTMLElement[] = [];
 
@@ -70,10 +71,9 @@ export class SunPanel {
     };
     this.place.append(Object.assign(el('option'), { value: '', textContent: 'Choose a place…' }), ...PLACES.map((p, i) => Object.assign(el('option'), { value: String(i), textContent: p.name })));
     const coordinates = el('div', 'sun-coordinates');
-    coordinates.append(this.latitude, this.longitude, this.utc);
+    coordinates.append(this.latitude, this.longitude);
     this.latitude.title = 'Latitude (north positive)';
     this.longitude.title = 'Longitude (east positive)';
-    this.utc.title = 'Hours ahead of UTC, including daylight saving';
     const mode = el('div', 'sun-mode');
     mode.append(this.manualButton, this.placeButton);
     const reset = el('button', 'pill-button', 'Reset sun');
@@ -82,9 +82,10 @@ export class SunPanel {
     this.placeRows.push(
       row('North', this.north, this.northLabel),
       row('Place', this.place),
-      row('Lat, lon, UTC', coordinates),
+      row('Lat, lon', coordinates),
       row('Date', this.date),
       row('Time', this.time, this.timeLabel),
+      this.play,
       this.readout,
     );
     this.el.append(el('h3', undefined, 'Sun'), row('Shadows', this.shadows), mode, ...this.manualRows, ...this.placeRows, reset);
@@ -92,34 +93,52 @@ export class SunPanel {
     this.manualButton.addEventListener('click', () => this.apply({ ...this.current(), mode: 'manual' }));
     this.placeButton.addEventListener('click', () => this.apply({ ...this.current(), mode: 'place' }));
     reset.addEventListener('click', () => this.apply({ ...DEFAULT_SUN }));
+    this.play.addEventListener('click', () => (this.frame ? this.stop() : this.start()));
     this.place.addEventListener('change', () => {
       const p = PLACES[Number(this.place.value)];
-      if (p) this.apply({ ...this.current(), latitude: p.latitude, longitude: p.longitude, utcOffset: this.offsetOn(p) });
+      if (p) this.apply({ ...this.current(), latitude: p.latitude, longitude: p.longitude, utcOffset: p.utc, summerTime: p.dst !== 'none' });
     });
-    for (const control of [this.shadows, this.direction, this.height, this.north, this.latitude, this.longitude, this.utc, this.date, this.time]) {
+    for (const control of [this.shadows, this.direction, this.height, this.north, this.latitude, this.longitude, this.date, this.time]) {
       control.addEventListener('input', () => this.apply(this.read()));
     }
     doc.settingsChanged.on(() => this.show());
+    doc.sunMoved.on(() => this.show());
     this.show();
   }
 
   setVisible(visible: boolean): void {
     this.el.hidden = !visible;
+    if (!visible && this.frame) this.stop();
   }
 
   get isVisible(): boolean {
     return !this.el.hidden;
   }
 
-  private current(): Required<SunSettings> {
-    return { ...DEFAULT_SUN, ...this.doc.drawingSettings.sun } as Required<SunSettings>;
+  /** Plays the chosen day from sunrise to sunset in a few seconds, then loops, until stopped. The drawings catch up when it stops. */
+  private start(): void {
+    const sun = this.current();
+    const span = daylight(sun) ?? { rise: 0, set: 1435 };
+    const length = 12_000; // ms per day
+    const began = performance.now();
+    this.play.textContent = 'Stop';
+    const step = (now: number) => {
+      const t = ((now - began) % length) / length;
+      this.doc.setSun({ ...this.current(), minutes: Math.round(span.rise + t * (span.set - span.rise)) }, true);
+      this.frame = requestAnimationFrame(step);
+    };
+    this.frame = requestAnimationFrame(step);
   }
 
-  /** A place's offset on the chosen date: its usual one, plus an hour in its summer-time months (roughly). */
-  private offsetOn(place: (typeof PLACES)[number]): number {
-    const month = Number((this.current().date ?? '2026-06-21').split('-')[1]);
-    const summer = place.dst === 'north' ? month >= 4 && month <= 10 : place.dst === 'south' ? month >= 10 || month <= 3 : false;
-    return place.utc + (summer ? 1 : 0);
+  private stop(): void {
+    cancelAnimationFrame(this.frame);
+    this.frame = 0;
+    this.play.textContent = 'Play the day';
+    this.doc.setSun(this.current()); // lets the drawings and the saved copy follow
+  }
+
+  private current(): Required<SunSettings> {
+    return { ...DEFAULT_SUN, ...this.doc.drawingSettings.sun } as Required<SunSettings>;
   }
 
   private read(): SunSettings {
@@ -133,13 +152,17 @@ export class SunPanel {
       northAngle: num(this.north, now.northAngle),
       latitude: num(this.latitude, now.latitude),
       longitude: num(this.longitude, now.longitude),
-      utcOffset: num(this.utc, now.utcOffset),
+      // A typed place has no known clock: assume the zone of its longitude, with summer time.
+      ...(this.longitude.valueAsNumber !== now.longitude || this.latitude.valueAsNumber !== now.latitude
+        ? { utcOffset: Math.round(num(this.longitude, now.longitude) / 15), summerTime: true }
+        : {}),
       date: this.date.value || now.date,
       minutes: num(this.time, now.minutes),
     };
   }
 
   private apply(sun: SunSettings): void {
+    if (this.frame) this.stop();
     this.doc.setSun(sun);
   }
 
@@ -159,11 +182,12 @@ export class SunPanel {
     this.northLabel.textContent = `${Math.round(sun.northAngle)}°`;
     if (document.activeElement !== this.latitude) this.latitude.value = String(sun.latitude);
     if (document.activeElement !== this.longitude) this.longitude.value = String(sun.longitude);
-    if (document.activeElement !== this.utc) this.utc.value = String(sun.utcOffset);
     this.date.value = sun.date;
     this.time.value = String(sun.minutes);
     this.timeLabel.textContent = clock(sun.minutes);
-    const { azimuth, altitude } = sunPosition(sun.date, sun.minutes, sun.latitude, sun.longitude, sun.utcOffset);
-    this.readout.textContent = altitude > 0 ? `Sun ${Math.round(altitude)}° high, ${Math.round(azimuth)}° ${compass(azimuth)} (from true north).` : 'The sun is below the horizon: no light, no shadows.';
+    const offset = clockOffset(sun);
+    const { azimuth, altitude } = sunPosition(sun.date, sun.minutes, sun.latitude, sun.longitude, offset);
+    const zone = `UTC${offset >= 0 ? '+' : '−'}${Math.abs(offset)}${sun.summerTime && offset !== sun.utcOffset ? ', summer time' : ''}`;
+    this.readout.textContent = altitude > 0 ? `Sun ${Math.round(altitude)}° high, ${Math.round(azimuth)}° ${compass(azimuth)} from true north (${zone}).` : `The sun is below the horizon (${zone}): no light, no shadows.`;
   }
 }

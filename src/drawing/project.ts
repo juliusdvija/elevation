@@ -52,6 +52,8 @@ export interface DrawingOptions {
   shading?: boolean;
   /** Leave out edges between faces that meet at less than this angle (degrees), unless they are a silhouette. */
   smoothAngle?: number;
+  /** The way the light travels (a unit vector); absent: the fixed default light. `null`: no direct sun, so no shadows. */
+  light?: THREE.Vector3 | null;
 }
 
 /** The way the light travels in the world: from above, in front (−y) and to the left (−x). */
@@ -59,9 +61,10 @@ export const LIGHT = new THREE.Vector3(0.45, 0.55, -0.7).normalize();
 const AMBIENT = 0.72;
 
 /** How lit a face with this world normal is, as seen by a viewer looking along `w`: AMBIENT to 1. */
-function lightOn(normal: THREE.Vector3, w: THREE.Vector3): number {
+function lightOn(normal: THREE.Vector3, w: THREE.Vector3, light: THREE.Vector3 | null): number {
+  if (!light) return AMBIENT;
   const facing = normal.dot(w) > 0 ? normal.clone().negate() : normal; // the side the viewer sees
-  return AMBIENT + (1 - AMBIENT) * Math.max(0, -facing.dot(LIGHT));
+  return AMBIENT + (1 - AMBIENT) * Math.max(0, -facing.dot(light));
 }
 
 type Interval = [number, number];
@@ -212,7 +215,7 @@ function hatchOf(model: Model, face: Face, setup: ViewSetup): NonNullable<Drawin
  * faces across it are clipped (faces with holes across it are left out).
  * Empty when nothing is painted, so unpainted models draw as before.
  */
-function buildFills(model: Model, setup: ViewSetup, shading: boolean): DrawingFill[] {
+function buildFills(model: Model, setup: ViewSetup, shading: boolean, light: THREE.Vector3 | null): DrawingFill[] {
   if (!shading && !model.allFaces().some((f) => f.color || f.opacity !== undefined || f.hatch)) return [];
   const items: { fill: DrawingFill; depth: number; face: Face }[] = [];
   for (const face of model.allFaces()) {
@@ -239,15 +242,15 @@ function buildFills(model: Model, setup: ViewSetup, shading: boolean): DrawingFi
         loops: [outer, ...holes].map((loop) => loop.map((p) => new THREE.Vector2(p.x, p.y))),
         color: front ? face.color ?? null : null,
         ...(face.opacity !== undefined && face.opacity < 1 ? { opacity: face.opacity } : {}),
-        ...(shading ? { shade: lightOn(face.normal, setup.w) } : {}),
+        ...(shading ? { shade: lightOn(face.normal, setup.w, light) } : {}),
         ...(face.hatch && front ? { hatch: hatchOf(model, face, setup) } : {}),
       },
     });
   }
-  if (shading) {
+  if (shading && light) {
     // Shadows only fall on faces the light reaches; the others are already in shade.
-    const lit = items.filter((i) => i.fill.shade !== undefined && i.fill.shade > AMBIENT + 1e-6 && !i.fill.opacity && i.face.normal.dot(LIGHT) < -0.02);
-    const shadows = castShadows(model, lit.map((i) => i.face), LIGHT);
+    const lit = items.filter((i) => i.fill.shade !== undefined && i.fill.shade > AMBIENT + 1e-6 && !i.fill.opacity && i.face.normal.dot(light) < -0.02);
+    const shadows = castShadows(model, lit.map((i) => i.face), light);
     for (const item of lit) {
       const cast = shadows.get(item.face.id);
       if (!cast) continue;
@@ -283,7 +286,7 @@ function loopArea(polygon: THREE.Vector2[]): number {
   return area / 2;
 }
 
-function groundShadows(model: Model, setup: ViewSetup): THREE.Vector2[][] {
+function groundShadows(model: Model, setup: ViewSetup, light: THREE.Vector3): THREE.Vector2[][] {
   if (setup.kind !== 'plan' || setup.depthLimit === null || Math.abs(setup.depthLimit - 1) > 1e-6) return [];
   const shadows: THREE.Vector2[][] = [];
   for (const face of model.allFaces()) {
@@ -292,7 +295,7 @@ function groundShadows(model: Model, setup: ViewSetup): THREE.Vector2[][] {
     [face.outer, ...face.holes].forEach((loop, i) => {
       const polygon = loop.map((id) => {
         const p = model.position(id);
-        const v = toView(setup, p.clone().addScaledVector(LIGHT, -p.z / LIGHT.z));
+        const v = toView(setup, p.clone().addScaledVector(light, -p.z / light.z));
         return new THREE.Vector2(v.x, v.y);
       });
       const area = loopArea(polygon);
@@ -493,7 +496,8 @@ export function computeDrawing(model: Model, setup: ViewSetup, options: DrawingO
   const bounds = new THREE.Box2();
   for (const p of pieces) bounds.expandByPoint(p.a).expandByPoint(p.b);
   for (const [a, b] of cutSegments) bounds.expandByPoint(a).expandByPoint(b);
-  const shadows = options.shading ? groundShadows(model, setup) : [];
+  const light = options.light === undefined ? LIGHT : options.light;
+  const shadows = options.shading && light ? groundShadows(model, setup, light) : [];
   for (const polygon of shadows) for (const p of polygon) bounds.expandByPoint(p);
 
   // Depth cueing: lines fade with distance behind the cut (or the nearest
@@ -503,7 +507,7 @@ export function computeDrawing(model: Model, setup: ViewSetup, options: DrawingO
   if (setup.cut === null) for (const p of pieces) near = Math.min(near, p.w);
 
   return {
-    fills: buildFills(model, setup, !!options.shading),
+    fills: buildFills(model, setup, !!options.shading, light),
     shadows,
     cutLoops: chainLoops(cutSegments),
     cutSegments,

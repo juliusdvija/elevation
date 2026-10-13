@@ -3,6 +3,7 @@ import type { Document } from '../document';
 import { formatDimension } from '../core/units';
 import type { Model } from '../kernel/Model';
 import { computeDrawing } from './project';
+import { lightFromSun, resolveSun } from './sun';
 import { sortedLevels, type DrawingSettings, type ViewRef } from './settings';
 import { layoutSheet, type DimensionMarker, type Paper, type SectionMarker, type Sheet } from './sheet';
 import { dimensionShape, parallelToView } from './dimensions';
@@ -61,7 +62,7 @@ export function buildSheets(
     const setup = viewSetup(ref, settings, bounds);
     // Scale figures face the viewer of each elevation and section; in plans they stay as stored.
     const viewer = faceMe && setup.kind !== 'plan' ? setup.w.clone().multiplyScalar(-1e6) : null;
-    const drawing = computeDrawing(faceMe ? doc.flatten(viewer) : flat, setup, { shading: settings.shading, smoothAngle: settings.smoothAngle });
+    const drawing = computeDrawing(faceMe ? doc.flatten(viewer) : flat, setup, { shading: settings.shading, smoothAngle: settings.smoothAngle, light: lightFromSun(resolveSun(settings.sun)) });
     const sheet = layoutSheet(drawing, setup, { levels, sections: markers, dimensions: dimensionMarkers(settings, setup), autoDimensions: settings.autoDimensions }, options);
     return { setup, sheet, empty: drawing.lines.length === 0 && drawing.cutLoops.length === 0 };
   });
