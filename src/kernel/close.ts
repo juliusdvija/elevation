@@ -1,6 +1,6 @@
 import { Model, type Id } from './Model';
-import { newellNormal, rebuildPlane } from './faces';
-import { canonicalPlane, planeFromPointNormal } from './math';
+import { faceContainsPoint, type RegionDecision, newellNormal, rebuildPlane } from './faces';
+import { canonicalPlane, planeFrame, planeFromPointNormal, pointInPolygon, samePlane, to2D } from './math';
 
 /** Edges that border exactly one face: the rim of an opening. */
 function openEdges(model: Model): Id[] {
@@ -10,6 +10,15 @@ function openEdges(model: Model): Id[] {
 /** Whether the model has no openings: every edge with faces borders at least two. */
 export function isClosed(model: Model): boolean {
   return openEdges(model).length === 0;
+}
+
+/**
+ * Whether the only openings are the face's own rim: a face drawn on or beside a
+ * solid, about to be pulled into it. Pulling it must leave a closed model.
+ */
+export function isClosedExcept(model: Model, faceEdges: readonly Id[]): boolean {
+  const rim = new Set(faceEdges);
+  return openEdges(model).every((id) => rim.has(id));
 }
 
 /** Off-plane tolerance (mm) for a loop to count as flat. */
@@ -73,7 +82,17 @@ function capLoops(model: Model): number {
     if (normal.length() < 1e-6) continue;
     normal.normalize();
     if (points.some((p) => Math.abs(p.clone().sub(points[0]).dot(normal)) > FLAT)) continue;
-    rebuildPlane(model, canonicalPlane(planeFromPointNormal(points[0], normal)), new Set(component));
+    const plane = canonicalPlane(planeFromPointNormal(points[0], normal));
+    // Only the loop itself gets a face: another region that happens to border one of
+    // its edges (the mouth of a slot) must not turn into a face as well.
+    const frame = planeFrame(plane);
+    const outline = points.map((p) => to2D(frame, p));
+    const decide: RegionDecision = (sample) => {
+      if (pointInPolygon(to2D(frame, sample), outline)) return undefined;
+      const existing = model.allFaces().some((f) => samePlane(model.facePlane(f), plane) && faceContainsPoint(model, f, sample));
+      return existing ? undefined : null;
+    };
+    rebuildPlane(model, plane, new Set(component), decide);
     closed++;
   }
   return closed;

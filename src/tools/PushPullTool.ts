@@ -8,6 +8,7 @@ import { GRID_SPACING } from './inference';
 import { worldFacePlane } from './space';
 
 const HINT_START = 'Click a face to push or pull it.';
+const HINT_BLOCKED = 'That would leave the solid open, so it is not applied. Try another distance.';
 const HINT_DRAG = 'Move to set the distance and click, or type a distance and press Enter.';
 
 export function createPushPullTool(ctx: ToolContext): Tool {
@@ -49,8 +50,9 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     distance = d;
     ctx.setMeasurement(formatLength(Math.abs(d)));
     const m = model();
-    const { edit } = m.edit(() => pushPull(m, face!.id, d));
+    const { result, edit } = m.edit(() => pushPull(m, face!.id, d));
     preview = edit.empty ? null : edit;
+    ctx.setHint(result || Math.abs(d) < 1 ? HINT_DRAG : HINT_BLOCKED);
   };
 
   const commit = (d: number) => {
@@ -58,8 +60,12 @@ export function createPushPullTool(ctx: ToolContext): Tool {
     const id = face.id;
     revertPreview();
     const m = model();
-    ctx.doc.run('Push/Pull', () => pushPull(m, id, d));
+    let applied = true;
+    ctx.doc.run('Push/Pull', () => {
+      applied = pushPull(m, id, d);
+    });
     reset();
+    if (!applied && Math.abs(d) >= 1) ctx.setHint(HINT_BLOCKED);
   };
 
   /** A distance that puts the face on a world-grid plane, if one is near the cursor. */

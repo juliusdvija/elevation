@@ -3,7 +3,7 @@ import type { Face, Id, Model } from './Model';
 import { loopPairs } from './Model';
 import { healEdges, removeBareEdges } from './cleanup';
 import { settle } from './transform';
-import { closeOpenings, isClosed } from './close';
+import { closeOpenings, isClosed, isClosedExcept } from './close';
 import { insertSegment } from './draw';
 import { faceInteriorPoint, rebuildPlane, setFaceNormal, updateFaces, type RegionDecision } from './faces';
 import { insideTester } from './solid';
@@ -20,8 +20,19 @@ import { EPS, canonicalPlane, planeFrame, pointInPolygon, projectOnSegment, to2D
  */
 export function pushPull(model: Model, faceId: Id, distance: number): boolean {
   if (Math.abs(distance) < EPS || !model.hasFace(faceId)) return false;
+  const wasClosed = isClosedExcept(model, model.faceEdges(model.face(faceId)));
+  // A solid must stay a solid: if the edit leaves it open even after capping, refuse it.
+  return model.attempt(
+    () => {
+      const changed = pushPullFace(model, faceId, distance, wasClosed);
+      return changed;
+    },
+    (changed) => !changed || !wasClosed || isClosed(model),
+  ) ?? false;
+}
+
+function pushPullFace(model: Model, faceId: Id, distance: number, wasClosed: boolean): boolean {
   const face = model.face(faceId);
-  const wasClosed = isClosed(model);
   let changed = true;
   if (canMoveFace(model, face) && !sweepMeetsOtherGeometry(model, face, distance)) changed = moveFace(model, face, distance);
   else extrude(model, face, distance);

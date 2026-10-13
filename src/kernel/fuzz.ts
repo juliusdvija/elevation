@@ -205,6 +205,14 @@ function faceAt(model: Model, p: THREE.Vector3, normal: THREE.Vector3): number |
     .find((f) => Math.abs(Math.abs(f.normal.dot(normal)) - 1) < 1e-9 && Math.abs(f.normal.dot(p) - f.normal.dot(model.position(f.outer[0]))) < 1e-3 && faceContainsPoint(model, f, p))?.id;
 }
 
+/** Thrown when a push/pull of a compound operation is refused; the operation is then skipped (undone). */
+class Refused extends Error {}
+
+/** Push/pull as the last step of a compound operation: a refusal undoes the drawing as well. */
+function pull(m: Model, id: number, d: number): void {
+  if (!pushPull(m, id, d)) throw new Refused();
+}
+
 /** Compound operations that keep closed solids closed: draw a shape, then push/pull it. */
 const SOLID_COMPOUND_OPS: Op[] = [
   {
@@ -230,7 +238,7 @@ const SOLID_COMPOUND_OPS: Op[] = [
       if (id === undefined) return `block footprint ${x},${y} ${w}x${h} (covered)`;
       const height = r.grid(500, 3000, 500);
       // Upwards: ground faces normally point down, so that is against the normal.
-      pushPull(m, id, m.face(id).normal.z < 0 ? -height : height);
+      pull(m, id, m.face(id).normal.z < 0 ? -height : height);
       return `block ${x},${y} ${w}x${h} up ${height}`;
     },
   },
@@ -251,7 +259,7 @@ const SOLID_COMPOUND_OPS: Op[] = [
       const id = faceAt(m, center, face.normal);
       if (id === undefined) return `feature ${w}x${h} on face ${face.id} (no face)`;
       const d = r.grid(-1000, 1000, 250) || 250;
-      pushPull(m, id, d);
+      pull(m, id, d);
       return `feature ${w}x${h} on face ${face.id}, push/pull ${d}`;
     },
   },
@@ -269,7 +277,7 @@ const SOLID_COMPOUND_OPS: Op[] = [
       const id = faceAt(m, center, face.normal);
       if (id === undefined) return `round feature r${radius} on face ${face.id} (no face)`;
       const d = r.grid(-1000, 1000, 250) || 250;
-      pushPull(m, id, d);
+      pull(m, id, d);
       return `round feature r${radius} on face ${face.id}, push/pull ${d}`;
     },
   },
@@ -286,7 +294,7 @@ const SOLID_COMPOUND_OPS: Op[] = [
       const id = center && faceAt(m, center, face.normal);
       if (id === undefined || id === null) return `inset ${inset} on face ${face.id} (no face)`;
       const d = r.grid(-500, 500, 250) || 250;
-      pushPull(m, id, d);
+      pull(m, id, d);
       return `inset ${inset} on face ${face.id}, push/pull ${d}`;
     },
   },
@@ -337,13 +345,19 @@ export function fuzz(seed: number, steps: number, options: FuzzOptions | ((model
     const op = ops[r.int(0, ops.length - 1)];
     const before = snapshot(model);
     const wasConsistent = solids && validateModel(model, { orientation: true }).length === 0;
-    const isClosed = () => model.allEdges().every((e) => model.facesOfEdge(e.id).length === 2);
+    // Two solids may touch along an edge (four faces); one or an odd number of faces is a hole or a bad joint.
+    const sound = (id: number) => {
+      const n = model.facesOfEdge(id).length;
+      return n >= 2 && n % 2 === 0;
+    };
+    const isClosed = () => model.allEdges().every((e) => sound(e.id));
     const wasClosed = solids && isClosed();
     let description: string | null = null;
     let edit;
     try {
       ({ result: description, edit } = model.edit(() => op.run(model, r)));
     } catch (error) {
+      if (error instanceof Refused) continue;
       log.push(`${op.name}: THREW ${(error as Error).message}`);
       return { seed, step, log, problems: [{ kind: 'exception', detail: `${op.name}: ${(error as Error).stack}` }], model };
     }
@@ -354,7 +368,7 @@ export function fuzz(seed: number, steps: number, options: FuzzOptions | ((model
     const problems = validateModel(model, { orientation: wasConsistent });
     const closed = isClosed();
     if (wasClosed && !closed) {
-      const bad = model.allEdges().find((e) => model.facesOfEdge(e.id).length !== 2)!;
+      const bad = model.allEdges().find((e) => !sound(e.id))!;
       problems.push({ kind: 'not-closed', detail: `edge ${bad.id} has ${model.facesOfEdge(bad.id).length} faces` });
     }
     if (wasConsistent && closed && model.faceCount > 0 && signedVolume(model) <= 0) {

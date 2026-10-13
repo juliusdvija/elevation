@@ -344,6 +344,33 @@ export class Model {
     return { result, edit: this.endJournal() };
   }
 
+  /**
+   * Runs `fn` as a trial inside the current edit: when `accept` rejects its
+   * result, everything `fn` changed is undone and `undefined` is returned.
+   */
+  attempt<T>(fn: () => T, accept: (result: T) => boolean): T | undefined {
+    const outer = this.journal;
+    if (!outer) throw new Error('Model changes must happen inside model.edit()');
+    const inner = new Map<string, { table: Table; id: Id; before: Entity | undefined }>();
+    this.journal = inner;
+    let result: T;
+    try {
+      result = fn();
+    } catch (error) {
+      this.journal = outer;
+      for (const entry of inner.values()) this.restore(entry.table, entry.id, entry.before);
+      throw error;
+    }
+    this.journal = outer;
+    if (accept(result)) {
+      // What was there before the trial is what the outer edit must restore.
+      for (const [key, entry] of inner) if (!outer.has(key)) outer.set(key, entry);
+      return result;
+    }
+    for (const entry of inner.values()) this.restore(entry.table, entry.id, entry.before);
+    return undefined;
+  }
+
   /** Whether changes are being recorded (inside `edit` or a document step). */
   get journaling(): boolean {
     return this.journal !== null;

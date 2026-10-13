@@ -377,3 +377,35 @@ describe('closing what a push leaves open', () => {
     expect(isClosedSolid(model)).toBe(true);
   });
 });
+
+describe('trial edits', () => {
+  it('undoes a rejected attempt but keeps the rest of the edit', () => {
+    const model = new Model();
+    const { edit } = model.edit(() => {
+      drawPolygon(model, rect(0, 0, 1000, 1000));
+      const kept = model.faceCount;
+      const result = model.attempt(
+        () => pushPull(model, model.allFaces()[0].id, 500),
+        () => false,
+      );
+      expect(result).toBeUndefined();
+      expect(model.faceCount).toBe(kept);
+    });
+    expect(model.faceCount).toBe(1);
+    edit.revert();
+    expect(model.faceCount).toBe(0);
+    edit.apply();
+    expect(model.faceCount).toBe(1);
+  });
+
+  it('merges an accepted attempt into the outer edit so undo removes it', () => {
+    const model = new Model();
+    const { edit } = model.edit(() => {
+      drawPolygon(model, rect(0, 0, 1000, 1000));
+      model.attempt(() => pushPull(model, model.allFaces()[0].id, 500), () => true);
+    });
+    expect(model.faceCount).toBe(6);
+    edit.revert();
+    expect(model.faceCount).toBe(0);
+  });
+});
