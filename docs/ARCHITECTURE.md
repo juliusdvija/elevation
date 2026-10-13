@@ -143,6 +143,9 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 | 29 | Push/Pull schuift een vlak alleen op als het geen hoekpunt van een aangrenzend vlak passeert; een losse voetafdruk telt niet mee in de "oude massa" | Passeert het een hoekpunt van een buurvlak (bv. de onderkant van een ander volume dat aan de rand raakt), dan klapt dat vlak om; dan is de boolean-extrusie nodig. Een vlak met een open rand (voetafdruk naast een volume) hoort niet bij een massa en zou de binnen/buiten-telling van stralen omdraaien (`insideTester(model, skip)`). Een extrusie die precies op de overkant van een muur landt, haalt het dekvlak weg ook als splitsen het een nieuw id gaf (`backToBack`). |
 | 30 | `offsetPolygon` laat hoekpunten midden op een rechte rand vallen; `offsetHolds` controleert of de offset nog een polygoon is | Anders ontstaan spijkers en na te ver offsetten een ingeklapte lijn. De Offset-tool tekent dan niets. |
 
+| 31 | Ruimtelijk raster (`kernel/spatial.ts`) op hoekpunten en randen, bijgehouden in `Model.set` | Zoeken naar een hoekpunt of rand bij een punt (`findVertex`, `findEdgeContaining`) en het snijden van een nieuw lijnstuk (`insertSegment`) lopen niet meer over het hele model. Alle schrijfacties (ook undo) lopen via `set`, dus het raster blijft kloppen; een rand wordt opnieuw geplaatst als een eindpunt verschuift. Zeer lange randen staan in een korte lijst die elke zoekopdracht controleert. |
+| 32 | `rebuildPlane` rekent plaatslidmaatschap per hoekpunt en snoeit met omhullende vakken | Dat was de grootste kostenpost bij het tekenen in grote modellen. Het scant nog steeds alle randen per vlak: een lokale herbouw (alleen de samenhangende component rond de nieuwe randen plus omsluitende vlakken) is de volgende stap. |
+
 ---
 
 ## 8. Bekende beperkingen
@@ -151,4 +154,4 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
 - Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), en er zijn nog geen meerdere tekeningen per blad; tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
-- Prestaties: kernel-bewerkingen en tekeningen zijn O(n²) en rekenen alles opnieuw; prima voor gebouwen van normale omvang, niet voor zeer grote modellen.
+- Prestaties (`npm run bench`, raster van huisjes): bij 4.000 vlakken kost een Push/Pull ~35 ms en een tekening 40–70 ms; bij 9.000 vlakken ~100 ms en 170–350 ms; een tekenstap in het model ~45 ms gemiddeld. Wat nog kwadratisch is: `rebuildPlane` scant per vlak alle randen en vlakken, de validator (`validateModel`, alleen voor tests en fuzz) kost bij 9.000 vlakken ~50 s, en tekeningen rekenen bij elke wijziging alles opnieuw.

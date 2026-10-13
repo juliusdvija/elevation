@@ -8,6 +8,7 @@ SketchUp-style modeller whose differentiator is live, auto-updating 2D drawings 
 - `npm test` — unit tests (Vitest, `src/**/*.test.ts`)
 - `npm run typecheck`, `npm run build`
 - `npm run fuzz` — exploratory fuzzing (`SEEDS`, `STEPS`, `SOLIDS=1` env vars)
+- `npm run bench` — timings on a grid of small houses (`GRID=6,10,16`); run it after touching the kernel's hot paths
 
 ## Rules that keep the model sound
 

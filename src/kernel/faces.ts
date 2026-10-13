@@ -196,6 +196,26 @@ function sameFace(face: Face, outer: Id[], holes: Id[][], normal: THREE.Vector3)
   );
 }
 
+interface Box2D {
+  minX: number;
+  minY: number;
+  maxX: number;
+  maxY: number;
+}
+
+function boxOf(poly: readonly THREE.Vector2[]): Box2D {
+  const box = { minX: Infinity, minY: Infinity, maxX: -Infinity, maxY: -Infinity };
+  for (const p of poly) {
+    if (p.x < box.minX) box.minX = p.x;
+    if (p.x > box.maxX) box.maxX = p.x;
+    if (p.y < box.minY) box.minY = p.y;
+    if (p.y > box.maxY) box.maxY = p.y;
+  }
+  return box;
+}
+
+const inBox = (p: THREE.Vector2, b: Box2D) => p.x >= b.minX && p.x <= b.maxX && p.y >= b.minY && p.y <= b.maxY;
+
 interface Cycle {
   loop: Id[];
   poly: THREE.Vector2[];
@@ -222,10 +242,15 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
   const plane = canonicalPlane(rawPlane);
   const frame = planeFrame(plane);
 
-  const edges = model
-    .allEdges()
-    .filter((e) => onPlane(plane, model.position(e.a)) && onPlane(plane, model.position(e.b)));
-  const oldFaces = model.allFaces().filter((f) => samePlane(model.facePlane(f), plane));
+  // Plane membership is per vertex: most vertices are shared by several edges.
+  const onVertex = new Map<Id, boolean>();
+  const vertexOn = (v: Id) => {
+    let on = onVertex.get(v);
+    if (on === undefined) onVertex.set(v, (on = onPlane(plane, model.position(v))));
+    return on;
+  };
+  const edges = model.allEdges().filter((e) => vertexOn(e.a) && vertexOn(e.b));
+  const oldFaces = model.allFaces().filter((f) => Math.abs(f.normal.dot(plane.normal)) > 1 - DIR_EPS && vertexOn(f.outer[0]));
   if (edges.length === 0 && oldFaces.length === 0) return;
 
   const coords = new Map<Id, THREE.Vector2>();
@@ -250,19 +275,20 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
   for (const list of outgoing.values()) list.sort((p, q) => p.angle - q.angle);
 
   // Trace every half-edge once; each walk keeps its region on the left.
-  const visited = new Set<string>();
+  const visited = new Set<number>();
+  const half = (from: Id, to: Id) => from * 67108864 + to; // ids stay far below 2^26
   const cycles: Cycle[] = [];
   for (const e of edges) {
     for (const [start, end] of [
       [e.a, e.b],
       [e.b, e.a],
     ]) {
-      if (visited.has(`${start}>${end}`)) continue;
+      if (visited.has(half(start, end))) continue;
       const walk: Id[] = [];
       let from = start;
       let to = end;
-      while (!visited.has(`${from}>${to}`)) {
-        visited.add(`${from}>${to}`);
+      while (!visited.has(half(from, to))) {
+        visited.add(half(from, to));
         walk.push(from);
         const list = outgoing.get(to)!;
         const back = list.findIndex((o) => o.to === from);
@@ -279,7 +305,7 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
 
   const outers = cycles.filter((c) => c.area > MIN_AREA);
   const holeLoops = cycles.filter((c) => c.area < -MIN_AREA);
-  const regions = outers.map((c) => ({ ...c, holes: [] as Cycle[] }));
+  const regions = outers.map((c) => ({ ...c, holes: [] as Cycle[], box: boxOf(c.poly) }));
 
   // Each clockwise cycle is a hole in the smallest region around it.
   for (const hole of holeLoops) {
@@ -290,12 +316,15 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
     const probe = mid.add(new THREE.Vector2(-dir.y, dir.x).multiplyScalar(0.05));
     let container: (typeof regions)[number] | undefined;
     for (const r of regions) {
-      if (pointInPolygon(probe, r.poly) && (!container || r.area < container.area)) container = r;
+      if (inBox(probe, r.box) && pointInPolygon(probe, r.poly) && (!container || r.area < container.area)) container = r;
     }
     container?.holes.push(hole);
   }
 
-  const oldPolygons = oldFaces.map((face) => ({ face, polygon: facePolygon(model, face, frame) }));
+  const oldPolygons = oldFaces.map((face) => {
+    const polygon = facePolygon(model, face, frame);
+    return { face, polygon, box: boxOf(polygon.outer) };
+  });
 
   const candidates: { region: (typeof regions)[number]; owner: Face | undefined; normal?: THREE.Vector3 }[] = [];
   for (const region of regions) {
@@ -304,7 +333,7 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
       region.holes.map((h) => h.poly),
     );
     if (!sample) continue;
-    const owner = oldPolygons.find((o) => insidePolygon2D(sample, o.polygon))?.face;
+    const owner = oldPolygons.find((o) => inBox(sample, o.box) && insidePolygon2D(sample, o.polygon))?.face;
     const closesNewLoop = loopPairs(region.loop).some(([a, b]) => {
       const edge = model.edgeBetween(a, b);
       return edge !== undefined && newEdges.has(edge);

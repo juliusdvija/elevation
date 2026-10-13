@@ -10,7 +10,8 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:watch": "vitest",
-    "fuzz": "vitest run --config scripts/vitest.config.ts --silent=false"
+    "fuzz": "vitest run --config scripts/vitest.config.ts --silent=false scripts/fuzz.test.ts scripts/fuzz-ops.test.ts",
+    "bench": "vitest run --config scripts/vitest.config.ts --silent=false scripts/bench.test.ts"
   },
   "dependencies": {
     "lucide": "^1.55.0",

@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { Emitter } from '../core/emitter';
 import type { Operation } from '../core/history';
 import { EPS, planeFromPointNormal, projectOnSegment, type Plane } from './math';
+import { SpatialIndex } from './spatial';
 
 export type Id = number;
 
@@ -119,6 +120,7 @@ export class Model {
   private readonly edgeByPair = new Map<string, Id>();
   /** Faces by vertex pair, so the index does not depend on edge ids. */
   private readonly pairFaces = new Map<string, Set<Id>>();
+  private readonly spatial = new SpatialIndex();
 
   private nextId = 1;
   private journal: Map<string, { table: Table; id: Id; before: Entity | undefined }> | null = null;
@@ -255,13 +257,18 @@ export class Model {
 
   /** Existing vertex within tolerance of `p`. */
   findVertex(p: THREE.Vector3): Id | undefined {
-    for (const v of this.vertices.values()) if (v.position.distanceTo(p) < EPS) return v.id;
+    for (const id of this.spatial.verticesNear(p, p)) {
+      const v = this.vertices.get(id);
+      if (v && v.position.distanceTo(p) < EPS) return id;
+    }
     return undefined;
   }
 
   /** Edge whose interior contains `p` (not counting its endpoints). */
   findEdgeContaining(p: THREE.Vector3): Id | undefined {
-    for (const e of this.edges.values()) {
+    for (const id of this.spatial.edgesNear(p, p)) {
+      const e = this.edges.get(id);
+      if (!e) continue;
       const a = this.position(e.a);
       const b = this.position(e.b);
       const { t, distance } = projectOnSegment(p, a, b);
@@ -269,6 +276,11 @@ export class Model {
       if (distance < EPS && t * length > EPS && (1 - t) * length > EPS) return e.id;
     }
     return undefined;
+  }
+
+  /** Edges that may touch the box: those in the same grid cells (check geometry yourself). */
+  edgesNear(box: THREE.Box3, pad = EPS): Edge[] {
+    return this.spatial.edgesNear(box.min, box.max, pad).map((id) => this.edges.get(id)!).filter(Boolean);
   }
 
   bounds(): THREE.Box3 {
@@ -514,10 +526,23 @@ export class Model {
     else map.delete(id);
     if (table === 'edges' && value) this.indexEdge(value as Edge);
     if (table === 'faces' && value) this.indexFace(value as Face);
+    if (table === 'vertices') {
+      this.spatial.setVertex(id, (value as Vertex | undefined)?.position);
+      // Edges at a vertex that appeared, moved or went away change their place in the grid.
+      for (const e of this.vertexEdges.get(id) ?? []) this.placeEdge(this.edges.get(e));
+    }
     if (id >= this.nextId) this.nextId = id + 1;
   }
 
+  private placeEdge(e: Edge | undefined): void {
+    if (!e) return;
+    const a = this.vertices.get(e.a);
+    const b = this.vertices.get(e.b);
+    this.spatial.setEdge(e.id, a?.position, b?.position);
+  }
+
   private indexEdge(e: Edge): void {
+    this.placeEdge(e);
     for (const v of [e.a, e.b]) {
       let set = this.vertexEdges.get(v);
       if (!set) this.vertexEdges.set(v, (set = new Set()));
@@ -527,6 +552,7 @@ export class Model {
   }
 
   private unindexEdge(e: Edge): void {
+    this.spatial.setEdge(e.id, undefined, undefined);
     for (const v of [e.a, e.b]) {
       const set = this.vertexEdges.get(v);
       set?.delete(e.id);

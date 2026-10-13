@@ -1,4 +1,4 @@
-import type * as THREE from 'three';
+import * as THREE from 'three';
 import type { Id, Model } from './Model';
 import { updateFaces } from './faces';
 import { EPS, closestBetweenSegments, projectOnSegment } from './math';
@@ -61,7 +61,9 @@ export function insertSegment(model: Model, p: THREE.Vector3, q: THREE.Vector3, 
   const length = A.distanceTo(B);
   const cuts: { t: number; v: Id }[] = [];
 
-  for (const edge of model.allEdges()) {
+  // Only edges near the segment can touch it.
+  const box = new THREE.Box3().setFromPoints([A, B]);
+  for (const edge of model.edgesNear(box)) {
     if (!model.hasEdge(edge.id)) continue;
     // Existing vertices lying on the new segment (T-junctions, collinear overlaps).
     for (const v of [edge.a, edge.b]) {
