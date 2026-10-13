@@ -24,7 +24,15 @@ export interface Drawing {
   cutSegments: [THREE.Vector2, THREE.Vector2][];
   /** Visible projected edges beyond the cut. */
   lines: DrawingLine[];
+  /** Colour fills, far to near (only when something is painted). */
+  fills: DrawingFill[];
   bounds: THREE.Box2;
+}
+
+/** A face seen from the front: its outline (and holes) in drawing coordinates, and its paint (null = paper). */
+export interface DrawingFill {
+  loops: THREE.Vector2[][];
+  color: string | null;
 }
 
 type Interval = [number, number];
@@ -130,6 +138,57 @@ function buildOccluders(model: Model, setup: ViewSetup): Occluder[] {
     });
   }
   return occluders;
+}
+
+/** Keeps the part of a polygon (view coordinates) where `keep` holds, by walking its edges. */
+function clipPolygon(points: THREE.Vector3[], inside: (p: THREE.Vector3) => number): THREE.Vector3[] {
+  const out: THREE.Vector3[] = [];
+  for (let i = 0; i < points.length; i++) {
+    const P = points[i];
+    const Q = points[(i + 1) % points.length];
+    const dp = inside(P);
+    const dq = inside(Q);
+    if (dp >= 0) out.push(P);
+    if ((dp >= 0) !== (dq >= 0)) out.push(P.clone().lerp(Q, dp / (dp - dq)));
+  }
+  return out;
+}
+
+/**
+ * Painter's-algorithm fills: every face seen from some side, far to near, with
+ * its paint when seen from its front. Faces in front of the cut are dropped and
+ * faces across it are clipped (faces with holes across it are left out).
+ * Empty when nothing is painted, so unpainted models draw as before.
+ */
+function buildFills(model: Model, setup: ViewSetup): DrawingFill[] {
+  if (!model.allFaces().some((f) => f.color)) return [];
+  const items: { fill: DrawingFill; depth: number }[] = [];
+  for (const face of model.allFaces()) {
+    const n = new THREE.Vector3(face.normal.dot(setup.u), face.normal.dot(setup.v), face.normal.dot(setup.w));
+    if (Math.abs(n.z) < 1e-6) continue;
+    const loops = model.faceLoops(face).map((loop) => loop.map((id) => toView(setup, model.position(id))));
+    let outer = loops[0];
+    let holes = loops.slice(1);
+    const cut = setup.cut;
+    const limit = setup.depthLimit;
+    const needsClip = (cut !== null && outer.some((p) => p.z < cut)) || (limit !== null && outer.some((p) => p.z > limit));
+    if (needsClip) {
+      if (holes.length > 0) continue;
+      if (cut !== null) outer = clipPolygon(outer, (p) => p.z - cut);
+      if (limit !== null) outer = clipPolygon(outer, (p) => limit - p.z);
+      if (outer.length < 3) continue;
+      holes = [];
+    }
+    const front = n.z < 0;
+    items.push({
+      depth: outer.reduce((sum, p) => sum + p.z, 0) / outer.length,
+      fill: {
+        loops: [outer, ...holes].map((loop) => loop.map((p) => new THREE.Vector2(p.x, p.y))),
+        color: front ? face.color ?? null : null,
+      },
+    });
+  }
+  return items.sort((a, b) => b.depth - a.depth).map((i) => i.fill);
 }
 
 /** Visible pieces of every edge beyond the cut (hidden-line removal). */
@@ -320,6 +379,7 @@ export function computeDrawing(model: Model, setup: ViewSetup): Drawing {
   if (setup.cut === null) for (const p of pieces) near = Math.min(near, p.w);
 
   return {
+    fills: buildFills(model, setup),
     cutLoops: chainLoops(cutSegments),
     cutSegments,
     lines: pieces.map((p) => ({ a: p.a, b: p.b, depth: THREE.MathUtils.clamp((p.w - near) / FADE_DISTANCE, 0, 1) })),

@@ -201,6 +201,13 @@ export function layoutSheet(drawing: Drawing, setup: ViewSetup, annotations: Ann
   const P = (u: number, v: number) => new THREE.Vector2(px(u), py(v));
   const out: Primitive[] = [];
 
+  // Colour fills, far to near, one path per face (even-odd would punch holes where two overlap).
+  // A hair of stroke in the fill colour hides the seams between neighbours.
+  for (const fill of drawing.fills) {
+    const color = fill.color ?? style.paper;
+    out.push({ type: 'path', lines: fill.loops.map((loop) => loop.map((p) => P(p.x, p.y))), closed: true, fill: color, stroke: color, width: 0.08, evenOdd: true });
+  }
+
   // Projection lines, far first so near lines draw on top.
   const buckets: THREE.Vector2[][][] = Array.from({ length: DEPTH_STEPS }, () => []);
   for (const line of drawing.lines) {

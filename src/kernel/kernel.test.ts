@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { Model } from './Model';
 import { drawPolygon, drawSegments } from './draw';
-import { eraseEdges, eraseFaces } from './cleanup';
+import { eraseEdges, eraseFaces, paintFaces } from './cleanup';
 import { pushPull } from './pushPull';
 import { faceArea } from './faces';
 import { selfIntersections, validateModel } from './validate';
@@ -407,5 +407,38 @@ describe('trial edits', () => {
     expect(model.faceCount).toBe(6);
     edit.revert();
     expect(model.faceCount).toBe(0);
+  });
+});
+
+describe('paint', () => {
+  const colors = (model: Model) => model.allFaces().map((f) => f.color ?? null);
+
+  it('keeps its colour when the face is split, flipped by push/pull and copied', () => {
+    const model = new Model();
+    model.edit(() => drawPolygon(model, rect(0, 0, 2000, 1000)));
+    const face = model.allFaces()[0].id;
+    model.edit(() => paintFaces(model, [face], '#c0392b'));
+    // Splitting the painted face: both halves stay painted.
+    model.edit(() => drawSegments(model, [[v(1000, 0), v(1000, 1000)]]));
+    expect(model.faceCount).toBe(2);
+    expect(colors(model)).toEqual(['#c0392b', '#c0392b']);
+    // Copies carry the paint.
+    model.edit(() => copyEntities(model, [model.allFaces()[0].id], [], new THREE.Matrix4().makeTranslation(0, 3000, 0)));
+    expect(model.allFaces().filter((f) => f.color).length).toBe(3);
+  });
+
+  it('is saved, loaded and cleared again', () => {
+    const model = new Model();
+    model.edit(() => drawPolygon(model, rect(0, 0, 1000, 1000)));
+    const id = model.allFaces()[0].id;
+    const { edit } = model.edit(() => paintFaces(model, [id], '#00ff00'));
+    const copy = new Model();
+    copy.load(model.toData());
+    expect(copy.face(id).color).toBe('#00ff00');
+    edit.revert();
+    expect(model.face(id).color).toBeUndefined();
+    model.edit(() => paintFaces(model, [id], '#00ff00'));
+    model.edit(() => paintFaces(model, [id], undefined));
+    expect(model.face(id).color).toBeUndefined();
   });
 });

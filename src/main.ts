@@ -24,6 +24,8 @@ import { createLineTool } from './tools/LineTool';
 import { createRectangleTool } from './tools/RectangleTool';
 import { createPushPullTool } from './tools/PushPullTool';
 import { createEraserTool } from './tools/EraserTool';
+import { createPaintTool, PaintState } from './tools/PaintTool';
+import { PaintPalette } from './ui/PaintPalette';
 import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
@@ -44,6 +46,7 @@ const toolInfo = [
   { id: 'rotate', label: 'Rotate', shortcut: 'Q' },
   { id: 'offset', label: 'Offset', shortcut: 'F' },
   { id: 'eraser', label: 'Eraser', shortcut: 'E' },
+  { id: 'paint', label: 'Paint', shortcut: 'B' },
   { id: 'tape', label: 'Tape Measure', shortcut: 'T' },
   { id: 'dimension', label: 'Dimension', shortcut: 'D' },
   { id: 'figure', label: 'Scale Figure', shortcut: 'N' },
@@ -110,7 +113,13 @@ for (const create of [
   tools.register(create(ctx));
 }
 
+const paintState = new PaintState();
+tools.register(createPaintTool(ctx, paintState));
+const palette = new PaintPalette(paintState);
+shell.viewport.append(palette.el);
+
 tools.changed.on((tool) => {
+  palette.setVisible(tool.id === 'paint');
   for (const [id, button] of shell.toolButtons) button.setAttribute('aria-pressed', String(id === tool.id));
   typed = '';
   showMeasurement();

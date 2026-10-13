@@ -176,3 +176,12 @@ export function weldVertices(model: Model, vertices: Iterable<Id>): Set<Id> {
   }
   return survivors;
 }
+
+/** Paints faces with a `#rrggbb` colour, or clears their paint with `undefined`. */
+export function paintFaces(model: Model, faceIds: Iterable<Id>, color: string | undefined): void {
+  for (const id of faceIds) {
+    if (!model.hasFace(id)) continue;
+    const face = model.face(id);
+    if (face.color !== color) model.putFace({ ...face, color });
+  }
+}

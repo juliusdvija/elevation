@@ -22,6 +22,7 @@ export interface FaceRef {
 const EMPTY: Highlight = { faces: [], edges: [] };
 const GUIDE_REACH = 100_000; // guide lines are drawn 100 m each way
 const FADED_OPACITY = 0.3;
+const PLAIN = new THREE.Color(theme.face);
 
 /** Whether `path` lies inside (or is) the context at `context`. */
 export function within(path: Id[], context: Id[]): boolean {
@@ -58,9 +59,10 @@ export class ModelRenderer {
     private readonly doc: Document,
     private readonly viewport: Viewport,
   ) {
-    const faceMaterial = (color: number, side: THREE.Side, opacity = 1) =>
+    const faceMaterial = (color: number, side: THREE.Side, opacity = 1, vertexColors = false) =>
       new THREE.MeshLambertMaterial({
         color,
+        vertexColors,
         side,
         transparent: opacity < 1,
         opacity,
@@ -70,7 +72,7 @@ export class ModelRenderer {
         polygonOffsetUnits: 1,
       });
     const layer = (opacity: number): Layer => {
-      const front = new THREE.Mesh(new THREE.BufferGeometry(), faceMaterial(theme.face, THREE.FrontSide, opacity));
+      const front = new THREE.Mesh(new THREE.BufferGeometry(), faceMaterial(0xffffff, THREE.FrontSide, opacity, true));
       const back = new THREE.Mesh(front.geometry, faceMaterial(theme.faceBack, THREE.BackSide, opacity));
       const edges = new THREE.LineSegments(
         new THREE.BufferGeometry(),
@@ -152,7 +154,7 @@ export class ModelRenderer {
 
   private rebuild(): void {
     const context = this.doc.context.path;
-    const build = { active: { positions: [] as number[], normals: [] as number[], edges: [] as number[], refs: [] as FaceRef[] }, faded: { positions: [] as number[], normals: [] as number[], edges: [] as number[], refs: [] as FaceRef[] } };
+    const build = { active: { positions: [] as number[], normals: [] as number[], colors: [] as number[], edges: [] as number[], refs: [] as FaceRef[] }, faded: { positions: [] as number[], normals: [] as number[], colors: [] as number[], edges: [] as number[], refs: [] as FaceRef[] } };
 
     for (const placement of this.doc.placements()) {
       const target = within(placement.path, context) ? build.active : build.faded;
@@ -161,6 +163,7 @@ export class ModelRenderer {
       for (const face of model.allFaces()) {
         const triangles = triangulateFace(model, face).map((p) => p.clone().applyMatrix4(matrix));
         const n = face.normal.clone().applyMatrix3(normalMatrix).normalize();
+        const paint = face.color ? new THREE.Color(face.color) : PLAIN;
         for (let i = 0; i < triangles.length; i += 3) {
           let [a, b, c] = [triangles[i], triangles[i + 1], triangles[i + 2]];
           // Wind triangles to match the face normal so front/back materials work.
@@ -169,6 +172,7 @@ export class ModelRenderer {
           for (const p of [a, b, c]) {
             target.positions.push(p.x, p.y, p.z);
             target.normals.push(n.x, n.y, n.z);
+            target.colors.push(paint.r, paint.g, paint.b);
           }
           target.refs.push({ placement, face: face.id });
         }
@@ -187,6 +191,7 @@ export class ModelRenderer {
       const faces = new THREE.BufferGeometry();
       faces.setAttribute('position', new THREE.Float32BufferAttribute(data.positions, 3));
       faces.setAttribute('normal', new THREE.Float32BufferAttribute(data.normals, 3));
+      faces.setAttribute('color', new THREE.Float32BufferAttribute(data.colors, 3));
       faces.computeBoundingSphere();
       layer.front.geometry.dispose();
       layer.front.geometry = faces;

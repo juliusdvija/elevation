@@ -118,6 +118,7 @@ export function setFaceNormal(model: Model, id: Id, desired: THREE.Vector3): voi
     outer: reverseLoop(face.outer),
     holes: face.holes.map(reverseLoop),
     normal: face.normal.clone().negate(),
+    color: face.color,
   });
 }
 
@@ -373,7 +374,8 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
       kept.add(id);
       continue;
     }
-    kept.add(model.putFace({ id, outer, holes, normal }));
+    // Every piece of a split face keeps its paint.
+    kept.add(model.putFace({ id, outer, holes, normal, color: c.owner?.color }));
   }
 
   for (const face of oldFaces) if (!kept.has(face.id)) model.removeFace(face.id);

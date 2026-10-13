@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Model } from './Model';
 import { drawPolygon, drawSegments } from './draw';
-import { eraseEdges, eraseFaces } from './cleanup';
+import { eraseEdges, eraseFaces, paintFaces } from './cleanup';
 import { pushPull } from './pushPull';
 import { copyEntities, transformVertices, verticesOf } from './transform';
 import { circlePoints, offsetHolds, offsetPolygon } from './shapes';
@@ -153,6 +153,16 @@ const OPS: Op[] = [
       if (!edge) return null;
       eraseEdges(m, [edge.id]);
       return `erase edge ${edge.id}`;
+    },
+  },
+  {
+    name: 'paint',
+    run: (m, r) => {
+      const face = r.pick(m.allFaces());
+      if (!face) return null;
+      const color = r.pick(['#c0392b', '#2e86c1', '#f4d03f', undefined]);
+      paintFaces(m, [face.id], color);
+      return `paint face ${face.id} ${color ?? 'clear'}`;
     },
   },
   {

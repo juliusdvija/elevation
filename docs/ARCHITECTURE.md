@@ -151,6 +151,9 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 | 34 | Op een blad staan ook losse tekstnotities en een noordpijl, en alles is te slepen | Presentatiebladen hebben titels en toelichting nodig. Notities (`Layout.texts`) en de pijl (`Layout.north`) zijn gewone onderdelen van het blad (undo, bestand); slepen toont live via een voorlopige instelling en wordt bij loslaten één undo-stap. PNG-export tekent de SVG op een canvas (200 dpi), dus de web-app heeft geen server nodig. |
 
+| 35 | Verf is een `color` (`#rrggbb`) op het vlak zelf (`kernel/cleanup.ts: paintFaces`) | Geen aparte materiaaltabel: een kleur hoeft niet gedeeld of hernoemd te worden en blijft in het bestand leesbaar. Elk stuk van een gesplitst vlak houdt de kleur (`rebuildPlane` geeft de eigenaar-kleur door), flippen, kopiëren en vouwen nemen hem mee; de snapshot van undo/fuzz bevat hem ook. Het verfblik-gereedschap (B) verft ook de hele selectie als je een geselecteerd vlak aanklikt; Alt+klik pakt een kleur op. |
+| 36 | Tekeningen vullen vlakken met schilderalgoritme, alleen als er iets geverfd is | Vlakken worden van ver naar dichtbij gevuld (gemiddelde diepte), onbeschilderde vlakken in papierkleur zodat ze geverfde erachter afdekken; een vlak van achteren gezien krijgt geen verf (zoals in 3D). Doorsneden en plattegronden knippen vlakken bij het snijvlak (vlakken met gaten die erdoor lopen vallen weg). Exact is het niet: bij elkaar doorborende vlakken kan de volgorde kloppen of niet; de lijnen (exacte hidden-line) staan er altijd bovenop. Zonder verf verandert de uitvoer niet. |
+
 ---
 
 ## 8. Bekende beperkingen
@@ -159,4 +162,5 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
 - Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- Verf: een nieuw vlak zonder ouder (bv. de zijwanden van een Push/Pull) is onbeschilderd; schaduw, patronen/arceringen en texturen bestaan nog niet.
 - Prestaties (`npm run bench`, raster van huisjes): bij 4.000 vlakken kost een Push/Pull ~35 ms en een tekening 40–70 ms; bij 9.000 vlakken ~100 ms en 170–350 ms; een tekenstap in het model ~45 ms gemiddeld. Wat nog kwadratisch is: `rebuildPlane` scant per vlak alle randen en vlakken, de validator (`validateModel`, alleen voor tests en fuzz) kost bij 9.000 vlakken ~50 s, en tekeningen rekenen bij elke wijziging alles opnieuw.

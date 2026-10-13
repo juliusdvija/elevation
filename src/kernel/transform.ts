@@ -66,6 +66,7 @@ export function copyEntities(model: Model, faces: Iterable<Id>, edges: Iterable<
       outer: f.outer.map(copy),
       holes: f.holes.map((h) => h.map(copy)),
       normal: f.normal.clone().applyMatrix3(normalMatrix).normalize(),
+      color: f.color,
     });
   }
   const created = [...map.values()];
@@ -130,7 +131,7 @@ function foldFace(model: Model, face: Face): { diagonals: Id[]; faces: Id[] } {
     for (const [p, q] of loopPairs(outer)) {
       if (model.edgeBetween(p, q) === undefined) diagonals.push(model.addEdge(p, q));
     }
-    created.push(model.putFace({ outer, holes: [], normal }));
+    created.push(model.putFace({ outer, holes: [], normal, color: face.color }));
   }
   return { diagonals, faces: created };
 }
@@ -285,6 +286,7 @@ export function copyBetweenModels(
       outer: f.outer.map(copy),
       holes: f.holes.map((h) => h.map(copy)),
       normal: f.normal.clone().applyMatrix3(normalMatrix).normalize(),
+      color: f.color,
     });
   }
   const created = [...map.values()];

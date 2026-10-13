@@ -3,6 +3,9 @@ import * as THREE from 'three';
 import { Model } from '../kernel/Model';
 import { drawPolygon } from '../kernel/draw';
 import { pushPull } from '../kernel/pushPull';
+import { paintFaces } from '../kernel/cleanup';
+import { Document } from '../document';
+import { buildSheets } from './build';
 import { faceArea } from '../kernel/faces';
 import { signedArea } from '../kernel/math';
 import { computeDrawing, type Drawing } from './project';
@@ -145,5 +148,52 @@ describe('levels', () => {
     // At exactly 3 m the roof is the floor (a terrace) and is shown.
     const first = computeDrawing(model, viewSetup({ kind: 'plan', level: 'level-1' }, settings, model.bounds()));
     expect(first.bounds.max.x).toBe(6000);
+  });
+});
+
+describe('colour fills', () => {
+  function painted() {
+    const m = new Model();
+    m.edit(() => drawPolygon(m, [v(0, 0), v(4000, 0), v(4000, 3000), v(0, 3000)]));
+    m.edit(() => pushPull(m, m.allFaces()[0].id, -3000));
+    return m;
+  }
+
+  it('adds no fills when nothing is painted', () => {
+    const m = painted();
+    for (const kind of ['front', 'right'] as const) {
+      expect(computeDrawing(m, viewSetup({ kind }, DEFAULT_SETTINGS, m.bounds())).fills).toEqual([]);
+    }
+  });
+
+  it('fills the wall facing the viewer with its paint, far faces first, and the rest in paper colour', () => {
+    const m = painted();
+    const front = m.allFaces().find((f) => f.normal.y < -0.99)!;
+    m.edit(() => paintFaces(m, [front.id], '#b5654a'));
+    const fills = computeDrawing(m, viewSetup({ kind: 'front' }, DEFAULT_SETTINGS, m.bounds())).fills;
+    // Front and back wall are seen face on; the sides and top/bottom are edge-on.
+    expect(fills.map((f) => f.color)).toEqual([null, '#b5654a']);
+  });
+
+  it('shows a face seen from behind in paper colour, not its paint', () => {
+    const m = painted();
+    const front = m.allFaces().find((f) => f.normal.y < -0.99)!;
+    m.edit(() => paintFaces(m, [front.id], '#b5654a'));
+    const back = computeDrawing(m, viewSetup({ kind: 'back' }, DEFAULT_SETTINGS, m.bounds())).fills;
+    expect(back.every((f) => f.color === null)).toBe(true);
+  });
+
+  it('draws the fills before the lines on a sheet', () => {
+    const doc = new Document();
+    doc.run('Box', () => {
+      drawPolygon(doc.model, [v(0, 0), v(4000, 0), v(4000, 3000), v(0, 3000)]);
+      pushPull(doc.model, doc.model.allFaces()[0].id, -3000);
+      paintFaces(doc.model, doc.model.allFaces().filter((f) => f.normal.y < -0.99).map((f) => f.id), '#b5654a');
+    });
+    const [{ sheet }] = buildSheets(doc, [{ kind: 'front' }], { scale: 100 });
+    const firstFill = sheet.primitives.findIndex((p) => p.type === 'path' && p.fill === '#b5654a');
+    const firstLine = sheet.primitives.findIndex((p) => p.type === 'path' && p.stroke && !p.fill);
+    expect(firstFill).toBeGreaterThanOrEqual(0);
+    expect(firstFill).toBeLessThan(firstLine);
   });
 });
