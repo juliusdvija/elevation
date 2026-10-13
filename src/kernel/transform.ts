@@ -4,7 +4,7 @@ import { loopPairs } from './Model';
 import { healEdges, weldVertices } from './cleanup';
 import { splitEdge, splitEdgeAt } from './draw';
 import { canonicalPlane, closestBetweenSegments, EPS, planeFromPointNormal, projectOnSegment, samePlane, type Plane } from './math';
-import { newellNormal, rebuildPlane } from './faces';
+import { newellNormal, rebuildPlane, reverseLoop } from './faces';
 
 /** Vertices used by a set of faces and edges. */
 export function verticesOf(model: Model, faces: Iterable<Id>, edges: Iterable<Id>): Set<Id> {
@@ -17,6 +17,17 @@ export function verticesOf(model: Model, faces: Iterable<Id>, edges: Iterable<Id
   }
   return vertices;
 }
+
+/** Scales by `factors` (x, y, z) about `anchor`; a negative factor mirrors along that axis. */
+export function scaleAbout(anchor: THREE.Vector3, factors: THREE.Vector3): THREE.Matrix4 {
+  return new THREE.Matrix4()
+    .makeTranslation(anchor.x, anchor.y, anchor.z)
+    .multiply(new THREE.Matrix4().makeScale(factors.x, factors.y, factors.z))
+    .multiply(new THREE.Matrix4().makeTranslation(-anchor.x, -anchor.y, -anchor.z));
+}
+
+/** Whether a transform turns shapes inside out (a mirror): faces then need their loops reversed to keep facing the same way. */
+export const mirrors = (matrix: THREE.Matrix4): boolean => matrix.determinant() < 0;
 
 /**
  * Moves vertices by `matrix`. Geometry attached to them stretches along, as
@@ -34,9 +45,12 @@ export function transformVertices(model: Model, vertices: Iterable<Id>, matrix: 
       .map((f) => f.id),
   );
   for (const v of ids) model.moveVertex(v, model.position(v).clone().applyMatrix4(matrix));
+  const flip = mirrors(matrix);
   for (const id of carried) {
     const face = model.face(id);
-    model.putFace({ ...face, normal: face.normal.clone().applyMatrix3(normalMatrix).normalize() });
+    const normal = face.normal.clone().applyMatrix3(normalMatrix).normalize();
+    // A mirror reverses the winding of the loops; turn them back so the face keeps its outward normal.
+    model.putFace(flip ? { ...face, outer: reverseLoop(face.outer), holes: face.holes.map(reverseLoop), normal } : { ...face, normal });
   }
   settle(model, ids);
 }
@@ -61,10 +75,11 @@ export function copyEntities(model: Model, faces: Iterable<Id>, edges: Iterable<
     const edge = model.edge(e);
     model.addEdge(copy(edge.a), copy(edge.b));
   }
+  const flip = mirrors(matrix);
   for (const f of faceList) {
     model.putFace({
-      outer: f.outer.map(copy),
-      holes: f.holes.map((h) => h.map(copy)),
+      outer: flip ? reverseLoop(f.outer.map(copy)) : f.outer.map(copy),
+      holes: f.holes.map((h) => (flip ? reverseLoop(h.map(copy)) : h.map(copy))),
       normal: f.normal.clone().applyMatrix3(normalMatrix).normalize(),
       color: f.color,
       opacity: f.opacity,
@@ -283,10 +298,11 @@ export function copyBetweenModels(
     const edge = source.edge(e);
     target.addEdge(copy(edge.a), copy(edge.b));
   }
+  const flip = mirrors(matrix);
   for (const f of faceList) {
     target.putFace({
-      outer: f.outer.map(copy),
-      holes: f.holes.map((h) => h.map(copy)),
+      outer: flip ? reverseLoop(f.outer.map(copy)) : f.outer.map(copy),
+      holes: f.holes.map((h) => (flip ? reverseLoop(h.map(copy)) : h.map(copy))),
       normal: f.normal.clone().applyMatrix3(normalMatrix).normalize(),
       color: f.color,
       opacity: f.opacity,
