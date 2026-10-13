@@ -1244,3 +1244,28 @@ input.swatch.custom {
   z-index: 20;
   white-space: nowrap;
 }
+
+.sun-panel {
+  left: auto;
+  right: 12px;
+  width: 260px;
+}
+
+.sun-row {
+  display: grid;
+  grid-template-columns: 70px 1fr auto;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+}
+
+.sun-row input[type='range'] {
+  width: 100%;
+}
+
+.sun-value {
+  min-width: 44px;
+  text-align: right;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}

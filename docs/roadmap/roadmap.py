@@ -2,7 +2,7 @@ import html, json, sys
 
 # status: done | doing | next | later
 DATA = {
-  "stats": [("215","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("53","design decisions logged")],
+  "stats": [("216","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("53","design decisions logged")],
   "phases": [
     {"name":"Engine","blurb":"A kernel that does not corrupt models, and stays fast.","items":[
       ("done","Solid-safe push/pull: refuse edits that would open a closed solid","f1fd617"),
@@ -85,11 +85,12 @@ DATA = {
       ("done","Thicker model lines and a thick blue selection outline",""),
       ("done","Endless flat ground that fades into the sky; the grid shows only when grid snap is on",""),
       ("done","Sun with sharp cast shadows on the model and the ground",""),
-      ("next","Shadows on/off, sun direction and time of day",""),
+      ("done","Sun panel: shadows on/off, sun direction and height, saved with the document",""),
+      ("next","Time of day and date; link the 2D drawings' shading to the sun",""),
       ("next","Sky gradient and a softer horizon",""),
       ("later","Line weight setting and line styles (profile edges heavier)","")]},
   ],
-  "log":[("Now","3D view reworked to look more like SketchUp: lines, ground, selection, shadows."),("Just finished","Rayon-inspired drawing style: finer lines, solid thin cuts, hatched earth, new title block."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
+  "log":[("Now","Sun panel added (shadows switch, direction, height)."),("Just finished","Rayon-inspired drawing style: finer lines, solid thin cuts, hatched earth, new title block."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Precise small-scale modelling first; BIM-style features are parked.")],
 }
 
 def render(d):

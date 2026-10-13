@@ -31,6 +31,8 @@ import { createPaintTool, PaintState } from './tools/PaintTool';
 import { PaintPalette } from './ui/PaintPalette';
 import { ScenesBar } from './ui/ScenesBar';
 import { InfoPanel } from './ui/InfoPanel';
+import { SunPanel } from './ui/SunPanel';
+import { DEFAULT_SUN } from './drawing/settings';
 import { TagsPanel } from './ui/TagsPanel';
 import type { Scene } from './drawing/settings';
 import type { ToolContext } from './tools/Tool';
@@ -349,6 +351,16 @@ shell.tagsToggle.addEventListener('click', () => {
   tagsPanel.setVisible(!tagsPanel.isVisible);
   shell.tagsToggle.setAttribute('aria-pressed', String(tagsPanel.isVisible));
 });
+const sunPanel = new SunPanel(doc);
+shell.viewport.append(sunPanel.el);
+shell.sunToggle.addEventListener('click', () => {
+  sunPanel.setVisible(!sunPanel.isVisible);
+  shell.sunToggle.setAttribute('aria-pressed', String(sunPanel.isVisible));
+});
+// The sun belongs to the document: the 3D view follows its settings, also after a file is opened.
+const syncSun = () => viewport.setSun(doc.drawingSettings.sun ?? DEFAULT_SUN);
+doc.settingsChanged.on(syncSun);
+syncSun();
 const scenesBar = new ScenesBar(doc, { camera: () => cameraData(viewport.rig), flyTo });
 shell.viewport.append(scenesBar.el);
 

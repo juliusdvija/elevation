@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import { CameraRig, WORLD_UP } from './CameraRig';
 import { AdaptiveGrid, Ground, createAxes, niceSpacing } from './helpers';
 import { theme } from './theme';
+import { DEFAULT_SUN, type SunSettings } from '../drawing/settings';
 
 const GROUND = new THREE.Plane(WORLD_UP.clone(), 0);
 
@@ -17,9 +18,6 @@ export interface SnapshotCamera {
  * Owns the WebGL renderer, the scene and the camera rig. Renders on demand:
  * call `requestRender()` after anything visible changes.
  */
-/** Where the sun is, as a direction from the model: up, to the left and a little to the front of the default view, so shadows fall to the right. */
-const SUN_DIRECTION = new THREE.Vector3(-0.75, -0.3, 1).normalize();
-
 export class Viewport {
   readonly renderer: THREE.WebGLRenderer;
   readonly scene = new THREE.Scene();
@@ -42,11 +40,14 @@ export class Viewport {
   /** Whether the snap grid is drawn on the ground. */
   gridVisible = false;
   /** Whether the sun casts shadows. */
-  get shadows(): boolean {
-    return this.sun.castShadow;
-  }
-  set shadows(on: boolean) {
-    this.sun.castShadow = on;
+  private sunDirection = new THREE.Vector3();
+
+  /** Sets the sun: its compass direction and height decide where it stands, and shadows can be switched off. */
+  setSun(sun: SunSettings): void {
+    const azimuth = (sun.azimuth * Math.PI) / 180;
+    const altitude = (Math.min(90, Math.max(2, sun.altitude)) * Math.PI) / 180;
+    this.sunDirection.set(Math.sin(azimuth) * Math.cos(altitude), Math.cos(azimuth) * Math.cos(altitude), Math.sin(altitude));
+    this.sun.castShadow = sun.shadows;
     this.requestRender();
   }
   private readonly helpers: THREE.Object3D[];
@@ -69,8 +70,8 @@ export class Viewport {
 
     const hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 1.5);
     hemisphere.position.copy(WORLD_UP);
-    this.sun.position.copy(SUN_DIRECTION);
-    this.sun.castShadow = true;
+    this.setSun(DEFAULT_SUN);
+    this.sun.position.copy(this.sunDirection);
     this.sun.shadow.mapSize.set(4096, 4096);
     this.scene.add(hemisphere, this.sun, this.sun.target);
 
@@ -216,7 +217,7 @@ export class Viewport {
     const sphere = bounds.getBoundingSphere(new THREE.Sphere());
     const radius = Math.max(sphere.radius, 1);
     this.sun.target.position.copy(sphere.center);
-    this.sun.position.copy(sphere.center).addScaledVector(SUN_DIRECTION, radius * 2);
+    this.sun.position.copy(sphere.center).addScaledVector(this.sunDirection, radius * 2);
     const camera = this.sun.shadow.camera;
     camera.left = -radius;
     camera.right = radius;

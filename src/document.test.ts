@@ -193,3 +193,19 @@ describe('scale figure', () => {
     expect(doc.definition(id).name).toBe('Scale figure');
   });
 });
+
+describe('sun', () => {
+  it('is set without an undo step, is saved with the document, and defaults for older files', () => {
+    const doc = new Document();
+    expect(doc.drawingSettings.sun).toEqual({ shadows: true, azimuth: 248, altitude: 51 });
+    doc.setSun({ shadows: false, azimuth: 90, altitude: 30 });
+    expect(doc.history.canUndo).toBe(false);
+    const file = parse(serialize(toFile(doc.model.toData(), undefined, doc.definitionsInUse(), doc.drawingSettings)));
+    expect(file.drawing?.sun).toEqual({ shadows: false, azimuth: 90, altitude: 30 });
+    const older = new Document();
+    const { sun: _sun, ...without } = doc.drawingSettings;
+    older.load(doc.model.toData(), 'old', null, { drawing: without as typeof doc.drawingSettings });
+    expect(older.drawingSettings.sun).toEqual({ shadows: true, azimuth: 248, altitude: 51 });
+  });
+});
+

@@ -8,7 +8,7 @@ import { removeBareEdges, eraseFaces } from './kernel/cleanup';
 import { copyBetweenModels } from './kernel/transform';
 import { drawPolygon } from './kernel/draw';
 import { figureOutline } from './kernel/figure';
-import { DEFAULT_SETTINGS, type DrawingSettings } from './drawing/settings';
+import { DEFAULT_SETTINGS, type DrawingSettings, type SunSettings } from './drawing/settings';
 
 const UNTITLED = 'Untitled';
 const FIGURE_NAME = 'Scale figure';
@@ -269,6 +269,12 @@ export class Document {
     this.drawingSettings = { ...this.drawingSettings, tags };
     this.settingsChanged.emit();
     this.geometryChanged.emit();
+  }
+
+  /** Changes the 3D view's sun without an undo step (a view state, like the camera). */
+  setSun(sun: SunSettings): void {
+    this.drawingSettings = { ...this.drawingSettings, sun };
+    this.settingsChanged.emit();
   }
 
   /** The placement at a path of instance ids, or null if it no longer exists. */

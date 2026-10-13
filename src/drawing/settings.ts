@@ -45,6 +45,15 @@ export interface Scene {
   hidden?: string[];
 }
 
+/** The sun of the 3D view: shadows on or off, its compass direction (degrees clockwise from north, +Y) and its height above the horizon (degrees). */
+export interface SunSettings {
+  shadows: boolean;
+  azimuth: number;
+  altitude: number;
+}
+
+export const DEFAULT_SUN: SunSettings = { shadows: true, azimuth: 248, altitude: 51 };
+
 /** Drawing settings saved with the document. */
 export interface DrawingSettings {
   levels: Level[];
@@ -65,6 +74,8 @@ export interface DrawingSettings {
   scenes: Scene[];
   /** Pages with several drawings each (format 4). */
   layouts: Layout[];
+  /** The 3D view's sun (absent in older files: the default). */
+  sun?: SunSettings;
 }
 
 export const DEFAULT_SETTINGS: DrawingSettings = {
@@ -81,6 +92,7 @@ export const DEFAULT_SETTINGS: DrawingSettings = {
   tags: [],
   scenes: [],
   layouts: [],
+  sun: { ...DEFAULT_SUN },
 };
 
 /** Which drawing: a plan of a level, an elevation, or a section. */
