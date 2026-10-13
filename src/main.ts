@@ -32,6 +32,7 @@ import type { ToolContext } from './tools/Tool';
 import { buildShell } from './ui/shell';
 import { DrawingPanel } from './ui/DrawingPanel';
 import { applyCamera, cameraData, openDocument, saveDocument } from './io/files';
+import { buildUnderlay } from './io/dxf';
 import { buildModel } from './io/obj';
 import { exportObj } from './io/objExport';
 import { askImportOptions, chooseObjFiles, isModelFile, readModelFiles } from './ui/ImportDialog';
@@ -310,7 +311,7 @@ async function importObj(files: File[] | null) {
   try {
     const source = await readModelFiles(files);
     if (!source) {
-      window.alert('Choose an .obj, .stl, .glb or .gltf file (an OBJ may come with its .mtl).');
+      window.alert('Choose an .obj, .stl, .glb, .gltf or .dxf file (an OBJ may come with its .mtl).');
       return;
     }
     const choice = await askImportOptions(source);
@@ -319,10 +320,10 @@ async function importObj(files: File[] | null) {
     // Let the hint paint before the (synchronous) build starts.
     await new Promise((resolve) => requestAnimationFrame(() => setTimeout(resolve, 0)));
     const started = performance.now();
-    const imported = buildModel(choice.mesh, choice.options);
+    const imported = choice.drawing ? buildUnderlay(choice.drawing, choice.options.scale, choice.options.recenter) : buildModel(choice.mesh, choice.options);
     doc.run('Import', () => doc.addGroupFromModel(imported, choice.name));
     navigator.zoomExtents();
-    ctx.setHint(`Imported ${choice.name}: ${imported.faceCount.toLocaleString()} faces in ${((performance.now() - started) / 1000).toFixed(1)} s.`);
+    ctx.setHint(`Imported ${choice.name}: ${choice.drawing ? `${imported.edgeCount.toLocaleString()} lines` : `${imported.faceCount.toLocaleString()} faces`} in ${((performance.now() - started) / 1000).toFixed(1)} s.`);
   } catch (error) {
     ctx.setHint('Import failed.');
     window.alert(`Could not import: ${(error as Error).message}`);

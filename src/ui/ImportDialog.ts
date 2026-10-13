@@ -1,3 +1,4 @@
+import { parseDxf, type DxfDrawing } from '../io/dxf';
 import { parseGltf, parseStl } from '../io/mesh';
 import { guessUnit, meshSize, parseObj, UNITS, type ImportOptions, type ObjMesh } from '../io/obj';
 
@@ -10,26 +11,30 @@ function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, t
 
 /** What the user picked: the mesh, the options, and the file's name without extension. */
 export interface ImportChoice {
+  format: ImportSource['format'];
   mesh: ObjMesh;
+  drawing?: DxfDrawing;
   options: ImportOptions;
   name: string;
 }
 
 /** A model file ready to import: its mesh and what that format usually means by units and up. */
 export interface ImportSource {
-  format: 'obj' | 'stl' | 'gltf';
+  format: 'obj' | 'stl' | 'gltf' | 'dxf';
   name: string;
   mesh: ObjMesh;
   /** The usual unit of the format ('m' for glTF, 'mm' for STL), or undefined to guess from the size (OBJ). */
   unit?: string;
   yUp: boolean;
+  /** DXF only: the drawing (the mesh then holds just its points, for sizing). */
+  drawing?: DxfDrawing;
   /** OBJ only: the text (to read a .mtl later) and the .mtl the file names. */
   text?: string;
   mtl?: string;
   mtlName?: string;
 }
 
-const MODEL_FILE = /\.(obj|stl|glb|gltf)$/i;
+const MODEL_FILE = /\.(obj|stl|glb|gltf|dxf)$/i;
 
 export const isModelFile = (file: File): boolean => MODEL_FILE.test(file.name);
 
@@ -42,6 +47,12 @@ export async function readModelFiles(files: File[]): Promise<ImportSource | null
   if (!file) return null;
   const extension = /\.(\w+)$/.exec(file.name)![1].toLowerCase();
   const name = file.name.replace(/\.\w+$/, '');
+  if (extension === 'dxf') {
+    const drawing = parseDxf(await file.text());
+    const unit = ({ 1: 'mm', 10: 'cm', 1000: 'm', 25.4: 'in', 304.8: 'ft' } as Record<number, string>)[drawing.unitMm ?? 0];
+    const positions = drawing.paths.flatMap((p) => p.points);
+    return { format: 'dxf', name, mesh: { positions, faces: [], materials: new Map() }, drawing, unit, yUp: false };
+  }
   if (extension === 'stl') return { format: 'stl', name, mesh: parseStl(await file.arrayBuffer()), unit: 'mm', yUp: false };
   if (extension === 'glb' || extension === 'gltf') {
     return { format: 'gltf', name, mesh: parseGltf(extension === 'gltf' ? await file.text() : await file.arrayBuffer()), unit: 'm', yUp: true };
@@ -59,7 +70,7 @@ export function chooseObjFiles(): Promise<File[] | null> {
     const input = document.createElement('input');
     input.type = 'file';
     input.multiple = true;
-    input.accept = '.obj,.mtl,.stl,.glb,.gltf';
+    input.accept = '.obj,.mtl,.stl,.glb,.gltf,.dxf';
     input.addEventListener('change', () => resolve(input.files && input.files.length > 0 ? [...input.files] : null));
     input.addEventListener('cancel', () => resolve(null));
     input.click();
@@ -82,7 +93,7 @@ export function askImportOptions(source: ImportSource): Promise<ImportChoice | n
       resolve(value);
     };
 
-    dialog.append(el('h2', undefined, `Import ${source.name}.${source.format === 'gltf' ? 'glb' : source.format}`));
+    dialog.append(el('h2', undefined, `Import ${source.name}.${source.format === 'gltf' ? 'glb' : source.format}${source.format === 'dxf' ? ' as an underlay' : ''}`));
     const summary = el('p', 'dialog-summary');
     dialog.append(summary);
 
@@ -109,14 +120,20 @@ export function askImportOptions(source: ImportSource): Promise<ImportChoice | n
     const recenter = el('input');
     recenter.type = 'checkbox';
     row('Units in the file', units);
-    row('Up is the', up);
-    if (source.format !== 'stl') row('Import colours', colors); // STL carries no materials
+    if (source.format !== 'dxf') row('Up is the', up); // a drawing is flat on the ground
+    if (source.format !== 'stl' && source.format !== 'dxf') row('Import colours', colors); // STL and DXF carry no materials
     row('Move to the origin, on the ground', recenter);
 
     const note = el('p', 'dialog-note');
     dialog.append(note);
     const describe = () => {
       const size = meshSize(mesh).map((n) => n * (UNITS.find((u) => u.id === units.value)?.mm ?? 1) / 1000);
+      const skipped = source.drawing ? [...source.drawing.skipped].reduce((sum, [, n]) => sum + n, 0) : 0;
+      if (source.drawing) {
+        summary.textContent = `${source.drawing.paths.length.toLocaleString()} lines and curves · about ${size.slice(0, 2).map((n) => n.toFixed(1)).join(' × ')} m${skipped > 0 ? ` · ${skipped} other items skipped` : ''}`;
+        note.textContent = 'Drawn as loose lines on the ground in a group, to snap to and trace over. Text, hatches and blocks are skipped.';
+        return;
+      }
       summary.textContent = `${mesh.positions.length.toLocaleString()} vertices · ${mesh.faces.length.toLocaleString()} polygons · about ${size.map((n) => n.toFixed(1)).join(' × ')} m`;
       const missing = source.mtlName && mesh.materials.size === 0;
       note.textContent = missing
@@ -149,7 +166,9 @@ export function askImportOptions(source: ImportSource): Promise<ImportChoice | n
     go.type = 'button';
     go.addEventListener('click', () =>
       finish({
+        format: source.format,
         mesh,
+        drawing: source.drawing,
         name: source.name,
         options: { scale: UNITS.find((u) => u.id === units.value)!.mm, yUp: up.value === 'y', colors: colors.checked, recenter: recenter.checked },
       }),
