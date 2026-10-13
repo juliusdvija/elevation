@@ -25,6 +25,7 @@ import { createLineTool } from './tools/LineTool';
 import { createRectangleTool } from './tools/RectangleTool';
 import { createPushPullTool } from './tools/PushPullTool';
 import { createEraserTool } from './tools/EraserTool';
+import { createFollowMeTool } from './tools/FollowMeTool';
 import { createPaintTool, PaintState } from './tools/PaintTool';
 import { PaintPalette } from './ui/PaintPalette';
 import { ScenesBar } from './ui/ScenesBar';
@@ -54,6 +55,7 @@ const toolInfo = [
   { id: 'move', label: 'Move', shortcut: 'M' },
   { id: 'rotate', label: 'Rotate', shortcut: 'Q' },
   { id: 'offset', label: 'Offset', shortcut: 'F' },
+  { id: 'followme', label: 'Follow Me', shortcut: 'W' },
   { id: 'eraser', label: 'Eraser', shortcut: 'E' },
   { id: 'paint', label: 'Paint', shortcut: 'B' },
   { id: 'tape', label: 'Tape Measure', shortcut: 'T' },
@@ -109,6 +111,7 @@ for (const create of [
   createCircleTool,
   createArcTool,
   createPushPullTool,
+  createFollowMeTool,
   createMoveTool,
   createRotateTool,
   createOffsetTool,

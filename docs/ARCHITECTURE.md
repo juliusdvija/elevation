@@ -174,6 +174,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 | 44 | Importeren draait in een Web Worker (`io/importWorker.ts`) met voortgang en Annuleren | De bouw (lassen, vlakken samenvoegen, T-aansluitingen, kruisingen) duurt voor ~8.500 polygonen ~5 s; op de hoofddraad bevriest dat de pagina. De worker stuurt een gestructureerde kopie van de mesh in en krijgt het model terug als gewone data (`Model.toData`), dat de pagina met `load` in een nieuw model zet; voortgang komt per fase (~12 keer per seconde begrensd). Annuleren beëindigt de worker. Zonder `Worker` (testomgeving) valt het terug op de hoofddraad. Een verborgen browservenster remt de worker flink af (24 s tegen 5 s). |
 
+| 45 | Follow Me (`kernel/followMe.ts`, tool W) is een sweep waarvan de zijvlakken plat blijven, daarna dezelfde boolean als Push/Pull | De doorsnede wordt langs de gekozen randen gesleept; op elke hoek ligt de doorsnede in het vlak dat de twee segmenten middendoor deelt (verstek), en elke ring volgt uit de vorige door langs zijn segment naar dat vlak te schuiven, dus elk zijvlak is een vlak trapezium. Open pad: twee afdekvlakken; gesloten pad: een ring zonder. De richting volgt uit het teken van het ingesloten volume. Het resultaat gaat via `insertSegment`/`updateFaces` het model in en daarna door `booleanPass` (nu geëxporteerd, met `force` voor sweeps die alleen samenvallen met bestaande vlakken): ligt de sweep in materiaal dan snijdt hij een groef, anders voegt hij toe en smelt hij met wat hij raakt. Gewrapt in `model.attempt`: een gesloten model dat open zou blijven wordt geweigerd. Het pad is de selectie (`chainEdges` ordent die vanaf het uiteinde bij het profiel; vertakkingen en losse stukken worden geweigerd). Een willekeurige test (400 sweeps) eindigt altijd gesloten en geldig. |
+
 ---
 
 ## 8. Bekende beperkingen
@@ -182,6 +184,7 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
 - Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- Follow Me: het profiel moet (bijna) loodrecht op het eerste segment staan en het pad moet één keten zijn; profielen met gaten, paden die terugkeren op zichzelf en paden met vertakkingen worden geweigerd; geen 3D-gebogen paden met een afgeronde verstek (bochten blijven hoekig).
 - Arcering: vijf patronen, alleen in tekeningen (geen texturen in 3D); de patroonrichting volgt het vlakraam (niet instelbaar) en loopt niet door over aangrenzende vlakken.
 - 3D-aanzichten op bladen: maten en gereedschapsfeedback staan niet in het plaatje; het plaatje is een raster (niet schaalbaar) en toont geen cast shadows (3D-weergave heeft een eigen eenvoudige verlichting); geen perspectiefcorrectie of zonnestand.
 - Schaduwen: één vaste lichtrichting; schaduw valt alleen op vlakken, niet op de grond in aanzichten; glas laat licht volledig door (geen getinte schaduw); gaten met meerdere onderdelen die door het snijvlak lopen kunnen ruwe randen geven.

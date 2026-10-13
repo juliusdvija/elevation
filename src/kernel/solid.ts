@@ -25,7 +25,11 @@ export function pointInsideSolid(model: Model, p: THREE.Vector3): boolean {
  * crossing it would flip the parity.
  */
 export function insideTester(model: Model, skip?: Id): (p: THREE.Vector3) => boolean {
-  const triangles = model.allFaces().filter((face) => face.id !== skip).map((face) => triangulateFace(model, face).map((v) => v.clone()));
+  return insideTesterOf(model.allFaces().filter((face) => face.id !== skip).map((face) => triangulateFace(model, face).map((v) => v.clone())));
+}
+
+/** The same test over loose triangles: one array of points (three per triangle) per surface piece. */
+export function insideTesterOf(triangles: THREE.Vector3[][]): (p: THREE.Vector3) => boolean {
   const boxes = triangles.map((tris) => new THREE.Box3().setFromPoints(tris));
   const hit = new THREE.Vector3();
   return (p) =>

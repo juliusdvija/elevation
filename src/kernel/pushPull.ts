@@ -322,7 +322,7 @@ const PROBE = 0.5; // mm off a face to test for material on each side
  * flipping or dropping the rest. Material is the old solid plus the prism
  * (adding) or minus it (cutting). Returns edges worth healing.
  */
-function booleanPass(
+export function booleanPass(
   model: Model,
   opts: {
     sweep: (p: THREE.Vector3) => boolean;
@@ -331,6 +331,8 @@ function booleanPass(
     planes: Plane[];
     oldInside: (p: THREE.Vector3) => boolean;
     cutting: boolean;
+    /** Rebuild the planes even when the sweep crosses nothing (it may only coincide with existing faces). */
+    force?: boolean;
   },
 ): Set<Id> {
   const { sweep, inPrism, prismBox, oldInside, cutting } = opts;
@@ -365,7 +367,7 @@ function booleanPass(
 
   const swallowed = model.allVertices().some((v) => inPrism(v.position));
   const { edges, planes: cutPlanes } = intersectFaces(model, sweepFaces, others, decide);
-  if (edges.size === 0 && !swallowed) return new Set();
+  if (edges.size === 0 && !swallowed && !opts.force) return new Set();
 
   // Recompute the faces of every plane the sweep touches from the material.
   const done = [...cutPlanes];
