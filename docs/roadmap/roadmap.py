@@ -89,7 +89,7 @@ DATA = {
       ("done","Real sun from place, date and time, with true north set on the model; north arrow on the ground",""),
       ("done","2D drawings follow the sun: shading and cast shadows, none at night",""),
       ("done","Play the day: the sun moves from sunrise to sunset, drawings update when it stops",""),
-      ("done","UTC offset field removed: summer time is applied automatically",""),,
+      ("done","UTC offset field removed: summer time is applied automatically",""),
       ("next","Sky gradient and a softer horizon",""),
       ("later","Line weight setting and line styles (profile edges heavier)","")]},
   ],
