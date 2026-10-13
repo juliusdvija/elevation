@@ -149,6 +149,8 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 
 | 33 | Een blad is een lijst viewports, elk een gewone tekening op eigen schaal, geplaatst in papier-mm | Hergebruikt `layoutSheet` ongewijzigd (annotaties, titel, schaalbalk per tekening), dus een tekening ziet er op een blad hetzelfde uit als los. Positie is opgeslagen (verschuifbaar en undo-baar) in plaats van elke keer berekend; automatisch plaatsen gebeurt alleen bij toevoegen en bij "Tidy". |
 
+| 34 | Op een blad staan ook losse tekstnotities en een noordpijl, en alles is te slepen | Presentatiebladen hebben titels en toelichting nodig. Notities (`Layout.texts`) en de pijl (`Layout.north`) zijn gewone onderdelen van het blad (undo, bestand); slepen toont live via een voorlopige instelling en wordt bij loslaten één undo-stap. PNG-export tekent de SVG op een canvas (200 dpi), dus de web-app heeft geen server nodig. |
+
 ---
 
 ## 8. Bekende beperkingen
@@ -156,5 +158,5 @@ gebruiker → Tool → (inference/picker, wereldcoördinaten)
 - Een volume wegduwen terwijl er iets aan vastzit: het deel dat blijft staan wordt nu dichtgemaakt als het model eerst gesloten was (besluit 26). In de solids-fuzz faalt nog ~1% van de reeksen van 40 stappen (was ~22% bij 30 stappen): zeldzame losse randen zonder vlakken, een rand die door een vlak prikt en oriëntatiefouten in lange reeksen. Randen met vier vlakken (twee volumes die elkaar langs een rand raken) zijn toegestaan. Een Push/Pull die een gesloten model open zou laten, wordt geweigerd (besluit 28).
 - Zeldzame oriëntatieproblemen in zeer complexe, meermaals gedraaide modellen.
 - Componenten kunnen hernoemd worden (naamveld in de balk bij selectie, undo-baar); een componentenoverzicht (knop in de werkbalk) laat ze hernoemen en alle kopieën selecteren; nog geen eigen assen.
-- Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), en op een blad liggen de tekeningen nog niet te slepen (positie via x/y-velden); tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
+- Tekeningen: automatische maten zijn alleen totaalmaten en een keten langs gesneden muren (geen ramen/deuren), tekstbreedtes in PDF zijn geschat (Helvetica-metrieken benaderd).
 - Prestaties (`npm run bench`, raster van huisjes): bij 4.000 vlakken kost een Push/Pull ~35 ms en een tekening 40–70 ms; bij 9.000 vlakken ~100 ms en 170–350 ms; een tekenstap in het model ~45 ms gemiddeld. Wat nog kwadratisch is: `rebuildPlane` scant per vlak alle randen en vlakken, de validator (`validateModel`, alleen voor tests en fuzz) kost bij 9.000 vlakken ~50 s, en tekeningen rekenen bij elke wijziging alles opnieuw.

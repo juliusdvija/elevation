@@ -3,7 +3,7 @@ import type { Document } from '../document';
 import type { Model } from '../kernel/Model';
 import { buildSheets } from './build';
 import type { DrawingSettings, ViewRef } from './settings';
-import { MINIMAL, PAPER_SIZES, type Primitive, type Sheet } from './sheet';
+import { MINIMAL, PAPER_SIZES, textWidth, type Primitive, type Sheet } from './sheet';
 
 export type LayoutPaper = keyof typeof PAPER_SIZES;
 
@@ -17,12 +17,25 @@ export interface Viewport {
   y: number;
 }
 
+/** A note on the page: text (lines split by \n) at a paper position, `size` in paper mm. */
+export interface LayoutText {
+  id: string;
+  x: number;
+  y: number;
+  text: string;
+  size: number;
+}
+
 /** A page of several drawings, each with its own scale. Saved with the drawing settings. */
 export interface Layout {
   id: string;
   name: string;
   paper: LayoutPaper;
   viewports: Viewport[];
+  /** Notes and titles on the page (absent in files from before they existed). */
+  texts?: LayoutText[];
+  /** A north arrow at this paper position (the model's +Y is north). */
+  north?: { x: number; y: number };
 }
 
 /** Paper mm between the page edge and the frame, and between viewports when placing. */
@@ -30,6 +43,12 @@ const FRAME = 6;
 const GAP = 3;
 const STEP = 5; // grid the free-spot search walks
 const PAGE_TITLE = 14; // paper mm at the bottom of the page for the page title
+
+/** Something on the page that can be picked and dragged, with its box in paper mm. */
+export interface PageItem extends Rect {
+  kind: 'viewport' | 'text' | 'north';
+  id: string;
+}
 
 export interface ViewportSheet {
   viewport: Viewport;
@@ -102,7 +121,12 @@ export function tidyLayout(doc: Document, layout: Layout, settings: DrawingSetti
 }
 
 /** The page: every viewport's drawing at its position, inside a frame, with the page title. */
-export function composeLayout(doc: Document, layout: Layout, settings: DrawingSettings = doc.drawingSettings, flat: Model = doc.flatten()): { sheet: Sheet; fits: boolean } {
+export function composeLayout(
+  doc: Document,
+  layout: Layout,
+  settings: DrawingSettings = doc.drawingSettings,
+  flat: Model = doc.flatten(),
+): { sheet: Sheet; fits: boolean; rects: PageItem[] } {
   const [width, height] = PAPER_SIZES[layout.paper];
   const style = MINIMAL;
   const primitives: Primitive[] = [];
@@ -116,16 +140,43 @@ export function composeLayout(doc: Document, layout: Layout, settings: DrawingSe
   });
 
   let fits = true;
+  const rects: PageItem[] = [];
   for (const { viewport, sheet, empty } of viewportSheets(doc, layout, settings, flat)) {
+    rects.push({ kind: 'viewport', id: viewport.id, x: viewport.x, y: viewport.y, w: sheet.width, h: sheet.height });
     if (empty) continue;
     fits &&= viewport.x >= FRAME - 1e-6 && viewport.y >= FRAME - 1e-6 && viewport.x + sheet.width <= width - FRAME + 1e-6 && viewport.y + sheet.height <= height - FRAME - PAGE_TITLE + 1e-6;
     for (const p of sheet.primitives) primitives.push(shift(p, viewport.x, viewport.y));
   }
 
+  for (const note of layout.texts ?? []) {
+    const lines = note.text.split('\n');
+    rects.push({ kind: 'text', id: note.id, x: note.x, y: note.y, w: Math.max(...lines.map((l) => textWidth(l, note.size))), h: lines.length * note.size * 1.35 + note.size * 0.3 });
+    note.text.split('\n').forEach((line, i) => {
+      primitives.push({ type: 'text', x: note.x, y: note.y + note.size + i * note.size * 1.35, text: line, size: note.size, color: style.ink });
+    });
+  }
+  if (layout.north) {
+    rects.push({ kind: 'north', id: 'north', x: layout.north.x - 6, y: layout.north.y - 10, w: 12, h: 16 });
+    primitives.push(...northArrow(layout.north.x, layout.north.y, style.ink));
+  }
+
   const ty = height - FRAME - 5;
   primitives.push({ type: 'text', x: FRAME + 4, y: ty, text: layout.name.toUpperCase(), size: 3.6, bold: true, color: style.ink, letterSpacing: 0.3 });
   primitives.push({ type: 'text', x: width - FRAME - 4, y: ty, text: doc.name, size: 2.4, color: style.muted, anchor: 'end' });
-  return { sheet: { width, height, background: style.paper, primitives, fits, font: style.font }, fits };
+  return { sheet: { width, height, background: style.paper, primitives, fits, font: style.font }, fits, rects };
+}
+
+/** A north arrow: a ring, a filled half-arrow pointing up the page, and an N. Centred at (x, y), 12 mm across. */
+function northArrow(x: number, y: number, ink: string): Primitive[] {
+  const r = 6;
+  const ring = Array.from({ length: 36 }, (_, i) => new THREE.Vector2(x + r * Math.cos((i / 36) * 2 * Math.PI), y + r * Math.sin((i / 36) * 2 * Math.PI)));
+  const V = (dx: number, dy: number) => new THREE.Vector2(x + dx, y + dy);
+  return [
+    { type: 'path', lines: [ring], closed: true, stroke: ink, width: 0.25 },
+    { type: 'path', lines: [[V(0, -r + 0.8), V(2.2, 3.2), V(0, 1.6)]], closed: true, fill: ink },
+    { type: 'path', lines: [[V(0, -r + 0.8), V(-2.2, 3.2), V(0, 1.6)]], closed: true, stroke: ink, width: 0.25 },
+    { type: 'text', x, y: y - r - 1.4, text: 'N', size: 3.2, bold: true, color: ink, anchor: 'middle' },
+  ];
 }
 
 /** A new layout id and a default name ("Sheet 1", "Sheet 2", ...). */

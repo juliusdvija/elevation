@@ -521,6 +521,22 @@ input:focus-visible {
   background: var(--bg);
 }
 
+.levels-editor {
+  max-height: 40vh;
+  overflow-y: auto;
+}
+
+.level-row > textarea {
+  width: 150px;
+  padding: 4px 8px;
+  border: 1px solid var(--line);
+  border-radius: 6px;
+  background: var(--surface);
+  font: 12px var(--font);
+  color: var(--ink);
+  resize: vertical;
+}
+
 .levels-editor[hidden] {
   display: none;
 }
@@ -528,7 +544,8 @@ input:focus-visible {
 .level-row {
   display: flex;
   align-items: center;
-  gap: 8px;
+  flex-wrap: wrap;
+  gap: 6px 8px;
 }
 
 .level-row > input {

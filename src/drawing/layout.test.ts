@@ -91,6 +91,26 @@ describe('layouts', () => {
     expect(composeLayout(doc, layout).fits).toBe(false);
   });
 
+  it('draws notes (several lines) and a north arrow on the page', () => {
+    const doc = house();
+    const layout: Layout = { ...nextLayout([], 'A3'), texts: [{ id: 't1', x: 20, y: 30, text: 'House Smit\nConcept 2', size: 6 }], north: { x: 400, y: 30 } };
+    const { sheet, rects } = composeLayout(doc, layout);
+    const texts = sheet.primitives.flatMap((p) => (p.type === 'text' ? [p] : []));
+    const lines = texts.filter((t) => t.text === 'House Smit' || t.text === 'Concept 2');
+    expect(lines).toHaveLength(2);
+    expect(lines[1].y).toBeGreaterThan(lines[0].y);
+    expect(texts.some((t) => t.text === 'N' && t.x === 400)).toBe(true);
+    expect(rects.map((r) => r.kind)).toEqual(['text', 'north']);
+  });
+
+  it('reports where each viewport sits on the page', () => {
+    const doc = house();
+    const layout = addViewport(doc, nextLayout([], 'A3'), { kind: 'front' }, 100);
+    const [rect] = composeLayout(doc, layout).rects;
+    expect(rect).toMatchObject({ id: layout.viewports[0].id, x: layout.viewports[0].x, y: layout.viewports[0].y });
+    expect(rect.w).toBeGreaterThan(0);
+  });
+
   it('is saved and loaded with the drawing settings', () => {
     const doc = house();
     const layout = addViewport(doc, nextLayout([], 'A3'), { kind: 'front' }, 100);

@@ -2,7 +2,7 @@ import { Download, Layers, LayoutGrid, Plus, Trash2, createElement, type IconNod
 import { Emitter } from '../core/emitter';
 import type { Document } from '../document';
 import { buildSheets } from '../drawing/build';
-import { addViewport, composeLayout, nextLayout, tidyLayout, type Layout, type LayoutPaper } from '../drawing/layout';
+import { addViewport, composeLayout, nextLayout, tidyLayout, type Layout, type LayoutPaper, type PageItem } from '../drawing/layout';
 import { sheetsToPdf } from '../drawing/pdf';
 import { allViews, nextLevel, sectionCoordinate, sortedLevels, type DrawingSettings, type ViewRef } from '../drawing/settings';
 import type { Paper } from '../drawing/sheet';
@@ -93,6 +93,8 @@ export class DrawingPanel {
   private sheetsMode = false;
   private layoutId: string | null = null;
   private tabSheets!: HTMLButtonElement;
+  /** Page size (paper mm) and the draggable things on it, from the last composed sheet. */
+  private page: { width: number; height: number; items: PageItem[] } | null = null;
 
   private readonly tabs = new Map<ViewKind, HTMLButtonElement>();
   private readonly controls = el('div', 'drawings-controls');
@@ -447,6 +449,49 @@ export class DrawingPanel {
       this.viewportsEditor.append(row);
     }
     if (layout.viewports.length === 0) this.viewportsEditor.append(el('span', 'unit', 'Open a drawing and choose "Add to sheet".'));
+
+    for (const note of layout.texts ?? []) {
+      const patch = (label: string, change: Partial<typeof note>) =>
+        this.commitLayout(label, (l) => ({ ...l, texts: (l.texts ?? []).map((t) => (t.id === note.id ? { ...t, ...change } : t)) }));
+      const row = el('div', 'level-row');
+      const text = el('textarea');
+      text.rows = Math.min(4, note.text.split('\n').length);
+      text.value = note.text;
+      text.addEventListener('change', () => patch('Edit Note', { text: text.value }));
+      const size = numberInput(note.size, 1);
+      size.addEventListener('change', () => Number(size.value) > 0 && patch('Note Size', { size: Number(size.value) }));
+      const x = numberInput(note.x, 5);
+      x.addEventListener('change', () => Number.isFinite(Number(x.value)) && patch('Move Note', { x: Number(x.value) }));
+      const y = numberInput(note.y, 5);
+      y.addEventListener('change', () => Number.isFinite(Number(y.value)) && patch('Move Note', { y: Number(y.value) }));
+      const remove = iconButton(Trash2, 'Remove note');
+      remove.addEventListener('click', () => this.commitLayout('Remove Note', (l) => ({ ...l, texts: (l.texts ?? []).filter((t) => t.id !== note.id) })));
+      row.append(text, field('size', size, 'mm'), field('x', x, 'mm'), field('y', y, 'mm'), remove);
+      this.viewportsEditor.append(row);
+    }
+
+    const addNote = el('button', 'pill-button');
+    addNote.type = 'button';
+    addNote.append(createElement(Plus, { width: 14, height: 14 }), ' Text');
+    addNote.title = 'Add a title or note to the page';
+    addNote.addEventListener('click', () =>
+      this.commitLayout('Add Note', (l) => {
+        const texts = l.texts ?? [];
+        let n = texts.length + 1;
+        while (texts.some((t) => t.id === `note-${n}`)) n++;
+        return { ...l, texts: [...texts, { id: `note-${n}`, x: 20, y: 20, text: 'Title', size: 8 }] };
+      }),
+    );
+    const north = el('button', 'pill-button', 'North arrow');
+    north.type = 'button';
+    north.setAttribute('aria-pressed', String(!!layout.north));
+    north.addEventListener('click', () => {
+      const [width] = layout.north ? [0] : [{ A4: 297, A3: 420, A2: 594, A1: 841 }[layout.paper]];
+      this.commitLayout('North Arrow', (l) => ({ ...l, north: l.north ? undefined : { x: width - 24, y: 24 } }));
+    });
+    const actions = el('div', 'level-row');
+    actions.append(addNote, north);
+    this.viewportsEditor.append(actions);
   }
 
   private renderLevelsEditor(): void {
@@ -502,10 +547,12 @@ export class DrawingPanel {
     };
     if (this.sheetsMode) {
       item('This sheet as SVG', () => this.exportSvg());
+      item('This sheet as PNG', () => this.exportPng(`${this.fileBase()} - ${this.currentLayout()?.name ?? 'sheet'}.png`));
       item('This sheet as PDF', () => this.exportLayoutPdf(false));
       item('All sheets as PDF', () => this.exportLayoutPdf(true));
     } else {
       item('This drawing as SVG', () => this.exportSvg());
+      item('This drawing as PNG', () => this.exportPng(`${this.fileBase()} - ${this.setup?.title ?? 'drawing'} 1-${this.scale}.png`));
       item('This drawing as PDF', () => this.exportPdf(false));
       item('All drawings as PDF', () => this.exportPdf(true));
     }
@@ -523,6 +570,32 @@ export class DrawingPanel {
     }
     if (!this.setup) return;
     download(this.svg, 'image/svg+xml', `${this.fileBase()} - ${this.setup.title} 1-${this.scale}.svg`);
+  }
+
+  /** Renders the SVG on show to a PNG at 200 dpi (paper size from the SVG's own millimetres). */
+  private exportPng(name: string): void {
+    const svg = this.svg;
+    if (!svg) return;
+    const match = /width="([\d.]+)mm" height="([\d.]+)mm"/.exec(svg);
+    if (!match) return;
+    const dpi = 200;
+    const width = Math.round((Number(match[1]) / 25.4) * dpi);
+    const height = Math.round((Number(match[2]) / 25.4) * dpi);
+    const url = URL.createObjectURL(new Blob([svg], { type: 'image/svg+xml' }));
+    const image = new Image();
+    image.onload = () => {
+      const canvas = document.createElement('canvas');
+      canvas.width = width;
+      canvas.height = height;
+      const context = canvas.getContext('2d');
+      if (context) {
+        context.drawImage(image, 0, 0, width, height);
+        canvas.toBlob((blob) => blob && download(blob, 'image/png', name));
+      }
+      URL.revokeObjectURL(url);
+    };
+    image.onerror = () => URL.revokeObjectURL(url);
+    image.src = url;
   }
 
   private exportLayoutPdf(all: boolean): void {
@@ -585,6 +658,7 @@ export class DrawingPanel {
 
   private updateSheets(flat: ReturnType<Document['flatten']>, start: number): void {
     this.setup = null;
+    this.page = null;
     this.viewChanged.emit(null);
     const layout = this.currentLayout();
     const isEmpty = !layout || layout.viewports.length === 0;
@@ -596,7 +670,8 @@ export class DrawingPanel {
       this.svg = '';
       return;
     }
-    const { sheet, fits } = composeLayout(this.doc, layout, this.settings, flat);
+    const { sheet, fits, rects } = composeLayout(this.doc, layout, this.settings, flat);
+    this.page = { width: sheet.width, height: sheet.height, items: rects };
     this.svg = sheetToSvg(sheet);
     this.sheet.innerHTML = this.svg;
     const ms = Math.max(1, Math.round(performance.now() - start));
@@ -623,22 +698,82 @@ export class DrawingPanel {
     );
 
     let drag: { x: number; y: number } | null = null;
+    let moving: { item: PageItem; dx: number; dy: number; layout: Layout } | null = null;
     this.stage.addEventListener('pointerdown', (e) => {
-      drag = { x: e.clientX, y: e.clientY };
+      const hit = this.sheetsMode ? this.pickOnPage(e) : null;
+      const layout = this.currentLayout();
+      if (hit && layout) {
+        moving = { item: hit.item, dx: hit.x - hit.item.x, dy: hit.y - hit.item.y, layout };
+      } else {
+        drag = { x: e.clientX, y: e.clientY };
+      }
       this.stage.setPointerCapture(e.pointerId);
     });
     this.stage.addEventListener('pointermove', (e) => {
+      if (moving) {
+        const at = this.pagePoint(e);
+        if (at) this.previewMove(moving.layout, moving.item, Math.round(at.x - moving.dx), Math.round(at.y - moving.dy));
+        return;
+      }
       if (!drag) return;
       this.view.x += e.clientX - drag.x;
       this.view.y += e.clientY - drag.y;
       drag = { x: e.clientX, y: e.clientY };
       this.applyView();
     });
-    this.stage.addEventListener('pointerup', () => (drag = null));
+    this.stage.addEventListener('pointerup', () => {
+      drag = null;
+      if (moving && this.preview) {
+        // The drag was previewed live; make it one undo step.
+        const next = this.preview;
+        this.preview = null;
+        this.doc.updateDrawingSettings('Move on Sheet', next);
+      }
+      moving = null;
+    });
     this.stage.addEventListener('dblclick', () => {
       this.view = { x: 0, y: 0, zoom: 1 };
       this.applyView();
     });
+  }
+
+  /** The paper position (mm) under a pointer event, when the sheet is on show. */
+  private pagePoint(e: PointerEvent): { x: number; y: number } | null {
+    const svg = this.sheet.querySelector('svg');
+    if (!svg || !this.page) return null;
+    const rect = svg.getBoundingClientRect();
+    if (rect.width === 0) return null;
+    const k = this.page.width / rect.width;
+    return { x: (e.clientX - rect.left) * k, y: (e.clientY - rect.top) * k };
+  }
+
+  /** The topmost thing on the page under the pointer (notes and the arrow over drawings). */
+  private pickOnPage(e: PointerEvent): { item: PageItem; x: number; y: number } | null {
+    const at = this.pagePoint(e);
+    if (!at || !this.page) return null;
+    const order = { text: 0, north: 0, viewport: 1 };
+    const hit = [...this.page.items]
+      .filter((i) => at.x >= i.x && at.x <= i.x + i.w && at.y >= i.y && at.y <= i.y + i.h)
+      .sort((a, b) => order[a.kind] - order[b.kind])[0];
+    return hit ? { item: hit, ...at } : null;
+  }
+
+  /** Shows a dragged item at a new place without committing it. */
+  private previewMove(layout: Layout, item: PageItem, x: number, y: number): void {
+    const next = structuredClone(this.doc.drawingSettings);
+    const target = next.layouts.find((l) => l.id === layout.id);
+    if (!target) return;
+    if (item.kind === 'viewport') {
+      const vp = target.viewports.find((v) => v.id === item.id);
+      if (vp) Object.assign(vp, { x, y });
+    } else if (item.kind === 'text') {
+      const note = target.texts?.find((t) => t.id === item.id);
+      if (note) Object.assign(note, { x, y });
+    } else if (target.north) {
+      target.north = { x: x + 6, y: y + 10 };
+    }
+    this.preview = next;
+    this.schedule();
   }
 
   private applyView(): void {
