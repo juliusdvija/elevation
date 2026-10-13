@@ -213,6 +213,8 @@ for (const [view, button] of shell.viewButtons) {
   button.addEventListener('click', () => {
     viewport.rig.setView(view);
     viewport.requestRender();
+    // Let the folded-out box close again (it stays open while a face has focus).
+    button.blur();
   });
 }
 
