@@ -370,6 +370,29 @@ shell.renderToggle.addEventListener('click', () => {
   shell.renderToggle.blur();
 });
 shell.renderToggle.setAttribute('aria-pressed', 'false');
+// "Pick focus": the next click in the view sets the distance in focus for depth of field (the tools never see it).
+let pickingFocus = false;
+renderPanel.onPickFocus = () => {
+  pickingFocus = !pickingFocus;
+  renderPanel.setPickingFocus(pickingFocus);
+};
+viewport.canvas.addEventListener(
+  'pointerdown',
+  (e) => {
+    if (!pickingFocus) return;
+    e.stopImmediatePropagation();
+    e.preventDefault();
+    pickingFocus = false;
+    renderPanel.setPickingFocus(false);
+    const hit = picker.face(e.clientX, e.clientY);
+    if (!hit) return;
+    const camera = viewport.rig.camera;
+    const direction = camera.getWorldDirection(new THREE.Vector3());
+    realistic.focusDistance = hit.point.clone().sub(camera.position).dot(direction);
+    viewport.requestRender();
+  },
+  { capture: true },
+);
 const sunPanel = new SunPanel(doc);
 shell.viewport.append(sunPanel.el);
 shell.sunToggle.addEventListener('click', () => {

@@ -6,7 +6,8 @@ import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
 import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
 import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
-import type { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { CopyShader } from 'three/examples/jsm/shaders/CopyShader.js';
 import { applyLook, createGradePass, LOOKS, type LookId } from './grading';
 import { alignTurn, isHdri, loadHdri, type Hdri, type HdriId } from './hdri';
 import { isReflective, PlanarReflections, reflectivePlanes } from './planarReflections';
@@ -44,6 +45,9 @@ export interface RealisticSettings {
   sky: 'time' | HdriId;
   /** Mirror reflections in water and polished floors. */
   reflections: boolean;
+  /** Depth of field in ray-traced pictures, and the lens opening (f-number: small is a shallow focus). */
+  depthOfField: boolean;
+  fStop: number;
 }
 
 export const DEFAULT_REALISTIC: RealisticSettings = {
@@ -59,6 +63,8 @@ export const DEFAULT_REALISTIC: RealisticSettings = {
   look: 'natural',
   sky: 'time',
   reflections: true,
+  depthOfField: false,
+  fStop: 2.8,
 };
 
 const HORIZON = 0xc9d6e3;
@@ -107,6 +113,16 @@ export class RealisticRenderer {
   private bloom: UnrealBloomPass | null = null;
   private grade: ShaderPass | null = null;
   private smaa: SMAAPass | null = null;
+  /** Finishes a ray-traced picture: the tracer's HDR texture through the same bloom, tone mapping and grade. */
+  private stillComposer: EffectComposer | null = null;
+  private stillInput: ShaderPass | null = null;
+  private stillBloom: UnrealBloomPass | null = null;
+  private stillDenoise: ShaderPass | null = null;
+  private stillGrade: ShaderPass | null = null;
+  /** The distance in focus (mm along the view) for depth of field; null: the point the camera looks at. */
+  focusDistance: number | null = null;
+  /** While a high-resolution picture is being made (the view stays in the realistic style throughout). */
+  private still: { samples: number; done: () => void } | null = null;
   private readonly reflections = new PlanarReflections();
   /** The photographed sky in use (null: the time-of-day sky), once loaded. */
   private hdri: { id: HdriId; data: Hdri; environment: THREE.WebGLRenderTarget } | null = null;
@@ -151,7 +167,7 @@ export class RealisticRenderer {
     });
     // A picture of the model (drawings, scenes) is the plain style: put it back for the duration.
     viewport.snapshotHooks.push((rendering) => {
-      if (!this.enabled) return;
+      if (!this.enabled || this.still) return;
       this.applyStyle(!rendering);
     });
   }
@@ -207,7 +223,56 @@ export class RealisticRenderer {
   }
 
   private get tracing(): boolean {
-    return this.enabled && this.settings.rayTracing && this.canRayTrace;
+    return this.enabled && (this.settings.rayTracing || this.still !== null) && this.canRayTrace;
+  }
+
+  /**
+   * Makes a finished picture `width` pixels wide (the view's proportions): ray traced to `samples` when the GPU can,
+   * else the real-time picture, without selection or tool feedback. The canvas is drawn at that size for the
+   * duration (its on-screen size stays). Resolves to a PNG data URL; `progress` reports samples done.
+   */
+  async renderStill(width: number, samples: number, progress?: (done: number, of: number) => void, signal?: AbortSignal): Promise<string | null> {
+    if (!this.enabled) this.setEnabled(true);
+    const { renderer, container } = this.viewport;
+    const aspect = container.clientWidth / Math.max(1, container.clientHeight);
+    const max = renderer.capabilities.maxTextureSize;
+    const w = Math.min(max, Math.round(width));
+    const h = Math.min(max, Math.round(w / aspect));
+    const size = renderer.getSize(new THREE.Vector2());
+    const ratio = renderer.getPixelRatio();
+    const resizeTo = (x: number, y: number, pixelRatio: number) => {
+      renderer.setPixelRatio(pixelRatio);
+      renderer.setSize(x, y, false);
+      this.composer?.setSize(x, y);
+      this.stillComposer?.setSize(x, y);
+      this.reflections.setSize(x * pixelRatio, y * pixelRatio);
+    };
+    const savedProgress = this.onProgress;
+    this.viewport.cleanFrame(true);
+    resizeTo(w, h, 1);
+    try {
+      if (this.canRayTrace) {
+        await new Promise<void>((resolve) => {
+          this.still = { samples, done: resolve };
+          this.onProgress = (done) => {
+            progress?.(Math.min(done, samples), samples);
+            if (done >= samples || signal?.aborted) resolve();
+          };
+          this.tracer?.restart();
+          signal?.addEventListener('abort', () => resolve());
+          this.viewport.requestRender();
+        });
+      }
+      if (signal?.aborted) return null;
+      return await this.saveImage();
+    } finally {
+      this.still = null;
+      this.onProgress = savedProgress;
+      resizeTo(size.x, size.y, ratio);
+      this.viewport.cleanFrame(false);
+      this.tracer?.restart();
+      this.viewport.requestRender();
+    }
   }
 
   /** The picture as it is now (ray traced or real-time), as a PNG data URL. */
@@ -238,10 +303,11 @@ export class RealisticRenderer {
         render: () => this.render(),
         resize: (width, height) => {
           this.composer?.setSize(width, height);
+          this.stillComposer?.setSize(width, height);
           this.reflections.setSize(width, height);
         },
         sunChanged: () => this.scheduleSky(),
-        continuous: () => this.tracing && (this.tracer?.refining ?? true),
+        continuous: () => (this.tracing || this.still !== null) && (this.tracer?.refining ?? true),
       };
     } else {
       this.viewport.mode = null;
@@ -261,6 +327,7 @@ export class RealisticRenderer {
     this.ground.visible = on;
     this.plain.setRealistic(on);
     const hdri = on ? this.hdri : null;
+    this.tracerSky = true;
     this.skyRotation.z = hdri?.data.sun ? alignTurn(hdri.data.sun, this.viewport.sunDirection) : 0;
     scene.environment = on ? (hdri?.environment.texture ?? this.environment?.texture ?? null) : null;
     scene.environmentRotation.copy(this.skyRotation);
@@ -492,7 +559,7 @@ export class RealisticRenderer {
     composer.render();
   }
 
-  /** One more ray-traced sample, or the real-time picture while the tracer loads or has too few samples. */
+  /** One more ray-traced sample, finished with the look; the real-time picture while the tracer loads or has too few samples. */
   private renderTraced(): void {
     const tracer = this.tracer;
     if (!tracer) {
@@ -500,21 +567,69 @@ export class RealisticRenderer {
       this.renderRealTime();
       return;
     }
-    const { rig, renderer, sun, sunDirection } = this.viewport;
+    const { rig, renderer, sun, sunDirection, scene } = this.viewport;
     if (this.tracerScene) {
       this.group.updateMatrixWorld(true);
       tracer.setScene({ meshes: this.group.children as THREE.Mesh[], ground: this.ground });
       this.tracerScene = false;
     }
     if (this.tracerSky) {
-      tracer.setSky(this.skyScene, this.environmentIntensity(), this.viewport.scene.backgroundIntensity);
-      tracer.setLights({ sun, sunDirection, moon: this.moon });
+      const centre = new THREE.Box3().setFromObject(this.group).getCenter(new THREE.Vector3());
+      tracer.setSky(this.hdri ? this.hdri.data.texture : this.skyScene, this.skyRotation, this.environmentIntensity(), scene.backgroundIntensity);
+      tracer.setLights({ sun, sunDirection, moon: this.moon, centre });
       this.tracerSky = false;
     }
-    renderer.toneMapping = LOOKS[this.settings.look].toneMapping;
+    const camera = rig.camera;
+    if (this.settings.depthOfField && !rig.isOrtho) {
+      const focus = this.focusDistance ?? camera.position.distanceTo(rig.target);
+      tracer.setDepthOfField({ fStop: this.settings.fStop, focus });
+    } else {
+      tracer.setDepthOfField(null);
+    }
+    if (this.still) tracer.maxSamples = this.still.samples;
+    else tracer.maxSamples = this.settings.raySamples;
+    tracer.render(camera);
+    if (tracer.ready) this.finishTraced(tracer.texture);
+    else this.renderRealTime();
     renderer.toneMappingExposure = this.exposure();
-    tracer.render(rig.camera);
     this.onProgress?.(Math.min(tracer.samples, tracer.maxSamples), tracer.maxSamples);
+  }
+
+  /** The traced HDR picture through bloom, tone mapping, the grade (no anti-aliasing needed: the samples did that). */
+  private finishTraced(texture: THREE.Texture): void {
+    const { renderer } = this.viewport;
+    if (!this.stillComposer) {
+      const size = renderer.getSize(new THREE.Vector2());
+      const composer = new EffectComposer(renderer, new THREE.WebGLRenderTarget(size.x, size.y, { type: THREE.HalfFloatType }));
+      composer.setPixelRatio(renderer.getPixelRatio());
+      composer.setSize(size.x, size.y);
+      this.stillInput = new ShaderPass(CopyShader);
+      this.stillDenoise = this.tracer!.denoisePass();
+      this.stillBloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.2, 0.35, 4);
+      this.stillGrade = createGradePass();
+      composer.addPass(this.stillInput);
+      composer.addPass(this.stillDenoise);
+      composer.addPass(this.stillBloom);
+      composer.addPass(new OutputPass());
+      composer.addPass(this.stillGrade);
+      this.stillComposer = composer;
+    }
+    const look = LOOKS[this.settings.look];
+    renderer.toneMapping = look.toneMapping;
+    renderer.toneMappingExposure = this.exposure();
+    this.stillInput!.uniforms.tDiffuse.value = texture;
+    // The copy reads the traced texture itself, not the composer's (empty) input.
+    this.stillInput!.needsSwap = true;
+    (this.stillInput as unknown as { textureID: string | null }).textureID = null;
+    // Smooth the remaining grain while there are few samples; a long render needs no help.
+    const samples = this.tracer?.samples ?? 0;
+    this.stillDenoise!.enabled = samples < 512;
+    (this.stillDenoise!.uniforms as Record<string, THREE.IUniform>).sigma.value = samples < 64 ? 5 : 3;
+    this.stillBloom!.strength = look.bloom;
+    this.stillBloom!.enabled = look.bloom > 0;
+    const size = renderer.getSize(new THREE.Vector2());
+    applyLook(this.stillGrade!, look, size.x / Math.max(1, size.y));
+    this.stillComposer.render();
   }
 
   private loadTracer(): void {

@@ -270,6 +270,16 @@ export class Viewport {
     }
   }
 
+  /**
+   * A frame of only the model (for finished pictures and presentations): hides the grid, axes, guides, selection
+   * and tool feedback (the snapshot hooks), or brings them back.
+   */
+  cleanFrame(clean: boolean): void {
+    this.overlay.visible = !clean;
+    for (const hook of this.snapshotHooks) hook(clean);
+    this.requestRender();
+  }
+
   /** Sets the sharpness of the sun's shadows: the shadow map is `size` pixels square. */
   setShadowResolution(size: number): void {
     if (this.sun.shadow.mapSize.x === size) return;
