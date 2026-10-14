@@ -28,6 +28,7 @@ import {
   RulerDimensionLine,
   PersonStanding,
   Redo2,
+  Aperture,
   Info,
   Sun,
   Tags,
@@ -46,6 +47,7 @@ export interface ShellElements {
   componentsToggle: HTMLButtonElement;
   tagsToggle: HTMLButtonElement;
   sunToggle: HTMLButtonElement;
+  renderToggle: HTMLButtonElement;
   infoToggle: HTMLButtonElement;
   gridSnapToggle: HTMLButtonElement;
   docName: HTMLElement;
@@ -189,9 +191,10 @@ export function buildShell(
   const componentsToggle = iconButton(Boxes, 'Show components');
   const tagsToggle = iconButton(Tags, 'Show tags');
   const sunToggle = iconButton(Sun, 'Sun and shadows');
+  const renderToggle = iconButton(Aperture, 'Photorealistic view: materials, sky, soft shadows (on/off)');
   const infoToggle = iconButton(Info, 'Show info: lengths, areas, volume, size and position of the selection');
   const panelGroup = el('div', 'group');
-  panelGroup.append(infoToggle, tagsToggle, sunToggle, componentsToggle, drawingsToggle);
+  panelGroup.append(renderToggle, infoToggle, tagsToggle, sunToggle, componentsToggle, drawingsToggle);
 
   toolbar.append(brand, docName, fileGroup, toolGroup, el('div', 'spacer'), viewGroup, cameraGroup, historyGroup, panelGroup);
 
@@ -228,5 +231,5 @@ export function buildShell(
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, sunToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, sunToggle, renderToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
 }

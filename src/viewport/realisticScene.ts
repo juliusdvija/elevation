@@ -1,0 +1,81 @@
+import * as THREE from 'three';
+import type { Placement } from '../document';
+import { materialOf, type Material } from '../core/materials';
+import { faceArea, triangulateFace } from '../kernel/faces';
+import type { Id } from '../kernel/Model';
+import { smoothNormal } from './shading';
+
+/** The triangles of everything that is made of one material (and colour), in world space. */
+export interface MaterialBucket {
+  key: string;
+  material: Material;
+  positions: number[];
+  normals: number[];
+  uvs: number[];
+}
+
+const Z = new THREE.Vector3(0, 0, 1);
+
+/**
+ * The texture frame of a face: `u` runs along the face and `v` up it (walls), or east and north (floors
+ * and roofs), so brick courses are level and a pattern carries on across neighbouring faces.
+ */
+export function textureFrame(normal: THREE.Vector3): { u: THREE.Vector3; v: THREE.Vector3 } {
+  if (Math.abs(normal.z) > 0.9) return { u: new THREE.Vector3(1, 0, 0), v: new THREE.Vector3(0, 1, 0) };
+  const u = new THREE.Vector3().crossVectors(Z, normal).normalize();
+  return { u, v: new THREE.Vector3().crossVectors(normal, u) };
+}
+
+/**
+ * Sorts every face of the placed models into buckets by material, as triangles in world space with
+ * smooth shading normals and texture coordinates in repeats (world mm / the material's tile size).
+ */
+export function buildMaterialBuckets(placements: Iterable<Placement>, smoothAngle: number): Map<string, MaterialBucket> {
+  const buckets = new Map<string, MaterialBucket>();
+  const cosSmooth = Math.cos(smoothAngle);
+  const smoothing = smoothAngle > 0;
+  const keyOf = (p: THREE.Vector3) => `${Math.round(p.x * 1000)},${Math.round(p.y * 1000)},${Math.round(p.z * 1000)}`;
+
+  for (const { model, matrix } of placements) {
+    const normalMatrix = new THREE.Matrix3().getNormalMatrix(matrix);
+    const worldNormal = new Map<Id, THREE.Vector3>();
+    const faceNormal = (f: { id: Id; normal: THREE.Vector3 }) => {
+      let n = worldNormal.get(f.id);
+      if (!n) worldNormal.set(f.id, (n = f.normal.clone().applyMatrix3(normalMatrix).normalize()));
+      return n;
+    };
+    const around = new Map<string, { n: THREE.Vector3; weight: number }[]>();
+    if (smoothing) {
+      for (const face of model.allFaces()) {
+        const n = faceNormal(face);
+        const weight = Math.max(faceArea(model, face), 1e-6);
+        for (const id of model.faceVertices(face)) {
+          const key = keyOf(model.position(id));
+          (around.get(key) ?? around.set(key, []).get(key)!).push({ n, weight });
+        }
+      }
+    }
+    for (const face of model.allFaces()) {
+      const material = materialOf(face);
+      const key = `${material.id}|${material.color}|${material.opacity ?? 1}`;
+      let bucket = buckets.get(key);
+      if (!bucket) buckets.set(key, (bucket = { key, material, positions: [], normals: [], uvs: [] }));
+      const n = faceNormal(face);
+      const { u, v } = textureFrame(n);
+      const tile = material.texture?.tileMm ?? 1000;
+      const local = triangulateFace(model, face);
+      for (let i = 0; i < local.length; i += 3) {
+        let [a, b, c] = [local[i], local[i + 1], local[i + 2]].map((q) => ({ q, p: q.clone().applyMatrix4(matrix) }));
+        const cross = new THREE.Vector3().subVectors(b.p, a.p).cross(new THREE.Vector3().subVectors(c.p, a.p));
+        if (cross.dot(n) < 0) [b, c] = [c, b];
+        for (const { q, p } of [a, b, c]) {
+          bucket.positions.push(p.x, p.y, p.z);
+          const shade = smoothing ? smoothNormal(around.get(keyOf(q)), n, cosSmooth) : n;
+          bucket.normals.push(shade.x, shade.y, shade.z);
+          bucket.uvs.push(p.dot(u) / tile, p.dot(v) / tile);
+        }
+      }
+    }
+  }
+  return buckets;
+}

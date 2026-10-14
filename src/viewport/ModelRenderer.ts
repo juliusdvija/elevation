@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Document, Placement } from '../document';
 import type { Id } from '../kernel/Model';
 import { faceArea, triangulateFace } from '../kernel/faces';
+import { smoothNormal } from './shading';
 import { theme } from './theme';
 import { ThickLines } from './thickLines';
 import type { Viewport } from './Viewport';
@@ -28,13 +29,6 @@ const EDGE_WIDTH = 1.6;
 const SELECTION_WIDTH = 3.2;
 const HOVER_WIDTH = 2.4;
 
-/** The shading normal at a corner: the area-weighted mean of the normals of the faces there that are within the smoothing angle of this face's. */
-function smoothNormal(neighbours: { n: THREE.Vector3; weight: number }[] | undefined, own: THREE.Vector3, cosAngle: number): THREE.Vector3 {
-  if (!neighbours) return own;
-  const sum = new THREE.Vector3();
-  for (const { n, weight } of neighbours) if (n.dot(own) >= cosAngle) sum.addScaledVector(n, weight);
-  return sum.lengthSq() > 1e-12 ? sum.normalize() : own;
-}
 const PLAIN = new THREE.Color(theme.face);
 
 /** Whether `path` lies inside (or is) the context at `context`. */
@@ -70,6 +64,7 @@ export class ModelRenderer {
   private readonly guidePoints: THREE.Points;
   /** Faces meeting at less than this angle (radians) shade smoothly and show no edge line between them; 0 turns it off. */
   smoothAngle = THREE.MathUtils.degToRad(20);
+  private realistic = false;
   private selection = EMPTY;
   private hover = EMPTY;
 
@@ -156,7 +151,8 @@ export class ModelRenderer {
 
     // Selection, hover and guides are working marks, not part of a picture of the model.
     viewport.snapshotHooks.push((rendering) => {
-      for (const obj of [this.selectionFaces, this.selectionEdges, this.hoverFaces, this.hoverEdges, this.guideLines, this.guidePoints]) obj.visible = !rendering;
+      for (const obj of [this.selectionFaces, this.selectionEdges, this.hoverFaces, this.hoverEdges]) obj.visible = !rendering;
+      this.guideLines.visible = this.guidePoints.visible = !rendering && !this.realistic;
     });
 
     doc.geometryChanged.on(() => this.rebuild());
@@ -172,6 +168,16 @@ export class ModelRenderer {
   faceOfHit(mesh: THREE.Object3D, triangle: number): FaceRef | undefined {
     const layer = mesh === this.active.front || mesh === this.active.back || mesh === this.active.glass ? this.active : this.faded;
     return mesh === layer.glass ? layer.glassRefs[triangle] : layer.refs[triangle];
+  }
+
+  /** Hides the plain faces, edges and guides (they still take part in picking) while the photorealistic view draws the model. */
+  setRealistic(on: boolean): void {
+    this.realistic = on;
+    for (const layer of [this.active, this.faded]) {
+      layer.front.visible = layer.back.visible = layer.glass.visible = layer.edges.visible = !on;
+    }
+    this.guideLines.visible = this.guidePoints.visible = !on;
+    this.viewport.requestRender();
   }
 
   /** Changes the smoothing angle (degrees; 0 is off) and redraws. */

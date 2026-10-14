@@ -121,6 +121,7 @@ export function setFaceNormal(model: Model, id: Id, desired: THREE.Vector3): voi
     color: face.color,
     opacity: face.opacity,
     hatch: face.hatch,
+    material: face.material,
   });
 }
 
@@ -377,7 +378,7 @@ export function rebuildPlane(model: Model, rawPlane: Plane, newEdges: ReadonlySe
       continue;
     }
     // Every piece of a split face keeps its paint.
-    kept.add(model.putFace({ id, outer, holes, normal, color: c.owner?.color, opacity: c.owner?.opacity, hatch: c.owner?.hatch }));
+    kept.add(model.putFace({ id, outer, holes, normal, color: c.owner?.color, opacity: c.owner?.opacity, hatch: c.owner?.hatch, material: c.owner?.material }));
   }
 
   for (const face of oldFaces) if (!kept.has(face.id)) model.removeFace(face.id);

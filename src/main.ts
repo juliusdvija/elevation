@@ -3,6 +3,7 @@ import './ui/style.css';
 import { Document } from './document';
 import { Viewport } from './viewport/Viewport';
 import { ModelRenderer } from './viewport/ModelRenderer';
+import { RealisticRenderer } from './viewport/RealisticRenderer';
 import { Navigator } from './tools/Navigator';
 import { Picker } from './tools/Picker';
 import { Selection } from './tools/Selection';
@@ -82,6 +83,7 @@ const doc = new Document();
 const { history, model } = doc;
 const viewport = new Viewport(shell.viewport);
 const renderer = new ModelRenderer(doc, viewport);
+const realistic = new RealisticRenderer(doc, viewport, renderer);
 new DimensionRenderer(doc, viewport);
 const navigator = new Navigator(viewport);
 const picker = new Picker(doc, viewport, renderer);
@@ -114,6 +116,7 @@ const syncSmoothing = () => {
   if (![...shell.smoothSelect.options].some((o) => o.value === String(degrees))) shell.smoothSelect.append(Object.assign(document.createElement('option'), { value: String(degrees), textContent: `Smooth: ${degrees}°` }));
   shell.smoothSelect.value = String(degrees);
   renderer.setSmoothing(degrees);
+  realistic.refresh();
 };
 doc.settingsChanged.on(syncSmoothing);
 shell.smoothSelect.addEventListener('change', () => {
@@ -356,6 +359,12 @@ shell.tagsToggle.addEventListener('click', () => {
   tagsPanel.setVisible(!tagsPanel.isVisible);
   shell.tagsToggle.setAttribute('aria-pressed', String(tagsPanel.isVisible));
 });
+shell.renderToggle.addEventListener('click', () => {
+  realistic.setEnabled(!realistic.isOn);
+  shell.renderToggle.setAttribute('aria-pressed', String(realistic.isOn));
+  shell.renderToggle.blur();
+});
+shell.renderToggle.setAttribute('aria-pressed', 'false');
 const sunPanel = new SunPanel(doc);
 shell.viewport.append(sunPanel.el);
 shell.sunToggle.addEventListener('click', () => {
@@ -729,5 +738,5 @@ if (import.meta.env.DEV) {
     navigator.zoomExtents();
   };
   const validate = async () => (await import('./kernel/validate')).validateModel(model);
-  Object.assign(window, { __elevation: { doc, model, viewport, picker, tools, selection, drawings, loadSample, validate } });
+  Object.assign(window, { __elevation: { doc, model, viewport, picker, tools, selection, realistic, drawings, loadSample, validate } });
 }

@@ -15,6 +15,14 @@ export interface SnapshotCamera {
   orthoHeight: number;
 }
 
+/** An alternative way to draw the scene (the photorealistic view): it takes over rendering while set. */
+export interface RenderMode {
+  render(): void;
+  resize(width: number, height: number): void;
+  /** The sun moved. */
+  sunChanged(): void;
+}
+
 /**
  * Owns the WebGL renderer, the scene and the camera rig. Renders on demand:
  * call `requestRender()` after anything visible changes.
@@ -29,6 +37,11 @@ export class Viewport {
   /** Tool feedback (rubber bands, previews), drawn on top. */
   readonly overlay = new THREE.Group();
   readonly rig = new CameraRig();
+  /** The colour behind the model in the plain style. */
+  readonly plainBackground = theme.background;
+  /** Set while a different render style (photorealistic) is on. */
+  mode: RenderMode | null = null;
+  readonly hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 1.5);
 
   /** Things that are not part of the model picture (selection, hover, guides) hide themselves while a snapshot renders. */
   readonly snapshotHooks: ((rendering: boolean) => void)[] = [];
@@ -57,7 +70,7 @@ export class Viewport {
   /** Whether the snap grid is drawn on the ground. */
   gridVisible = false;
   /** Whether the sun casts shadows. */
-  private sunDirection = new THREE.Vector3();
+  readonly sunDirection = new THREE.Vector3();
 
   /** Sets the sun: its compass direction and height decide where it stands, and shadows can be switched off. */
   setSun(sun: SunSettings): void {
@@ -68,6 +81,7 @@ export class Viewport {
     const light = Math.min(1, Math.max(0, sun.altitude / 8));
     this.sun.intensity = SUN_INTENSITY * light;
     this.sun.castShadow = sun.shadows && light > 0;
+    this.mode?.sunChanged();
     this.requestRender();
   }
 
@@ -77,6 +91,7 @@ export class Viewport {
     this.requestRender();
   }
   private readonly helpers: THREE.Object3D[];
+  private readonly axes: THREE.Object3D;
   private dirty = true;
   /** Runs just before a frame is drawn, so things that follow the camera can update. */
   beforeRender: (() => void) | null = null;
@@ -90,11 +105,11 @@ export class Viewport {
     container.appendChild(this.renderer.domElement);
 
     this.scene.background = new THREE.Color(theme.background);
-    const axes = createAxes();
+    const axes = (this.axes = createAxes());
     this.helpers = [this.ground.group, this.adaptiveGrid.group, axes, this.north.group, this.overlay];
     this.scene.add(this.ground.group, this.adaptiveGrid.group, axes, this.north.group, this.content, this.overlay);
 
-    const hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 1.5);
+    const hemisphere = this.hemisphere;
     hemisphere.position.copy(WORLD_UP);
     this.setSun(DEFAULT_SUN);
     this.sun.position.copy(this.sunDirection);
@@ -261,6 +276,7 @@ export class Viewport {
     if (width === 0 || height === 0) return;
     this.renderer.setSize(width, height, false);
     this.rig.setAspect(width / height);
+    this.mode?.resize(width, height);
     this.requestRender();
   }
 
@@ -268,11 +284,19 @@ export class Viewport {
     if (!this.dirty) return;
     this.dirty = false;
     this.beforeRender?.();
-    this.adaptiveGrid.group.visible = this.gridVisible;
-    if (this.gridVisible) this.adaptiveGrid.update(this.gridSpacingAt(this.rig.target), this.rig.target);
-    this.ground.update(this.rig.target, Math.max(this.rig.perspective.far, 1e5) * 0.45);
-    this.north.update(this.northAngle, this.contentBounds());
+    if (this.mode) {
+      // The photorealistic view has no grid, axes or ground helper of its own kind.
+      for (const helper of [this.ground.group, this.adaptiveGrid.group, this.axes, this.north.group]) helper.visible = false;
+    } else {
+      this.ground.group.visible = true;
+      this.axes.visible = true;
+      this.adaptiveGrid.group.visible = this.gridVisible;
+      if (this.gridVisible) this.adaptiveGrid.update(this.gridSpacingAt(this.rig.target), this.rig.target);
+      this.ground.update(this.rig.target, Math.max(this.rig.perspective.far, 1e5) * 0.45);
+      this.north.update(this.northAngle, this.contentBounds());
+    }
     this.fitSun();
-    this.renderer.render(this.scene, this.rig.camera);
+    if (this.mode) this.mode.render();
+    else this.renderer.render(this.scene, this.rig.camera);
   }
 }

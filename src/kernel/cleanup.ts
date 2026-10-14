@@ -64,7 +64,7 @@ export function healEdges(model: Model, edges: Iterable<Id>): void {
     if (!model.hasEdge(id)) continue;
     const faces = model.facesOfEdge(id).map((f) => model.face(f));
     // Faces of different paint stay apart: the edge between them is the edge of the paint.
-    if (faces.length !== 2 || faces[0].color !== faces[1].color || faces[0].opacity !== faces[1].opacity || faces[0].hatch !== faces[1].hatch || !coplanarSameSide(model, faces[0], faces[1])) continue;
+    if (faces.length !== 2 || faces[0].color !== faces[1].color || faces[0].opacity !== faces[1].opacity || faces[0].hatch !== faces[1].hatch || faces[0].material !== faces[1].material || !coplanarSameSide(model, faces[0], faces[1])) continue;
     const edge = model.edge(id);
     const plane = model.facePlane(faces[0]);
     // Other edges between the same two faces end up inside the merged face.
@@ -181,16 +181,17 @@ export function weldVertices(model: Model, vertices: Iterable<Id>): Set<Id> {
 
 /**
  * Paints faces with a `#rrggbb` colour, optionally see-through (`opacity` below 1) and with a hatch
- * pattern for drawings; clearing the colour (undefined) clears all of it.
+ * pattern for drawings and a catalogue material for the photorealistic view; clearing the colour (undefined) clears all of it.
  */
-export function paintFaces(model: Model, faceIds: Iterable<Id>, color: string | undefined, opacity?: number, hatch?: string): void {
+export function paintFaces(model: Model, faceIds: Iterable<Id>, color: string | undefined, opacity?: number, hatch?: string, material?: string): void {
   for (const id of faceIds) {
     if (!model.hasFace(id)) continue;
     const face = model.face(id);
     // Painting without an opacity makes the face opaque again, without a hatch removes the hatch.
     const nextOpacity = color === undefined || opacity === undefined || opacity >= 1 ? undefined : opacity;
     const nextHatch = color === undefined ? undefined : hatch;
-    if (face.color !== color || face.opacity !== nextOpacity || face.hatch !== nextHatch) model.putFace({ ...face, color, opacity: nextOpacity, hatch: nextHatch });
+    const nextMaterial = color === undefined ? undefined : material;
+    if (face.color !== color || face.opacity !== nextOpacity || face.hatch !== nextHatch || face.material !== nextMaterial) model.putFace({ ...face, color, opacity: nextOpacity, hatch: nextHatch, material: nextMaterial });
   }
 }
 

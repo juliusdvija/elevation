@@ -33,6 +33,8 @@ export interface Face {
   readonly opacity?: number;
   /** A hatch pattern for drawings (`brick`, `boards`, ...); absent for none. */
   readonly hatch?: string;
+  /** A catalogue material (`brick`, `glass`, ...) for the photorealistic view; absent for plain paint. */
+  readonly material?: string;
 }
 
 /**
@@ -80,7 +82,7 @@ export interface ModelData {
   nextId: number;
   vertices: [Id, number, number, number][];
   edges: [Id, Id, Id][];
-  faces: { id: Id; outer: Id[]; holes: Id[][]; normal: [number, number, number]; color?: string; opacity?: number; hatch?: string }[];
+  faces: { id: Id; outer: Id[]; holes: Id[][]; normal: [number, number, number]; color?: string; opacity?: number; hatch?: string; material?: string }[];
   guides: ({ id: Id; kind: 'line'; point: [number, number, number]; direction: [number, number, number] } | { id: Id; kind: 'point'; point: [number, number, number] })[];
   instances?: { id: Id; definition: number; matrix: number[]; tag?: string }[];
 }
@@ -313,6 +315,7 @@ export class Model {
         ...(f.color ? { color: f.color } : {}),
         ...(f.opacity !== undefined ? { opacity: f.opacity } : {}),
         ...(f.hatch ? { hatch: f.hatch } : {}),
+        ...(f.material ? { material: f.material } : {}),
       })),
       instances: byId(this.allInstances()).map((i) => ({ id: i.id, definition: i.definition, matrix: [...i.matrix], ...(i.tag ? { tag: i.tag } : {}) })),
       guides: byId(this.allGuides()).map((g) =>
@@ -332,7 +335,7 @@ export class Model {
     for (const [id, x, y, z] of data.vertices) this.set('vertices', id, { id, position: new THREE.Vector3(x, y, z) });
     for (const [id, a, b] of data.edges) this.set('edges', id, { id, a, b });
     for (const f of data.faces) {
-      this.set('faces', f.id, { id: f.id, outer: [...f.outer], holes: f.holes.map((h) => [...h]), normal: new THREE.Vector3(...f.normal), ...(f.color ? { color: f.color } : {}), ...(f.opacity !== undefined ? { opacity: f.opacity } : {}), ...(f.hatch ? { hatch: f.hatch } : {}) });
+      this.set('faces', f.id, { id: f.id, outer: [...f.outer], holes: f.holes.map((h) => [...h]), normal: new THREE.Vector3(...f.normal), ...(f.color ? { color: f.color } : {}), ...(f.opacity !== undefined ? { opacity: f.opacity } : {}), ...(f.hatch ? { hatch: f.hatch } : {}), ...(f.material ? { material: f.material } : {}) });
     }
     for (const g of data.guides ?? []) {
       this.set(
@@ -495,6 +498,7 @@ export class Model {
       ...(face.color ? { color: face.color } : {}),
       ...(face.opacity !== undefined && face.opacity < 1 ? { opacity: face.opacity } : {}),
       ...(face.hatch ? { hatch: face.hatch } : {}),
+      ...(face.material ? { material: face.material } : {}),
     });
     return id;
   }

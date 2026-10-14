@@ -26,7 +26,7 @@ function appendWelded(target: Model, source: Model): void {
     if (a !== b && target.edgeBetween(a, b) === undefined) target.addEdge(a, b);
   }
   for (const f of source.allFaces()) {
-    target.putFace({ outer: f.outer.map(vertex), holes: f.holes.map((h) => h.map(vertex)), normal: f.normal, color: f.color, opacity: f.opacity, hatch: f.hatch });
+    target.putFace({ outer: f.outer.map(vertex), holes: f.holes.map((h) => h.map(vertex)), normal: f.normal, color: f.color, opacity: f.opacity, hatch: f.hatch, material: f.material });
   }
 }
 

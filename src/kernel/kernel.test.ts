@@ -2,7 +2,7 @@ import { describe, expect, it } from 'vitest';
 import * as THREE from 'three';
 import { Model } from './Model';
 import { drawPolygon, drawSegments } from './draw';
-import { eraseEdges, eraseFaces, paintFaces } from './cleanup';
+import { eraseEdges, eraseFaces, healEdges, paintFaces } from './cleanup';
 import { pushPull } from './pushPull';
 import { faceArea } from './faces';
 import { selfIntersections, validateModel } from './validate';
@@ -468,6 +468,42 @@ describe('paint', () => {
     expect(model.allFaces().filter((f) => f.hatch).length).toBe(1);
     model.edit(() => paintFaces(model, model.allFaces().map((f) => f.id), undefined));
     expect(model.allFaces().some((f) => f.color || f.hatch)).toBe(false);
+  });
+
+  it('carries a material with the paint: saved, copied, split, kept through push/pull, cleared with the paint', () => {
+    const model = new Model();
+    model.edit(() => drawPolygon(model, rect(0, 0, 2000, 1000)));
+    const id = model.allFaces()[0].id;
+    model.edit(() => paintFaces(model, [id], '#b5654a', undefined, 'brick', 'brick'));
+    const copy = new Model();
+    copy.load(model.toData());
+    expect(copy.face(id).material).toBe('brick');
+    model.edit(() => drawSegments(model, [[v(1000, 0), v(1000, 1000)]]));
+    expect(model.allFaces().every((f) => f.material === 'brick')).toBe(true);
+    model.edit(() => copyEntities(model, [model.allFaces()[0].id], [], new THREE.Matrix4().makeTranslation(0, 3000, 0)));
+    expect(model.allFaces().filter((f) => f.material === 'brick')).toHaveLength(3);
+    model.edit(() => pushPull(model, model.allFaces()[0].id, 1000));
+    expect(model.allFaces().filter((f) => f.material === 'brick').length).toBeGreaterThanOrEqual(8);
+    model.edit(() => paintFaces(model, [model.allFaces()[0].id], '#ff0000')); // plain colour: no material
+    expect(model.allFaces()[0].material).toBeUndefined();
+    model.edit(() => paintFaces(model, model.allFaces().map((f) => f.id), undefined));
+    expect(model.allFaces().some((f) => f.color || f.material)).toBe(false);
+  });
+
+  it('does not merge coplanar faces that carry different materials', () => {
+    const model = new Model();
+    model.edit(() => drawPolygon(model, rect(0, 0, 2000, 1000)));
+    model.edit(() => drawSegments(model, [[v(1000, 0), v(1000, 1000)]]));
+    const [a, b] = model.allFaces();
+    model.edit(() => paintFaces(model, [a.id], '#b5654a', undefined, undefined, 'brick'));
+    model.edit(() => paintFaces(model, [b.id], '#b5654a', undefined, undefined, 'terracotta'));
+    const shared = model.allEdges().filter((e) => model.facesOfEdge(e.id).length === 2).map((e) => e.id);
+    model.edit(() => healEdges(model, shared));
+    expect(model.faceCount).toBe(2);
+    // The same material (and paint) merges back into one face.
+    model.edit(() => paintFaces(model, [b.id], '#b5654a', undefined, undefined, 'brick'));
+    model.edit(() => healEdges(model, shared));
+    expect(model.faceCount).toBe(1);
   });
 
   it('is saved, loaded and cleared again', () => {
