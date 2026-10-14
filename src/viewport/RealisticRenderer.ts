@@ -12,6 +12,7 @@ import { atmosphere, type Atmosphere } from './atmosphere';
 import { NightSky } from './nightSky';
 import type { ModelRenderer } from './ModelRenderer';
 import { SUN_INTENSITY, type Viewport } from './Viewport';
+import type { PathTracer } from './PathTracer';
 
 /** What the photorealistic view can be tuned with; a viewer preference, not part of the document. */
 export interface RealisticSettings {
@@ -26,9 +27,24 @@ export interface RealisticSettings {
   shadowSize: 1024 | 2048 | 4096;
   /** How soon the distance fades into haze (0 none, 1 thick). */
   haze: number;
+  /** Ray tracing: light bounces and real glass, refining while the camera rests (off: real-time only). */
+  rayTracing: boolean;
+  /** When the ray-traced picture is finished (samples per pixel), and how often light may bounce. */
+  raySamples: 64 | 256 | 1024;
+  rayBounces: number;
 }
 
-export const DEFAULT_REALISTIC: RealisticSettings = { exposure: 0.9, skyLight: 0.15, occlusion: true, occlusionStrength: 1, shadowSize: 4096, haze: 0.5 };
+export const DEFAULT_REALISTIC: RealisticSettings = {
+  exposure: 0.9,
+  skyLight: 0.15,
+  occlusion: true,
+  occlusionStrength: 1,
+  shadowSize: 4096,
+  haze: 0.5,
+  rayTracing: false,
+  raySamples: 256,
+  rayBounces: 5,
+};
 
 const HORIZON = 0xc9d6e3;
 const GROUND = 0xa9a79e;
@@ -73,6 +89,16 @@ export class RealisticRenderer {
   private settings: RealisticSettings = { ...DEFAULT_REALISTIC };
   private enabled = false;
   private dirty = true;
+  /** The ray tracer, loaded the first time ray tracing is switched on (it is a large module). */
+  private tracer: PathTracer | null = null;
+  private tracerLoading = false;
+  private tracerScene = true;
+  private tracerSky = true;
+  /** Can this GPU ray trace at all (null: not checked yet). */
+  private rayTracingSupported: boolean | null = null;
+  /** Called after each frame while ray tracing, with the samples so far (for the panel's progress). */
+  onProgress: ((samples: number, of: number) => void) | null = null;
+  private capture: ((url: string) => void) | null = null;
 
   constructor(
     private readonly doc: Document,
@@ -112,12 +138,39 @@ export class RealisticRenderer {
 
   /** Applies new settings (only the view changes, nothing in the model). */
   setSettings(settings: RealisticSettings): void {
+    const before = this.settings;
     this.settings = { ...settings };
     if (this.enabled) {
       this.viewport.setShadowResolution(settings.shadowSize);
       this.viewport.scene.environmentIntensity = this.environmentIntensity();
     }
+    if (this.tracer) {
+      this.tracer.maxSamples = settings.raySamples;
+      this.tracer.bounces = settings.rayBounces;
+      if (before.skyLight !== settings.skyLight) this.tracerSky = true;
+    }
     this.viewport.requestRender();
+  }
+
+  /** Whether ray tracing can work on this GPU. */
+  get canRayTrace(): boolean {
+    if (this.rayTracingSupported === null) {
+      const { renderer } = this.viewport;
+      this.rayTracingSupported = renderer.capabilities.isWebGL2 && renderer.extensions.has('EXT_color_buffer_float');
+    }
+    return this.rayTracingSupported;
+  }
+
+  private get tracing(): boolean {
+    return this.enabled && this.settings.rayTracing && this.canRayTrace;
+  }
+
+  /** The picture as it is now (ray traced or real-time), as a PNG data URL. */
+  saveImage(): Promise<string> {
+    return new Promise((resolve) => {
+      this.capture = resolve;
+      this.viewport.requestRender();
+    });
   }
 
   get isOn(): boolean {
@@ -140,6 +193,7 @@ export class RealisticRenderer {
         render: () => this.render(),
         resize: (width, height) => this.composer?.setSize(width, height),
         sunChanged: () => this.scheduleSky(),
+        continuous: () => this.tracing && (this.tracer?.refining ?? true),
       };
     } else {
       this.viewport.mode = null;
@@ -199,6 +253,7 @@ export class RealisticRenderer {
     // The light follows at once; only the sky picture waits.
     this.air = atmosphere(this.viewport.sunAltitude);
     this.applySunLight();
+    this.tracerSky = true;
     const wait = 80 - (performance.now() - this.lastBake);
     if (wait <= 0) return this.updateSky();
     this.bakeTimer ??= setTimeout(() => {
@@ -228,6 +283,7 @@ export class RealisticRenderer {
     const previous = this.environment;
     this.environment = this.pmrem.fromScene(this.skyScene, 0, 0.1, 100);
     previous?.dispose();
+    this.tracerSky = true;
     if (this.enabled) this.applyStyle(true);
   }
 
@@ -281,8 +337,10 @@ export class RealisticRenderer {
       mesh.receiveShadow = true;
       mesh.renderOrder = glass ? 1 : 0;
       mesh.raycast = () => {};
+      mesh.userData.material = bucket.material;
       this.group.add(mesh);
     }
+    this.tracerScene = true;
     this.viewport.requestRender();
   }
 
@@ -306,6 +364,16 @@ export class RealisticRenderer {
   }
 
   private render(): void {
+    if (this.tracing) this.renderTraced();
+    else this.renderRealTime();
+    if (this.capture) {
+      // Read the canvas now, in the same task as the drawing (the buffer is not kept for later).
+      this.capture(this.viewport.canvas.toDataURL('image/png'));
+      this.capture = null;
+    }
+  }
+
+  private renderRealTime(): void {
     const { rig, scene, renderer } = this.viewport;
     const composer = this.ensureComposer();
     this.renderPass!.camera = rig.camera;
@@ -321,5 +389,42 @@ export class RealisticRenderer {
     }
     renderer.toneMappingExposure = this.settings.exposure;
     composer.render();
+  }
+
+  /** One more ray-traced sample, or the real-time picture while the tracer loads or has too few samples. */
+  private renderTraced(): void {
+    const tracer = this.tracer;
+    if (!tracer) {
+      this.loadTracer();
+      this.renderRealTime();
+      return;
+    }
+    const { rig, renderer, sun, sunDirection } = this.viewport;
+    if (this.tracerScene) {
+      this.group.updateMatrixWorld(true);
+      tracer.setScene({ meshes: this.group.children as THREE.Mesh[], ground: { color: GROUND, radius: Math.max(rig.perspective.far, 1e5) } });
+      this.tracerScene = false;
+    }
+    if (this.tracerSky) {
+      tracer.setSky(this.skyScene, this.environmentIntensity(), this.viewport.scene.backgroundIntensity);
+      tracer.setLights({ sun, sunDirection, moon: this.moon });
+      this.tracerSky = false;
+    }
+    renderer.toneMappingExposure = this.settings.exposure;
+    tracer.render(rig.camera);
+    this.onProgress?.(Math.min(tracer.samples, tracer.maxSamples), tracer.maxSamples);
+  }
+
+  private loadTracer(): void {
+    if (this.tracerLoading) return;
+    this.tracerLoading = true;
+    void import('./PathTracer').then(({ PathTracer }) => {
+      const tracer = new PathTracer(this.viewport.renderer, () => this.renderRealTime());
+      tracer.maxSamples = this.settings.raySamples;
+      tracer.bounces = this.settings.rayBounces;
+      this.tracer = tracer;
+      this.tracerScene = this.tracerSky = true;
+      this.viewport.requestRender();
+    });
   }
 }

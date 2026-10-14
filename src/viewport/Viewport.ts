@@ -21,6 +21,8 @@ export interface RenderMode {
   resize(width: number, height: number): void;
   /** The sun moved. */
   sunChanged(): void;
+  /** Whether to keep drawing frames although nothing changed (a picture that refines over time). */
+  continuous?(): boolean;
 }
 
 /**
@@ -308,7 +310,7 @@ export class Viewport {
   }
 
   private frame(): void {
-    if (!this.dirty) return;
+    if (!this.dirty && !this.mode?.continuous?.()) return;
     this.dirty = false;
     this.beforeRender?.();
     for (const hook of this.beforeFrame) hook();

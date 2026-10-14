@@ -1345,3 +1345,32 @@ input.swatch.custom {
 .swatch[hidden] {
   display: none;
 }
+
+.render-progress {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 12px;
+  color: var(--ink-muted);
+  font-variant-numeric: tabular-nums;
+}
+
+.render-progress-bar {
+  flex: 1;
+  height: 4px;
+  border-radius: 2px;
+  background: var(--line);
+  overflow: hidden;
+}
+
+.render-progress-bar i {
+  display: block;
+  height: 100%;
+  width: 0;
+  background: var(--ink);
+}
+
+.render-actions {
+  display: flex;
+  gap: 6px;
+}
