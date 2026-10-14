@@ -2,6 +2,7 @@ import * as THREE from 'three';
 import type { Document, Placement } from '../document';
 import type { Id } from '../kernel/Model';
 import { faceArea, triangulateFace } from '../kernel/faces';
+import { profileSegments, type ProfileCandidate } from './profileEdges';
 import { smoothNormal } from './shading';
 import { theme } from './theme';
 import { ThickLines } from './thickLines';
@@ -28,6 +29,8 @@ const FADED_OPACITY = 0.3;
 const EDGE_WIDTH = 1.6;
 const SELECTION_WIDTH = 3.2;
 const HOVER_WIDTH = 2.4;
+/** The outline of the model seen from the camera is drawn heavier than the edges inside it. */
+const PROFILE_WIDTH = 2.8;
 
 const PLAIN = new THREE.Color(theme.face);
 
@@ -64,6 +67,9 @@ export class ModelRenderer {
   private readonly guidePoints: THREE.Points;
   /** Faces meeting at less than this angle (radians) shade smoothly and show no edge line between them; 0 turns it off. */
   smoothAngle = THREE.MathUtils.degToRad(20);
+  private readonly profile: ThickLines;
+  private profileCandidates: ProfileCandidate[] = [];
+  private profileKey = '';
   private realistic = false;
   private selection = EMPTY;
   private hover = EMPTY;
@@ -117,6 +123,7 @@ export class ModelRenderer {
       });
     this.selectionFaces = new THREE.Mesh(new THREE.BufferGeometry(), tint(theme.selection, 0.22));
     this.hoverFaces = new THREE.Mesh(new THREE.BufferGeometry(), tint(theme.hover, 0.16));
+    this.profile = new ThickLines(theme.edge, PROFILE_WIDTH);
     this.selectionEdges = new ThickLines(theme.selection, SELECTION_WIDTH);
     this.hoverEdges = new ThickLines(theme.hover, HOVER_WIDTH);
     for (const lines of [this.selectionEdges, this.hoverEdges]) lines.renderOrder = 2;
@@ -138,6 +145,7 @@ export class ModelRenderer {
       this.active.back,
       this.active.glass,
       this.active.edges,
+      this.profile,
       this.faded.front,
       this.faded.back,
       this.faded.glass,
@@ -155,6 +163,7 @@ export class ModelRenderer {
       this.guideLines.visible = this.guidePoints.visible = !rendering && !this.realistic;
     });
 
+    viewport.beforeFrame.push(() => this.updateProfile());
     doc.geometryChanged.on(() => this.rebuild());
     this.rebuild();
   }
@@ -170,18 +179,13 @@ export class ModelRenderer {
     return mesh === layer.glass ? layer.glassRefs[triangle] : layer.refs[triangle];
   }
 
-  /** Sets the width (screen pixels) of the model's edge lines. */
-  setLineWidth(width: number): void {
-    for (const layer of [this.active, this.faded]) layer.edges.material.linewidth = width;
-    this.viewport.requestRender();
-  }
-
   /** Hides the plain faces, edges and guides (they still take part in picking) while the photorealistic view draws the model. */
   setRealistic(on: boolean): void {
     this.realistic = on;
     for (const layer of [this.active, this.faded]) {
       layer.front.visible = layer.back.visible = layer.glass.visible = layer.edges.visible = !on;
     }
+    this.profile.visible = !on;
     this.guideLines.visible = this.guidePoints.visible = !on;
     this.viewport.requestRender();
   }
@@ -202,8 +206,20 @@ export class ModelRenderer {
     this.updateHighlight(this.hoverFaces, this.hoverEdges, this.hover);
   }
 
+  /** Redraws the outline for where the camera stands now (only when it moved). */
+  private updateProfile(): void {
+    const rig = this.viewport.rig;
+    const camera = rig.camera;
+    const key = `${camera.position.toArray().join()}|${rig.target.toArray().join()}|${rig.isOrtho}`;
+    if (key === this.profileKey) return;
+    this.profileKey = key;
+    const toward = camera.position.clone().sub(rig.target).normalize();
+    this.profile.setSegments(profileSegments(this.profileCandidates, rig.isOrtho ? null : camera.position, toward));
+  }
+
   private rebuild(): void {
     const context = this.doc.context.path;
+    const candidates: ProfileCandidate[] = [];
     const buffers = () => ({
       positions: [] as number[],
       normals: [] as number[],
@@ -261,6 +277,19 @@ export class ModelRenderer {
           sink.refs.push({ placement, face: face.id });
         }
       }
+      // Outline candidates in the editable part: every edge of one or two faces, smooth ones included.
+      if (target === build.active) {
+        for (const e of model.allEdges()) {
+          const faces = model.facesOfEdge(e.id);
+          if (faces.length < 1 || faces.length > 2) continue;
+          candidates.push({
+            a: model.position(e.a).clone().applyMatrix4(matrix),
+            b: model.position(e.b).clone().applyMatrix4(matrix),
+            n1: faceNormal(model.face(faces[0])),
+            n2: faces.length === 2 ? faceNormal(model.face(faces[1])) : null,
+          });
+        }
+      }
       for (const e of model.allEdges()) {
         if (smoothing) {
           const faces = model.facesOfEdge(e.id);
@@ -295,6 +324,10 @@ export class ModelRenderer {
       layer.glassRefs = data.glass.refs;
       layer.edges.setSegments(data.edges);
     }
+
+    this.profileCandidates = candidates;
+    this.profileKey = '';
+    this.updateProfile();
 
     const guides = this.doc.model.allGuides();
     this.guideLines.geometry.dispose();

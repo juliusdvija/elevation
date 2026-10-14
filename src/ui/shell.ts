@@ -68,7 +68,6 @@ export interface ShellElements {
   unitSelect: HTMLSelectElement;
   gridSelect: HTMLSelectElement;
   smoothSelect: HTMLSelectElement;
-  lineSelect: HTMLSelectElement;
   decimalsSelect: HTMLSelectElement;
 }
 
@@ -227,14 +226,10 @@ export function buildShell(
   smoothSelect.title = 'Smooth shading: faces that meet at less than this angle blend, and the edge between them is not drawn';
   for (const [value, label] of [['0', 'Smooth: off'], ['10', 'Smooth: 10°'], ['20', 'Smooth: 20°'], ['35', 'Smooth: 35°']]) smoothSelect.append(Object.assign(el('option', undefined, label), { value }));
   smoothSelect.value = '20';
-  const lineSelect = el('select', 'status-select');
-  lineSelect.title = 'Thickness of the model lines';
-  for (const [value, label] of [['1', 'Lines: thin'], ['1.6', 'Lines: normal'], ['2.4', 'Lines: bold'], ['3.2', 'Lines: heavy']]) lineSelect.append(Object.assign(el('option', undefined, label), { value }));
-  lineSelect.value = '1.6';
-  statusbar.append(hint, lineSelect, smoothSelect, gridSelect, unitSelect, decimalsSelect, measureWrap);
+  statusbar.append(hint, smoothSelect, gridSelect, unitSelect, decimalsSelect, measureWrap);
 
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, sunToggle, renderToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, lineSelect, decimalsSelect };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, sunToggle, renderToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
 }

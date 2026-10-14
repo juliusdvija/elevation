@@ -33,6 +33,7 @@ import { PaintPalette } from './ui/PaintPalette';
 import { ScenesBar } from './ui/ScenesBar';
 import { InfoPanel } from './ui/InfoPanel';
 import { SunPanel } from './ui/SunPanel';
+import { RenderPanel } from './ui/RenderPanel';
 import { DEFAULT_SUN } from './drawing/settings';
 import { resolveSun } from './drawing/sun';
 import { TagsPanel } from './ui/TagsPanel';
@@ -123,25 +124,6 @@ shell.smoothSelect.addEventListener('change', () => {
   doc.updateDrawingSettings('Smoothing', { ...structuredClone(doc.drawingSettings), smoothAngle: Number(shell.smoothSelect.value) });
 });
 syncSmoothing();
-
-// Thickness of the model lines, remembered between sessions.
-const LINE_WIDTH_KEY = 'elevation.lineWidth';
-try {
-  const saved = localStorage.getItem(LINE_WIDTH_KEY);
-  if (saved && [...shell.lineSelect.options].some((o) => o.value === saved)) shell.lineSelect.value = saved;
-} catch {
-  /* keep normal */
-}
-const applyLineWidth = () => {
-  renderer.setLineWidth(Number(shell.lineSelect.value));
-  try {
-    localStorage.setItem(LINE_WIDTH_KEY, shell.lineSelect.value);
-  } catch {
-    /* not remembered */
-  }
-};
-shell.lineSelect.addEventListener('change', applyLineWidth);
-applyLineWidth();
 
 // Snap and grid spacing: automatic from the zoom, or a fixed step.
 const GRID_MODE_KEY = 'elevation.gridMode';
@@ -378,8 +360,12 @@ shell.tagsToggle.addEventListener('click', () => {
   tagsPanel.setVisible(!tagsPanel.isVisible);
   shell.tagsToggle.setAttribute('aria-pressed', String(tagsPanel.isVisible));
 });
+// The render settings panel belongs to the photorealistic view: it shows while that is on.
+const renderPanel = new RenderPanel(realistic);
+shell.viewport.append(renderPanel.el);
 shell.renderToggle.addEventListener('click', () => {
   realistic.setEnabled(!realistic.isOn);
+  renderPanel.setVisible(realistic.isOn);
   shell.renderToggle.setAttribute('aria-pressed', String(realistic.isOn));
   shell.renderToggle.blur();
 });

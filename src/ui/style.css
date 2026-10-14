@@ -1257,6 +1257,18 @@ input.swatch.custom {
   width: 260px;
 }
 
+.render-panel {
+  left: auto;
+  right: 12px;
+  top: auto;
+  bottom: 12px;
+  width: 260px;
+}
+
+.render-panel .sun-row {
+  grid-template-columns: 84px 1fr;
+}
+
 .sun-row {
   display: grid;
   grid-template-columns: 70px 1fr auto;

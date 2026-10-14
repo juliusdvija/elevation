@@ -2,7 +2,7 @@ import html, json, sys
 
 # status: done | doing | next | later
 DATA = {
-  "stats": [("242","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("56","design decisions logged")],
+  "stats": [("245","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("57","design decisions logged")],
   "phases": [
     {"name":"Engine","blurb":"A kernel that does not corrupt models, and stays fast.","items":[
       ("done","Solid-safe push/pull: refuse edits that would open a closed solid","f1fd617"),
@@ -98,10 +98,10 @@ DATA = {
       ("done","Sky gradient and a softer horizon in the sketch style","d29f52d"),
       ("done","Mouse or trackpad controls (two-finger orbit, Shift pans, pinch zooms), chosen in the status bar",""),
       ("done","Line weight setting: thin, normal, bold or heavy model lines, remembered","d29f52d"),
-      ("later","Line styles: profile edges heavier than inner edges",""),
-      ("later","Settings panel for the photorealistic view (exposure, sky, shadows)","")]},
+      ("done","Heavier outline: the edge of the model seen from the camera is drawn bolder than inner edges","SHA2"),
+      ("done","Settings panel for the photorealistic view: exposure, sky light, corner shade, shadow sharpness, haze","SHA2")]},
   ],
-  "log":[("Now","The sketch-style 3D view is finished for this round: soft sky and horizon, adjustable line weight."),("Just finished","The 3D view now has a sky that fades from pale blue overhead to the paper colour at the horizon, the ground melts into it, and a Lines menu in the status bar sets how thick the model lines are."),("Known issue","Line style is one weight for all edges; outlines of shapes are not yet heavier than inner edges."),("Direction","Next best step: heavier profile edges (silhouette lines) for a more drawn look, then the settings panel for the photorealistic view.")]
+  "log":[("Now","The 3D view look phase is complete; waiting for your pick of what to build next."),("Just finished","The model now has a bolder outline against its inner lines, and the realistic view has a Render panel (exposure, sky light, corner shade, shadow sharpness, haze) that opens when you switch it on and remembers your choices. The line-weight menu was removed as asked."),("Known issue","Glass is not truly refractive and the realistic view has no light bounce, so rooms lit only through windows look flat."),("Direction","Next best step: a path-traced still image for final pictures, or dimensions that follow the geometry for precise drawings.")]
 }
 
 def render(d):

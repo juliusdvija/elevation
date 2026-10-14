@@ -11,9 +11,25 @@ import { buildMaterialBuckets } from './realisticScene';
 import type { ModelRenderer } from './ModelRenderer';
 import type { Viewport } from './Viewport';
 
+/** What the photorealistic view can be tuned with; a viewer preference, not part of the document. */
+export interface RealisticSettings {
+  /** Overall brightness. */
+  exposure: number;
+  /** How much light the sky gives next to the sun (0 is sun only). */
+  skyLight: number;
+  /** Corner and crease darkening. */
+  occlusion: boolean;
+  occlusionStrength: number;
+  /** Shadow map size in pixels. */
+  shadowSize: 1024 | 2048 | 4096;
+  /** How soon the distance fades into haze (0 none, 1 thick). */
+  haze: number;
+}
+
+export const DEFAULT_REALISTIC: RealisticSettings = { exposure: 0.9, skyLight: 0.15, occlusion: true, occlusionStrength: 1, shadowSize: 4096, haze: 0.5 };
+
 const HORIZON = 0xc9d6e3;
 const GROUND = 0xa9a79e;
-const EXPOSURE = 0.9;
 
 /** Ambient occlusion that ignores see-through things (glass, the cut-plane gizmo, selection tints), which would otherwise count as solid walls. */
 class SolidOcclusion extends GTAOPass {
@@ -46,8 +62,7 @@ export class RealisticRenderer {
   private composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
   private ao: SolidOcclusion | null = null;
-  /** Overall brightness of the picture. */
-  exposure = EXPOSURE;
+  private settings: RealisticSettings = { ...DEFAULT_REALISTIC };
   private enabled = false;
   private dirty = true;
 
@@ -82,6 +97,20 @@ export class RealisticRenderer {
     });
   }
 
+  get current(): RealisticSettings {
+    return { ...this.settings };
+  }
+
+  /** Applies new settings (only the view changes, nothing in the model). */
+  setSettings(settings: RealisticSettings): void {
+    this.settings = { ...settings };
+    if (this.enabled) {
+      this.viewport.setShadowResolution(settings.shadowSize);
+      this.viewport.scene.environmentIntensity = settings.skyLight;
+    }
+    this.viewport.requestRender();
+  }
+
   get isOn(): boolean {
     return this.enabled;
   }
@@ -106,6 +135,7 @@ export class RealisticRenderer {
     } else {
       this.viewport.mode = null;
     }
+    this.viewport.setShadowResolution(on ? this.settings.shadowSize : 4096);
     this.applyStyle(on);
     this.viewport.requestRender();
   }
@@ -120,11 +150,11 @@ export class RealisticRenderer {
     scene.environmentRotation.set(-Math.PI / 2, 0, 0);
     scene.backgroundRotation.set(-Math.PI / 2, 0, 0);
     scene.background = on && this.environment ? this.environment.texture : new THREE.Color(this.viewport.plainBackground);
-    scene.environmentIntensity = 0.15;
+    scene.environmentIntensity = this.settings.skyLight;
     scene.backgroundIntensity = 0.4;
     scene.fog = on ? new THREE.Fog(HORIZON, 1, 2) : null;
     renderer.toneMapping = on ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-    renderer.toneMappingExposure = this.exposure;
+    renderer.toneMappingExposure = this.settings.exposure;
     // The hemisphere light is replaced by the sky.
     this.viewport.hemisphere.visible = !on;
     this.viewport.requestRender();
@@ -218,16 +248,17 @@ export class RealisticRenderer {
     const { rig, scene, renderer } = this.viewport;
     const composer = this.ensureComposer();
     this.renderPass!.camera = rig.camera;
-    this.ao!.enabled = !rig.isOrtho;
+    this.ao!.enabled = this.settings.occlusion && !rig.isOrtho;
+    this.ao!.blendIntensity = this.settings.occlusionStrength;
     // The ground follows the target; it and the haze reach out to the horizon.
     const reach = Math.max(rig.perspective.far, 1e5) * 0.45;
     this.ground.position.set(rig.target.x, rig.target.y, -0.5);
     this.ground.scale.set(reach, reach, 1);
     if (scene.fog instanceof THREE.Fog) {
-      scene.fog.near = reach * 0.15;
+      scene.fog.near = reach * (0.6 - 0.55 * this.settings.haze);
       scene.fog.far = reach;
     }
-    renderer.toneMappingExposure = this.exposure;
+    renderer.toneMappingExposure = this.settings.exposure;
     composer.render();
   }
 }

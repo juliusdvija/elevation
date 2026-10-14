@@ -96,6 +96,8 @@ export class Viewport {
   private dirty = true;
   /** Runs just before a frame is drawn, so things that follow the camera can update. */
   beforeRender: (() => void) | null = null;
+  /** More things to do just before a frame, or a snapshot, is drawn (they read the camera). */
+  readonly beforeFrame: (() => void)[] = [];
 
   constructor(readonly container: HTMLElement) {
     this.renderer = new THREE.WebGLRenderer({ antialias: true });
@@ -216,6 +218,7 @@ export class Viewport {
       rig.setAspect(width / height);
       for (const helper of this.helpers) helper.visible = false;
       for (const hook of this.snapshotHooks) hook(true);
+      for (const hook of this.beforeFrame) hook();
       this.scene.background = new THREE.Color(theme.face);
       this.renderer.setRenderTarget(target);
       this.renderer.render(this.scene, rig.camera);
@@ -251,6 +254,15 @@ export class Viewport {
     }
   }
 
+  /** Sets the sharpness of the sun's shadows: the shadow map is `size` pixels square. */
+  setShadowResolution(size: number): void {
+    if (this.sun.shadow.mapSize.x === size) return;
+    this.sun.shadow.mapSize.set(size, size);
+    this.sun.shadow.map?.dispose();
+    this.sun.shadow.map = null;
+    this.requestRender();
+  }
+
   /** Aims the sun at the model and sizes its shadow map to just cover it, so shadows stay sharp at any scale. */
   private fitSun(): void {
     if (!this.sun.castShadow) return;
@@ -269,7 +281,7 @@ export class Viewport {
     camera.far = radius * 4;
     camera.updateProjectionMatrix();
     this.sun.shadow.bias = -0.0002;
-    this.sun.shadow.normalBias = ((radius * 2) / 4096) * 1.5;
+    this.sun.shadow.normalBias = ((radius * 2) / this.sun.shadow.mapSize.x) * 1.5;
   }
 
   private resize(): void {
@@ -285,6 +297,7 @@ export class Viewport {
     if (!this.dirty) return;
     this.dirty = false;
     this.beforeRender?.();
+    for (const hook of this.beforeFrame) hook();
     if (this.mode) {
       // The photorealistic view has no grid, axes or ground helper of its own kind.
       for (const helper of [this.skyGradient.mesh, this.ground.group, this.adaptiveGrid.group, this.axes, this.north.group]) helper.visible = false;
