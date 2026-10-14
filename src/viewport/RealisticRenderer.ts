@@ -1,5 +1,4 @@
 import * as THREE from 'three';
-import { Sky } from 'three/examples/jsm/objects/Sky.js';
 import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer.js';
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
@@ -15,8 +14,8 @@ import type { Document } from '../document';
 import type { Material } from '../core/materials';
 import { mapsFor } from './proceduralTextures';
 import { buildMaterialBuckets, groundGeometry, groundPlan } from './realisticScene';
-import { atmosphere, type Atmosphere } from './atmosphere';
-import { NightSky } from './nightSky';
+import { atmosphere, HAZE, type Atmosphere, type HazeId } from './atmosphere';
+import { PhysicalSky, toSkyFrame } from './physicalSky';
 import type { ModelRenderer } from './ModelRenderer';
 import { SUN_INTENSITY, type Viewport } from './Viewport';
 import type { PathTracer } from './PathTracer';
@@ -41,6 +40,8 @@ export interface RealisticSettings {
   rayBounces: number;
   /** The finished look: tone mapping and grade (see `LOOKS`). */
   look: LookId;
+  /** How hazy the time-of-day sky is (aerosols: whiter sky, softer sun, redder sunsets). */
+  atmosphere: HazeId;
   /** The sky: the time-of-day sky from the document's sun, or a photographed panorama. */
   sky: 'time' | HdriId;
   /** Mirror reflections in water and polished floors. */
@@ -61,12 +62,17 @@ export const DEFAULT_REALISTIC: RealisticSettings = {
   raySamples: 256,
   rayBounces: 5,
   look: 'natural',
+  atmosphere: 'normal',
   sky: 'time',
   reflections: true,
   depthOfField: false,
   fStop: 2.8,
 };
 
+/** The physical sky's brightness just above the horizon in daylight, and the most the exposure opens up at night. */
+const DAY_HORIZON = 0.2;
+const MAX_AUTO_EXPOSURE = 400;
+/** The haze colour when the sky cannot be read back from the GPU. */
 const HORIZON = 0xc9d6e3;
 /** The endless ground: a muted lawn, so a model sits in a landscape rather than on a grey plate. */
 const GROUND = 0x8b9670;
@@ -80,7 +86,8 @@ class SolidOcclusion extends GTAOPass {
     self.scene.traverse((object) => {
       const material = (object as THREE.Mesh).material as THREE.Material | undefined;
       const see = Array.isArray(material) ? material.some((m) => m.transparent) : material?.transparent;
-      if (((object as THREE.Points).isPoints || (object as THREE.Line).isLine || (object as THREE.Mesh).isMesh && see) && object.visible) {
+      const hide = (object as THREE.Points).isPoints || (object as THREE.Line).isLine || ((object as THREE.Mesh).isMesh && see) || object.userData.sky;
+      if (hide && object.visible) {
         object.visible = false;
         self._visibilityCache.push(object);
       }
@@ -97,11 +104,14 @@ export class RealisticRenderer {
   private readonly group = new THREE.Group();
   private readonly materials = new Map<string, THREE.MeshPhysicalMaterial>();
   private readonly ground: THREE.Mesh;
-  private readonly sky = new Sky();
+  /** The physical sky: a dome in the sky scene (for lighting) and the background behind the model. */
+  private readonly sky: PhysicalSky;
   private readonly skyScene = new THREE.Scene();
-  private readonly night = new NightSky();
   private air: Atmosphere = atmosphere(45);
-  /** Cool, soft light from high up opposite the sun, so the model stays readable at night. */
+  private horizonColour = new THREE.Color(HORIZON);
+  /** How much the exposure is opened up for the light of the hour (1 by day). */
+  private autoExposure = 1;
+  /** Cool light from high up opposite the sun, so the model stays readable at night. */
   private readonly moon = new THREE.DirectionalLight(0x9fb4ff, 0);
   private lastBake = 0;
   private bakeTimer: ReturnType<typeof setTimeout> | null = null;
@@ -156,8 +166,10 @@ export class RealisticRenderer {
     this.ground.raycast = () => {};
     this.ground.visible = false;
     this.pmrem = new THREE.PMREMGenerator(viewport.renderer);
-    this.skyScene.add(this.sky, this.night.mesh);
-    this.sky.scale.setScalar(50);
+    this.sky = new PhysicalSky(viewport.renderer);
+    this.skyScene.add(this.sky.dome);
+    this.sky.background.visible = false;
+    viewport.scene.add(this.sky.background);
 
     this.moon.visible = false;
     viewport.scene.add(this.group, this.ground, this.moon, this.moon.target);
@@ -190,6 +202,7 @@ export class RealisticRenderer {
       if (before.skyLight !== settings.skyLight) this.tracerSky = true;
     }
     if (before.sky !== settings.sky) this.chooseSky();
+    if (before.atmosphere !== settings.atmosphere && this.enabled) this.updateSky();
     if (before.look !== settings.look && this.enabled) this.applyStyle(true);
     this.viewport.requestRender();
   }
@@ -332,12 +345,15 @@ export class RealisticRenderer {
     scene.environment = on ? (hdri?.environment.texture ?? this.environment?.texture ?? null) : null;
     scene.environmentRotation.copy(this.skyRotation);
     scene.backgroundRotation.copy(this.skyRotation);
-    scene.background = on && hdri ? hdri.data.texture : on && this.environment ? this.environment.texture : new THREE.Color(this.viewport.plainBackground);
+    // The time-of-day sky is drawn behind the model at full resolution (sun disc and all), not from the blurred light map.
+    scene.background = on && hdri ? hdri.data.texture : on ? null : new THREE.Color(this.viewport.plainBackground);
+    this.sky.background.visible = on && !hdri;
     // A 512-pixel panorama is soft up close: a touch of blur makes it read as a photographed backdrop.
     scene.backgroundBlurriness = hdri ? 0.02 : 0;
     scene.environmentIntensity = this.environmentIntensity();
-    scene.backgroundIntensity = hdri ? 1 : 0.4 + 0.6 * this.air.night;
-    scene.fog = on ? new THREE.Fog(this.horizon(), 1, 2) : null;
+    scene.backgroundIntensity = 1;
+    scene.fog = on ? new THREE.Fog(hdri ? new THREE.Color(HORIZON) : this.horizonColour.clone().multiplyScalar(this.lightScale()), 1, 2) : null;
+    this.sky.setIntensity(this.lightScale());
     renderer.toneMapping = on ? LOOKS[this.settings.look].toneMapping : THREE.NoToneMapping;
     renderer.toneMappingExposure = this.exposure();
     // Soft shadows: the shadow map's filter widens as the sun gets lower (longer shadows blur more).
@@ -355,35 +371,37 @@ export class RealisticRenderer {
     return this.settings.exposure * LOOKS[this.settings.look].exposure;
   }
 
-  /** The sky's light on the model: the panel's setting, scaled for twilight; the dark night sky is turned up so the model stays readable. */
-  private environmentIntensity(): number {
-    // Photographed skies are measured light: bright enough as they are, relative to the panel's default.
-    if (this.hdri) return this.settings.skyLight / DEFAULT_REALISTIC.skyLight;
-    return this.settings.skyLight * (this.air.skyIntensity * (1 - this.air.night) + this.air.night * (1.5 + 4.5 * this.air.stars));
+  /**
+   * After sunset the time-of-day sky meters itself like a camera: all its light (sky, sun, moon, haze) is brightened
+   * by this factor rather than the exposure opened, so selection, guides and labels in the view keep their colours.
+   */
+  private lightScale(): number {
+    return this.hdri ? 1 : this.autoExposure;
   }
 
-  /** The haze colour: the daytime horizon, warmed at sunrise and sunset, deep blue at night. */
-  private horizon(): THREE.Color {
-    const [r, g, b] = this.air.sunColor;
-    const day = new THREE.Color(HORIZON).multiply(new THREE.Color(0.75 + 0.25 * r, 0.8 + 0.2 * g, 0.7 + 0.3 * b));
-    return day.lerp(new THREE.Color(NightSky.HORIZON), this.air.stars);
+  /** The sky's light on the model: measured light (physical sky or photographed panorama) times the panel's setting. */
+  private environmentIntensity(): number {
+    return (this.settings.skyLight / DEFAULT_REALISTIC.skyLight) * this.lightScale();
   }
 
   private applySunLight(): void {
     const sun = this.viewport.sun;
     const d = this.viewport.sunDirection;
     this.moon.position.set(-d.x, -d.y, Math.hypot(d.x, d.y) * 1.2).normalize();
-    this.moon.intensity = 0.5 * this.air.night;
+    // Moonlight: faint in absolute terms; the night exposure makes it read.
+    this.moon.intensity = 0.0012 * this.air.night * this.lightScale();
     sun.color.setRGB(...this.air.sunColor);
-    sun.intensity = SUN_INTENSITY * 1.1 * this.air.sunIntensity;
+    sun.intensity = SUN_INTENSITY * 1.1 * this.air.sunIntensity * this.lightScale();
     sun.castShadow = this.viewport.sunShadows && this.air.sunIntensity > 0;
   }
 
   /** Redraws the sky soon: at most about twelve times a second while the sun is being dragged or played through the day. */
   private scheduleSky(): void {
     // The light follows at once; only the sky picture waits.
-    this.air = atmosphere(this.viewport.sunAltitude);
+    this.air = atmosphere(this.viewport.sunAltitude, HAZE[this.settings.atmosphere]);
     this.applySunLight();
+    // The sky behind the model follows at once (its texture is quick to redraw); only the light map waits.
+    this.sky.update(this.skySun(), SUN_INTENSITY * 1.1, HAZE[this.settings.atmosphere], this.air.night);
     this.tracerSky = true;
     const wait = 80 - (performance.now() - this.lastBake);
     if (wait <= 0) return this.updateSky();
@@ -393,24 +411,27 @@ export class RealisticRenderer {
     }, wait);
   }
 
-  /** Redraws the sky for the sun's position and time of day and lights the model with it. */
+  /** The sun's true direction in the sky's (Y-up) axes, also below the horizon (the light's direction is held above it). */
+  private skySun(): THREE.Vector3 {
+    const d = this.viewport.sunDirection;
+    const flat = Math.hypot(d.x, d.y) || 1;
+    const h = (this.viewport.sunAltitude * Math.PI) / 180;
+    return toSkyFrame(new THREE.Vector3((d.x / flat) * Math.cos(h), (d.y / flat) * Math.cos(h), Math.sin(h)));
+  }
+
+  /** Redraws the sky for the sun's position, the time of day and the haze, and lights the model with it. */
   private updateSky(): void {
     this.lastBake = performance.now();
-    const viewport = this.viewport;
-    this.air = atmosphere(viewport.sunAltitude);
-    // The sky sees the sun where it truly is, also below the horizon (the light's direction is held above it).
-    const d = viewport.sunDirection;
-    const flat = Math.hypot(d.x, d.y) || 1;
-    const h = (viewport.sunAltitude * Math.PI) / 180;
-    const sky = new THREE.Vector3((d.x / flat) * Math.cos(h), (d.y / flat) * Math.cos(h), Math.sin(h));
-    const u = this.sky.material.uniforms;
-    // The sky is drawn Y-up; the model is Z-up (the scene's environment rotation turns one into the other).
-    u.sunPosition.value.set(sky.x, sky.z, -sky.y);
-    u.turbidity.value = this.air.turbidity;
-    u.rayleigh.value = this.air.rayleigh;
-    u.mieCoefficient.value = this.air.mieCoefficient;
-    u.mieDirectionalG.value = 0.8;
-    this.night.set(this.air.night, this.air.stars);
+    const haze = HAZE[this.settings.atmosphere];
+    this.air = atmosphere(this.viewport.sunAltitude, haze);
+    this.sky.update(this.skySun(), SUN_INTENSITY * 1.1, haze, this.air.night);
+    const horizon = this.sky.horizonColour();
+    this.horizonColour = horizon ?? new THREE.Color(HORIZON);
+    // Meter the sky: the horizon is about 0.2 by day and falls ten-thousandfold by deep twilight. Make up most of
+    // that (85 %, in stops), so dusk reads as dusk rather than black, up to about eight and a half stops.
+    const luminance = horizon ? 0.2126 * horizon.r + 0.7152 * horizon.g + 0.0722 * horizon.b : 0;
+    this.autoExposure = horizon ? (DAY_HORIZON / Math.max(luminance, 1e-9)) ** 0.85 : this.air.exposure;
+    this.autoExposure = Math.max(1, Math.min(this.autoExposure, MAX_AUTO_EXPOSURE));
     const previous = this.environment;
     this.environment = this.pmrem.fromScene(this.skyScene, 0, 0.1, 100);
     previous?.dispose();
@@ -567,7 +588,7 @@ export class RealisticRenderer {
       this.renderRealTime();
       return;
     }
-    const { rig, renderer, sun, sunDirection, scene } = this.viewport;
+    const { rig, renderer, sun, sunDirection } = this.viewport;
     if (this.tracerScene) {
       this.group.updateMatrixWorld(true);
       tracer.setScene({ meshes: this.group.children as THREE.Mesh[], ground: this.ground });
@@ -575,7 +596,7 @@ export class RealisticRenderer {
     }
     if (this.tracerSky) {
       const centre = new THREE.Box3().setFromObject(this.group).getCenter(new THREE.Vector3());
-      tracer.setSky(this.hdri ? this.hdri.data.texture : this.skyScene, this.skyRotation, this.environmentIntensity(), scene.backgroundIntensity);
+      tracer.setSky(this.hdri ? this.hdri.data.texture : this.skyScene, this.skyRotation, this.environmentIntensity(), this.lightScale());
       tracer.setLights({ sun, sunDirection, moon: this.moon, centre });
       this.tracerSky = false;
     }

@@ -1,63 +1,104 @@
-/** How the sky and the sunlight look for a height of the sun: what the photorealistic view feeds its sky and sun. */
+/**
+ * The Earth's atmosphere as a physical model (after Hillaire 2020, "A Scalable and Production Ready Sky and Atmosphere
+ * Rendering Technique", the approach behind V-Ray's and Unreal's sun & sky): air (Rayleigh scattering, blue), aerosols
+ * (Mie scattering, the white haze around the sun) and ozone (absorbing orange, which keeps twilight blue). Distances in
+ * kilometres, coefficients per kilometre, for red, green and blue. The sky shader (`physicalSky.ts`) uses the same
+ * numbers, so the sunlight and the sky always agree.
+ */
+export const ATMOSPHERE = {
+  groundRadius: 6360,
+  topRadius: 6460,
+  rayleighScattering: [5.802e-3, 13.558e-3, 33.1e-3] as const,
+  rayleighHeight: 8,
+  mieScattering: 3.996e-3,
+  mieExtinction: 4.4e-3,
+  mieHeight: 1.2,
+  /** Forward scattering of aerosols (the bright halo around the sun). */
+  mieG: 0.8,
+  ozoneAbsorption: [0.65e-3, 1.881e-3, 0.085e-3] as const,
+  ozoneCentre: 25,
+  ozoneWidth: 15,
+  groundAlbedo: 0.3,
+  /** The viewer's height above the ground (km). */
+  viewHeight: 0.002,
+  /** The sun's angular radius (radians). */
+  sunRadius: (0.2666 * Math.PI) / 180,
+};
+
+/** How much aerosol there is: a clear mountain day, an ordinary day, or a hazy summer afternoon. */
+export const HAZE = { clear: 0.4, normal: 1, hazy: 3 } as const;
+export type HazeId = keyof typeof HAZE;
+
+export function isHaze(id: unknown): id is HazeId {
+  return typeof id === 'string' && id in HAZE;
+}
+
+/** What the photorealistic view needs from the atmosphere for a height of the sun. */
 export interface Atmosphere {
   /** Colour of direct sunlight (linear RGB, brightest channel 1). */
   sunColor: [number, number, number];
-  /** Strength of direct sunlight, 0 (below the horizon) to 1 (sun high up). */
+  /** Direct sunlight on the ground relative to sunlight above the atmosphere (the brightest channel), 0 below the horizon. */
   sunIntensity: number;
-  /** How much the sky lights the model, relative to a clear day (twilight and night are dimmer). */
-  skyIntensity: number;
-  /** `Sky` shader parameters: haziness, blue scattering and haze scattering. */
-  turbidity: number;
-  rayleigh: number;
-  mieCoefficient: number;
-  /** 0 by day, 1 at night (sun 10° or more below the horizon): how much the twilight-and-night dome covers the day sky. */
+  /** 0 by day and through twilight, 1 in the dark of night (sun 14° or more below the horizon): stars and moonlight. */
   night: number;
-  /** How far twilight has turned into night: 0 a warm glow at the horizon, 1 dark blue with stars (sun 14° or more below). */
-  stars: number;
+  /**
+   * How much a photographer would open up the exposure: 1 by day, rising through twilight to 16 (four stops) at
+   * night, so the blue hour and the night stay visible instead of going black.
+   */
+  exposure: number;
 }
 
 const RAD = Math.PI / 180;
-
-/** How many atmospheres sunlight crosses at a height above the horizon (Kasten and Young, 1989); finite at and below the horizon. */
-export function airMass(altitudeDeg: number): number {
-  const h = Math.max(0, altitudeDeg);
-  return 1 / (Math.sin(h * RAD) + 0.50572 * Math.pow(h + 6.07995, -1.6364));
-}
 
 const smooth = (edge0: number, edge1: number, x: number) => {
   const t = Math.min(1, Math.max(0, (x - edge0) / (edge1 - edge0)));
   return t * t * (3 - 2 * t);
 };
 
+/** Extinction (per km, RGB) at `height` km above the ground, with `haze` times the usual aerosol. */
+export function extinction(height: number, haze: number): [number, number, number] {
+  const a = ATMOSPHERE;
+  const rayleigh = Math.exp(-height / a.rayleighHeight);
+  const mie = Math.exp(-height / a.mieHeight) * haze;
+  const ozone = Math.max(0, 1 - Math.abs(height - a.ozoneCentre) / a.ozoneWidth);
+  return [0, 1, 2].map((c) => a.rayleighScattering[c] * rayleigh + a.mieExtinction * mie + a.ozoneAbsorption[c] * ozone) as [number, number, number];
+}
+
 /**
- * The atmosphere for a sun `altitudeDeg` above the horizon. Sunlight loses blue faster than red on its way through
- * the air (an extinction per air mass that falls with wavelength, roughly Rayleigh), so a low sun is warm and dim and
- * a high one is near white. The light fades out just below the horizon; civil and nautical twilight (down to −12°)
- * dim the sky towards night.
+ * The fraction of sunlight (RGB) that reaches a viewer on the ground with the sun `altitudeDeg` above the horizon:
+ * exp(−optical depth) along the ray to the top of the atmosphere over a round Earth. Zero once the Earth is in the way.
  */
-export function atmosphere(altitudeDeg: number): Atmosphere {
-  const m = airMass(altitudeDeg);
-  // Optical depth per air mass for red, green and blue (clear air with a little haze).
-  const tau = [0.1, 0.2, 0.42];
-  const raw = tau.map((t) => Math.exp(-t * m));
-  const top = Math.max(...raw);
-  const sunColor = raw.map((c) => c / top) as [number, number, number];
-  // Direct light: the green channel's transmittance, faded in over the first few degrees above the horizon.
-  const sunIntensity = Math.min(1, raw[1] / Math.exp(-tau[1])) * smooth(-1, 4, altitudeDeg);
-  // The daytime sky model goes black once the sun has set; a twilight dome takes over from just above the horizon.
-  const night = 1 - smooth(-10, 2, altitudeDeg);
-  const stars = 1 - smooth(-14, -4, altitudeDeg);
-  const skyIntensity = 0.04 + 0.96 * smooth(-10, 12, altitudeDeg);
-  // A low sun sees more haze; the sky reddens near sunrise and sunset.
-  const low = 1 - smooth(0, 25, altitudeDeg);
-  return {
-    sunColor,
-    sunIntensity,
-    skyIntensity,
-    turbidity: 3 + 5 * low,
-    rayleigh: 1.4 + 1.6 * low,
-    mieCoefficient: 0.004 + 0.006 * low,
-    night,
-    stars,
-  };
+export function transmittance(altitudeDeg: number, haze = 1): [number, number, number] {
+  const a = ATMOSPHERE;
+  const r = a.groundRadius + a.viewHeight;
+  const mu = Math.sin(altitudeDeg * RAD);
+  // Below the geometric horizon the Earth blocks the sun.
+  if (mu < -Math.sqrt(1 - (a.groundRadius / r) ** 2)) return [0, 0, 0];
+  const distance = -r * mu + Math.sqrt(r * r * (mu * mu - 1) + a.topRadius * a.topRadius);
+  const steps = 200;
+  const depth = [0, 0, 0];
+  for (let i = 0; i < steps; i++) {
+    // Steps bunched near the ground, where the air is dense.
+    const t0 = distance * (i / steps) ** 2;
+    const t1 = distance * ((i + 1) / steps) ** 2;
+    const t = (t0 + t1) / 2;
+    const height = Math.sqrt(r * r + t * t + 2 * r * t * mu) - a.groundRadius;
+    const e = extinction(height, haze);
+    for (let c = 0; c < 3; c++) depth[c] += e[c] * (t1 - t0);
+  }
+  return depth.map((d) => Math.exp(-d)) as [number, number, number];
+}
+
+/**
+ * The atmosphere for a sun `altitudeDeg` above the horizon: the colour and strength of direct sunlight from the
+ * physical model (white at noon, orange-red at sunset as the long path through the air scatters blue away), faded
+ * out over the half degree the sun takes to set, and how far night has fallen.
+ */
+export function atmosphere(altitudeDeg: number, haze = 1): Atmosphere {
+  const t = transmittance(Math.max(altitudeDeg, -0.5), haze);
+  const top = Math.max(...t, 1e-6);
+  const sunColor = t.map((c) => c / top) as [number, number, number];
+  // The disc sinks below the horizon over its own diameter.
+  const sunIntensity = top * smooth(-0.6, 0.4, altitudeDeg);
+  return { sunColor, sunIntensity, night: 1 - smooth(-14, -6, altitudeDeg), exposure: 2 ** (4 * (1 - smooth(-9, 2, altitudeDeg))) };
 }

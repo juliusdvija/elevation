@@ -1,6 +1,7 @@
 import { DEFAULT_REALISTIC, type RealisticRenderer, type RealisticSettings } from '../viewport/RealisticRenderer';
 import { isLook, LOOKS } from '../viewport/grading';
 import { HDRIS, isHdri } from '../viewport/hdri';
+import { isHaze } from '../viewport/atmosphere';
 import type { Document } from '../document';
 import { DEFAULT_SUN, type SunSettings } from '../drawing/settings';
 import { RenderImageDialog } from './RenderImageDialog';
@@ -60,6 +61,7 @@ export function loadRealisticSettings(): RealisticSettings {
       raySamples: [64, 256, 1024].includes(saved.raySamples) ? saved.raySamples : DEFAULT_REALISTIC.raySamples,
       rayBounces: Math.round(number(saved.rayBounces, DEFAULT_REALISTIC.rayBounces, 1, 12)),
       look: isLook(saved.look) ? saved.look : DEFAULT_REALISTIC.look,
+      atmosphere: isHaze(saved.atmosphere) ? saved.atmosphere : DEFAULT_REALISTIC.atmosphere,
       sky: saved.sky === 'time' || isHdri(saved.sky) ? saved.sky : DEFAULT_REALISTIC.sky,
       reflections: flag(saved.reflections, DEFAULT_REALISTIC.reflections),
       depthOfField: flag(saved.depthOfField, DEFAULT_REALISTIC.depthOfField),
@@ -79,6 +81,8 @@ export class RenderPanel {
   readonly el = el('div', 'tags-panel render-panel');
   private readonly look = select(Object.entries(LOOKS).map(([id, look]) => [id, look.name]));
   private readonly skyChoice = select([['time', 'Time of day'], ...Object.entries(HDRIS).map(([id, h]) => [id, h.name] as [string, string])]);
+  private readonly atmosphere = select([['clear', 'Clear'], ['normal', 'Normal'], ['hazy', 'Hazy']]);
+  private readonly atmosphereRow = el('label', 'sun-row');
   private readonly time = range(0, 1435, 5);
   private readonly timeLabel = el('span');
   private readonly timeRow = el('label', 'sun-row');
@@ -132,6 +136,8 @@ export class RenderPanel {
     doc.sunMoved.on(() => this.showSun());
     this.showSun();
 
+    this.atmosphereRow.append(el('span', undefined, 'Air'), this.atmosphere);
+    this.atmosphereRow.title = 'How hazy the air is: a crisp blue sky, an ordinary day, or a hazy summer afternoon with a white sky and red sunsets';
     const rayRow = row(
       'Ray tracing',
       this.rayTracing,
@@ -172,7 +178,7 @@ export class RenderPanel {
 
     this.el.append(
       el('h3', undefined, 'Render'),
-      section('Look', true, row('Finish', this.look, 'Tone, contrast, colour and vignette, like a film stock'), row('Sky', this.skyChoice), this.timeRow, this.byTime),
+      section('Look', true, row('Finish', this.look, 'Tone, contrast, colour and vignette, like a film stock'), row('Sky', this.skyChoice), this.atmosphereRow, this.timeRow, this.byTime),
       section(
         'Light & detail',
         false,
@@ -189,7 +195,7 @@ export class RenderPanel {
     );
     const controls = [
       this.exposure, this.sky, this.occlusion, this.occlusionStrength, this.shadows, this.haze, this.rayTracing, this.raySamples,
-      this.rayBounces, this.look, this.skyChoice, this.reflections, this.depthOfField, this.fStop,
+      this.rayBounces, this.look, this.atmosphere, this.skyChoice, this.reflections, this.depthOfField, this.fStop,
     ];
     for (const control of controls) control.addEventListener('input', () => this.apply(this.read()));
     this.apply(loadRealisticSettings());
@@ -235,6 +241,7 @@ export class RenderPanel {
       raySamples: Number(this.raySamples.value) as RealisticSettings['raySamples'],
       rayBounces: Number(this.rayBounces.value),
       look: isLook(this.look.value) ? this.look.value : DEFAULT_REALISTIC.look,
+      atmosphere: isHaze(this.atmosphere.value) ? this.atmosphere.value : DEFAULT_REALISTIC.atmosphere,
       sky: isHdri(this.skyChoice.value) ? this.skyChoice.value : 'time',
       reflections: this.reflections.checked,
       depthOfField: this.depthOfField.checked,
@@ -255,6 +262,8 @@ export class RenderPanel {
     this.rayBounces.value = String(settings.rayBounces);
     this.look.value = settings.look;
     this.skyChoice.value = settings.sky;
+    this.atmosphere.value = settings.atmosphere;
+    this.atmosphereRow.hidden = settings.sky !== 'time';
     this.reflections.checked = settings.reflections;
     this.depthOfField.checked = settings.depthOfField;
     this.fStop.value = String(settings.fStop);

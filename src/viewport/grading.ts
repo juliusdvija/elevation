@@ -21,8 +21,8 @@ export interface Look {
 }
 
 export const LOOKS = {
-  natural: { name: 'Natural', toneMapping: THREE.AgXToneMapping, exposure: 1.15, contrast: 1.06, saturation: 1.08, temperature: 0.01, vignette: 0.18, bloom: 0.18 },
-  warm: { name: 'Warm', toneMapping: THREE.AgXToneMapping, exposure: 1.15, contrast: 1.08, saturation: 1.12, temperature: 0.08, vignette: 0.25, bloom: 0.25 },
+  natural: { name: 'Natural', toneMapping: THREE.NeutralToneMapping, exposure: 1, contrast: 1.05, saturation: 1.06, temperature: 0.01, vignette: 0.18, bloom: 0.15 },
+  warm: { name: 'Warm', toneMapping: THREE.NeutralToneMapping, exposure: 1, contrast: 1.08, saturation: 1.1, temperature: 0.07, vignette: 0.25, bloom: 0.22 },
   crisp: { name: 'Crisp', toneMapping: THREE.NeutralToneMapping, exposure: 0.95, contrast: 1.12, saturation: 1.02, temperature: -0.03, vignette: 0.08, bloom: 0.1 },
   bright: { name: 'Bright', toneMapping: THREE.NeutralToneMapping, exposure: 1.2, contrast: 0.96, saturation: 1, temperature: 0, vignette: 0, bloom: 0.12 },
   moody: { name: 'Moody', toneMapping: THREE.ACESFilmicToneMapping, exposure: 0.85, contrast: 1.2, saturation: 0.82, temperature: -0.02, vignette: 0.45, bloom: 0.3 },

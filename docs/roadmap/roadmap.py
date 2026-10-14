@@ -2,7 +2,7 @@ import html, json, sys
 
 # status: done | doing | next | later
 DATA = {
-  "stats": [("262","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("63","design decisions logged")],
+  "stats": [("264","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("64","design decisions logged")],
   "phases": [
     {"name":"Engine","blurb":"A kernel that does not corrupt models, and stays fast.","items":[
       ("done","Solid-safe push/pull: refuse edits that would open a closed solid","f1fd617"),
@@ -112,7 +112,11 @@ DATA = {
       ("done","Ray-traced pictures in the same look, with grain removal and a soft sun","7ab8cba"),
       ("done","Depth of field: choose the aperture and click the point that should be sharp","7ab8cba"),
       ("done","Render image: a large finished picture up to 4K, without selection or guides","7ab8cba"),
+      ("done","Physical sun and sky like V-Ray's: deep blue noon, a real sun disc, golden sunsets, blue hour, stars","SKYCOMMIT"),
+      ("done","Air setting: clear, normal or hazy (whiter sky, redder sunsets)","SKYCOMMIT"),
+      ("done","Dusk and night stay visible: the sky meters itself like a camera","SKYCOMMIT"),
       ("later","Ray-traced pictures for scenes on sheets",""),
+      ("later","Clouds in the sky",""),
       ("later","Nicer trees and people; a recorded tour video","")]},
     {"name":"Client presentation","blurb":"Showing a design to a client, not just drawing it.","items":[
       ("done","Present: full screen, photorealistic, no tools; a quiet bar steps through the saved views","b88e0c0"),
@@ -121,7 +125,7 @@ DATA = {
       ("done","Touch screens: drag to look, joystick to walk","b88e0c0"),
       ("later","Share a link that opens straight into the presentation","")]},
   ],
-  "log":[("Now","Round two of the render engine is in: finished looks, mirror reflections, photographed skies, final 4K renders, a client presentation mode and a walk-through."),("Just finished","(Elsewhere: the mouse/trackpad switch is now a single icon in the status bar.) Present opens a full-screen, tool-free view that steps through your saved views or plays them as a tour; Walk lets you stroll through the model at eye height, up steps and stopped by walls. Render image makes a large ray-traced picture with soft sun and optional depth of field."),("Known issue","Ray tracing still needs a good graphics card; the example's box trees and flat ground keep it looking like a model rather than a photo."),("Direction","Next best step: nicer trees, plants and people (entourage), which now limit realism more than the renderer does.")]
+  "log":[("Now","Everything is merged on main; the photorealistic view now has a physical sun and sky."),("Just finished","A sky like V-Ray's Sun & Sky: the colour of the sky, the sun disc, sunset glow, the blue hour and the night all follow from where the sun is, with an Air setting from clear to hazy. After sunset the view brightens itself like a camera, so dusk and night stay readable."),("Known issue","The foreground goes very dark just after sunset when looking towards the glow; the example's box trees still look like a model."),("Direction","Next best step: nicer trees, plants and people (entourage), now the biggest gap to a photo; clouds could follow.")]
 }
 
 def render(d):
