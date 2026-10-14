@@ -96,7 +96,7 @@ DATA = {
       ("later","Adjust sky, exposure and shadow quality in a panel",""),
       ("later","Photorealistic view in drawings' 3D snapshots and scenes",""),
       ("done","Sky gradient and a softer horizon in the sketch style","d29f52d"),
-      ("done","Mouse or trackpad controls (two-finger orbit, Shift pans, pinch zooms), chosen with one icon in the status bar","HEAD"),
+      ("done","Mouse or trackpad controls (two-finger orbit, Shift pans, pinch zooms), chosen with one icon in the status bar","0276477"),
       ("done","Line weight setting: thin, normal, bold or heavy model lines, remembered","d29f52d"),
       ("done","Heavier outline: the edge of the model seen from the camera is drawn bolder than inner edges","9fb1d3a"),
       ("done","Settings panel for the photorealistic view: exposure, sky light, corner shade, shadow sharpness, haze","9fb1d3a")]},
