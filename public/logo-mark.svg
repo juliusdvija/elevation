@@ -1,9 +1,25 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 1000 1000">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="-160 -160 1320 1320">
+  <defs>
+    <linearGradient id="shadow" gradientUnits="userSpaceOnUse" x1="0" y1="1000" x2="0" y2="0">
+      <stop offset="0" class="shadow-start"/>
+      <stop offset="1" class="shadow-end"/>
+    </linearGradient>
+  </defs>
   <style>
-    path { fill: #232323; }
-    @media (prefers-color-scheme: dark) { path { fill: #f4f3ef; } }
+    .letter { fill: #232323; }
+    .shadow { fill: url(#shadow); }
+    .shadow-start { stop-color: #232323; stop-opacity: 0.34; }
+    .shadow-end { stop-color: #232323; stop-opacity: 0.02; }
+    @media (prefers-color-scheme: dark) {
+      .letter { fill: #f4f3ef; }
+      .shadow-start { stop-color: #000; stop-opacity: 0.65; }
+      .shadow-end { stop-color: #000; stop-opacity: 0.04; }
+    }
   </style>
+  <g transform="matrix(0.716332,-0.405239,0.43424,0.25071,-149.14,729.03)">
+    <path class="shadow" d="M599.993,1000L0,1000L0,0L599.993,0L599.993,200L200,200L200,400L599.993,400L599.993,600L200,600L200,800L599.993,800L599.993,1000Z"/>
+  </g>
   <g transform="matrix(0.716332,-0.405239,0,0.716332,285.102623,263.404327)">
-    <path d="M599.993,1000L0,1000L0,0L599.993,0L599.993,200L200,200L200,400L599.993,400L599.993,600L200,600L200,800L599.993,800L599.993,1000Z"/>
+    <path class="letter" d="M599.993,1000L0,1000L0,0L599.993,0L599.993,200L200,200L200,400L599.993,400L599.993,600L200,600L200,800L599.993,800L599.993,1000Z"/>
   </g>
 </svg>

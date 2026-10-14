@@ -115,7 +115,7 @@ export function buildShell(
 
   const toolbar = el('header', 'toolbar');
   const brand = el('div', 'brand');
-  brand.append(createLogo(24), el('span', undefined, 'Elevation'));
+  brand.append(createLogo(24), el('span', 'wordmark', 'ELEVATION'));
   const docName = el('div', 'doc-name');
   const newDoc = iconButton(FilePlus, 'New');
   const openDoc = iconButton(FolderOpen, 'Open… (⌘O)');
