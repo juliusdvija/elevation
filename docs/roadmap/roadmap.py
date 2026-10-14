@@ -92,7 +92,6 @@ DATA = {
       ("done","UTC offset field removed: summer time is applied automatically",""),
       ("done","Photorealistic view: a toolbar button switches to sky light, soft shadows, ambient occlusion and glass","0b774f0"),
       ("done","Materials on faces: pick brick, timber, concrete, glass ... with the Paint tool; saved in files","0b774f0"),
-      ("later","Path-traced render of a still image (global illumination)",""),
       ("later","Adjust sky, exposure and shadow quality in a panel",""),
       ("later","Photorealistic view in drawings' 3D snapshots and scenes",""),
       ("done","Sky gradient and a softer horizon in the sketch style","d29f52d"),
@@ -100,8 +99,14 @@ DATA = {
       ("done","Line weight setting: thin, normal, bold or heavy model lines, remembered","d29f52d"),
       ("done","Heavier outline: the edge of the model seen from the camera is drawn bolder than inner edges","9fb1d3a"),
       ("done","Settings panel for the photorealistic view: exposure, sky light, corner shade, shadow sharpness, haze","9fb1d3a")]},
+    {"name":"Photorealistic rendering","blurb":"Pictures that look like photos: real materials, a living sky, optional ray tracing.","items":[
+      ("doing","Sky that follows the time of day: warm sunrise and sunset light, twilight, a starry night",""),
+      ("next","Time-of-day slider right in the Render panel",""),
+      ("next","Library of about 35 ready-made materials (woods, metals, stone, glass, fabrics), in categories with thumbnails",""),
+      ("next","Optional ray tracing: light that bounces and real glass, refining while the camera rests",""),
+      ("next","Save the rendered picture as an image","")]},
   ],
-  "log":[("Now","The 3D view look phase is complete; waiting for your pick of what to build next."),("Just finished","The model now has a bolder outline against its inner lines, and the realistic view has a Render panel (exposure, sky light, corner shade, shadow sharpness, haze) that opens when you switch it on and remembers your choices. The line-weight menu was removed as asked."),("Known issue","Glass is not truly refractive and the realistic view has no light bounce, so rooms lit only through windows look flat."),("Direction","Next best step: a path-traced still image for final pictures, or dimensions that follow the geometry for precise drawings.")]
+  "log":[("Now","Building the photorealistic render engine: starting with a sky that follows the time of day."),("Just finished","The model now has a bolder outline against its inner lines, and the realistic view has a Render panel (exposure, sky light, corner shade, shadow sharpness, haze) that opens when you switch it on and remembers your choices. The line-weight menu was removed as asked."),("Known issue","Glass is not truly refractive and the realistic view has no light bounce, so rooms lit only through windows look flat."),("Direction","Next best step: a path-traced still image for final pictures, or dimensions that follow the geometry for precise drawings.")]
 }
 
 def render(d):

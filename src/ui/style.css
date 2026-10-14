@@ -1317,3 +1317,6 @@ input.swatch.custom {
   font: inherit;
   font-size: 12px;
 }
+.render-panel [hidden] {
+  display: none;
+}

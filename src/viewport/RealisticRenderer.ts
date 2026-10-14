@@ -8,8 +8,10 @@ import type { Document } from '../document';
 import type { Material } from '../core/materials';
 import { mapsFor } from './proceduralTextures';
 import { buildMaterialBuckets } from './realisticScene';
+import { atmosphere, type Atmosphere } from './atmosphere';
+import { NightSky } from './nightSky';
 import type { ModelRenderer } from './ModelRenderer';
-import type { Viewport } from './Viewport';
+import { SUN_INTENSITY, type Viewport } from './Viewport';
 
 /** What the photorealistic view can be tuned with; a viewer preference, not part of the document. */
 export interface RealisticSettings {
@@ -57,6 +59,12 @@ export class RealisticRenderer {
   private readonly ground: THREE.Mesh;
   private readonly sky = new Sky();
   private readonly skyScene = new THREE.Scene();
+  private readonly night = new NightSky();
+  private air: Atmosphere = atmosphere(45);
+  /** Cool, soft light from high up opposite the sun, so the model stays readable at night. */
+  private readonly moon = new THREE.DirectionalLight(0x9fb4ff, 0);
+  private lastBake = 0;
+  private bakeTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly pmrem: THREE.PMREMGenerator;
   private environment: THREE.WebGLRenderTarget | null = null;
   private composer: EffectComposer | null = null;
@@ -82,10 +90,11 @@ export class RealisticRenderer {
     this.ground.raycast = () => {};
     this.ground.visible = false;
     this.pmrem = new THREE.PMREMGenerator(viewport.renderer);
-    this.skyScene.add(this.sky);
+    this.skyScene.add(this.sky, this.night.mesh);
     this.sky.scale.setScalar(50);
 
-    viewport.scene.add(this.group, this.ground);
+    this.moon.visible = false;
+    viewport.scene.add(this.group, this.ground, this.moon, this.moon.target);
     doc.geometryChanged.on(() => {
       if (this.enabled) this.rebuild();
       else this.dirty = true;
@@ -106,7 +115,7 @@ export class RealisticRenderer {
     this.settings = { ...settings };
     if (this.enabled) {
       this.viewport.setShadowResolution(settings.shadowSize);
-      this.viewport.scene.environmentIntensity = settings.skyLight;
+      this.viewport.scene.environmentIntensity = this.environmentIntensity();
     }
     this.viewport.requestRender();
   }
@@ -130,7 +139,7 @@ export class RealisticRenderer {
       this.viewport.mode = {
         render: () => this.render(),
         resize: (width, height) => this.composer?.setSize(width, height),
-        sunChanged: () => this.updateSky(),
+        sunChanged: () => this.scheduleSky(),
       };
     } else {
       this.viewport.mode = null;
@@ -150,26 +159,72 @@ export class RealisticRenderer {
     scene.environmentRotation.set(-Math.PI / 2, 0, 0);
     scene.backgroundRotation.set(-Math.PI / 2, 0, 0);
     scene.background = on && this.environment ? this.environment.texture : new THREE.Color(this.viewport.plainBackground);
-    scene.environmentIntensity = this.settings.skyLight;
-    scene.backgroundIntensity = 0.4;
-    scene.fog = on ? new THREE.Fog(HORIZON, 1, 2) : null;
+    scene.environmentIntensity = this.environmentIntensity();
+    scene.backgroundIntensity = 0.4 + 0.6 * this.air.night;
+    scene.fog = on ? new THREE.Fog(this.horizon(), 1, 2) : null;
     renderer.toneMapping = on ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     renderer.toneMappingExposure = this.settings.exposure;
-    // The hemisphere light is replaced by the sky.
+    // The hemisphere light is replaced by the sky; sunlight takes the colour and strength of the hour.
     this.viewport.hemisphere.visible = !on;
+    this.moon.visible = on;
+    if (on) this.applySunLight();
+    else this.viewport.restoreSunLight();
     this.viewport.requestRender();
   }
 
-  /** Redraws the sky for the sun's position and lights the model with it. */
-  private updateSky(): void {
+  /** The sky's light on the model: the panel's setting, scaled for twilight; the dark night sky is turned up so the model stays readable. */
+  private environmentIntensity(): number {
+    return this.settings.skyLight * (this.air.skyIntensity * (1 - this.air.night) + this.air.night * (1.5 + 4.5 * this.air.stars));
+  }
+
+  /** The haze colour: the daytime horizon, warmed at sunrise and sunset, deep blue at night. */
+  private horizon(): THREE.Color {
+    const [r, g, b] = this.air.sunColor;
+    const day = new THREE.Color(HORIZON).multiply(new THREE.Color(0.75 + 0.25 * r, 0.8 + 0.2 * g, 0.7 + 0.3 * b));
+    return day.lerp(new THREE.Color(NightSky.HORIZON), this.air.stars);
+  }
+
+  private applySunLight(): void {
+    const sun = this.viewport.sun;
     const d = this.viewport.sunDirection;
+    this.moon.position.set(-d.x, -d.y, Math.hypot(d.x, d.y) * 1.2).normalize();
+    this.moon.intensity = 0.5 * this.air.night;
+    sun.color.setRGB(...this.air.sunColor);
+    sun.intensity = SUN_INTENSITY * 1.1 * this.air.sunIntensity;
+    sun.castShadow = this.viewport.sunShadows && this.air.sunIntensity > 0;
+  }
+
+  /** Redraws the sky soon: at most about twelve times a second while the sun is being dragged or played through the day. */
+  private scheduleSky(): void {
+    // The light follows at once; only the sky picture waits.
+    this.air = atmosphere(this.viewport.sunAltitude);
+    this.applySunLight();
+    const wait = 80 - (performance.now() - this.lastBake);
+    if (wait <= 0) return this.updateSky();
+    this.bakeTimer ??= setTimeout(() => {
+      this.bakeTimer = null;
+      if (this.enabled) this.updateSky();
+    }, wait);
+  }
+
+  /** Redraws the sky for the sun's position and time of day and lights the model with it. */
+  private updateSky(): void {
+    this.lastBake = performance.now();
+    const viewport = this.viewport;
+    this.air = atmosphere(viewport.sunAltitude);
+    // The sky sees the sun where it truly is, also below the horizon (the light's direction is held above it).
+    const d = viewport.sunDirection;
+    const flat = Math.hypot(d.x, d.y) || 1;
+    const h = (viewport.sunAltitude * Math.PI) / 180;
+    const sky = new THREE.Vector3((d.x / flat) * Math.cos(h), (d.y / flat) * Math.cos(h), Math.sin(h));
     const u = this.sky.material.uniforms;
     // The sky is drawn Y-up; the model is Z-up (the scene's environment rotation turns one into the other).
-    u.sunPosition.value.set(d.x, d.z, -d.y);
-    u.turbidity.value = 4;
-    u.rayleigh.value = 1.6;
-    u.mieCoefficient.value = 0.004;
+    u.sunPosition.value.set(sky.x, sky.z, -sky.y);
+    u.turbidity.value = this.air.turbidity;
+    u.rayleigh.value = this.air.rayleigh;
+    u.mieCoefficient.value = this.air.mieCoefficient;
     u.mieDirectionalG.value = 0.8;
+    this.night.set(this.air.night, this.air.stars);
     const previous = this.environment;
     this.environment = this.pmrem.fromScene(this.skyScene, 0, 0.1, 100);
     previous?.dispose();

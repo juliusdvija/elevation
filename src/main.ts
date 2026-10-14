@@ -361,7 +361,7 @@ shell.tagsToggle.addEventListener('click', () => {
   shell.tagsToggle.setAttribute('aria-pressed', String(tagsPanel.isVisible));
 });
 // The render settings panel belongs to the photorealistic view: it shows while that is on.
-const renderPanel = new RenderPanel(realistic);
+const renderPanel = new RenderPanel(realistic, doc);
 shell.viewport.append(renderPanel.el);
 shell.renderToggle.addEventListener('click', () => {
   realistic.setEnabled(!realistic.isOn);

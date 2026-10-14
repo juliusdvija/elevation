@@ -1,4 +1,6 @@
 import { DEFAULT_REALISTIC, type RealisticRenderer, type RealisticSettings } from '../viewport/RealisticRenderer';
+import type { Document } from '../document';
+import { DEFAULT_SUN, type SunSettings } from '../drawing/settings';
 
 const KEY = 'elevation.realistic';
 
@@ -49,8 +51,15 @@ export class RenderPanel {
   private readonly occlusionStrength = range(0, 1, 0.05);
   private readonly shadows = el('select', 'tag-select');
   private readonly haze = range(0, 1, 0.05);
+  private readonly time = range(0, 1435, 5);
+  private readonly timeLabel = el('span', 'sun-value');
+  private readonly timeRow = el('label', 'sun-row');
+  private readonly byTime = el('button', 'pill-button', 'Sun by time of day');
 
-  constructor(private readonly realistic: RealisticRenderer) {
+  constructor(
+    private readonly realistic: RealisticRenderer,
+    private readonly doc: Document,
+  ) {
     this.el.hidden = true;
     this.occlusion.type = 'checkbox';
     for (const [value, label] of [['1024', 'Fast'], ['2048', 'Normal'], ['4096', 'Sharp']]) this.shadows.append(Object.assign(el('option', undefined, label), { value }));
@@ -60,8 +69,19 @@ export class RenderPanel {
       return r;
     };
     const reset = el('button', 'pill-button', 'Reset');
+    // The time of day moves the document's sun (the same as the Sun panel); dragging is live, letting go saves it.
+    this.timeRow.append(el('span', undefined, 'Time of day'), this.time, this.timeLabel);
+    this.byTime.title = 'Place the sun by date and time (set the location in the Sun panel)';
+    this.byTime.addEventListener('click', () => this.doc.setSun({ ...this.sun(), mode: 'place' }));
+    this.time.addEventListener('input', () => this.doc.setSun({ ...this.sun(), minutes: Number(this.time.value) }, true));
+    this.time.addEventListener('change', () => this.doc.setSun({ ...this.sun(), minutes: Number(this.time.value) }));
+    doc.settingsChanged.on(() => this.showSun());
+    doc.sunMoved.on(() => this.showSun());
+    this.showSun();
     this.el.append(
       el('h3', undefined, 'Render'),
+      this.timeRow,
+      this.byTime,
       row('Exposure', this.exposure),
       row('Sky light', this.sky),
       row('Corner shade', this.occlusion),
@@ -83,6 +103,20 @@ export class RenderPanel {
 
   get isVisible(): boolean {
     return !this.el.hidden;
+  }
+
+  private sun(): SunSettings {
+    return { ...DEFAULT_SUN, ...this.doc.drawingSettings.sun };
+  }
+
+  private showSun(): void {
+    const sun = this.sun();
+    const byPlace = sun.mode === 'place';
+    this.timeRow.hidden = !byPlace;
+    this.byTime.hidden = byPlace;
+    const minutes = sun.minutes ?? DEFAULT_SUN.minutes!;
+    if (document.activeElement !== this.time) this.time.value = String(minutes);
+    this.timeLabel.textContent = `${String(Math.floor(minutes / 60) % 24).padStart(2, '0')}:${String(Math.round(minutes % 60)).padStart(2, '0')}`;
   }
 
   private read(): RealisticSettings {
