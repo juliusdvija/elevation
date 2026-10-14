@@ -1317,3 +1317,9 @@ input.swatch.custom {
   font: inherit;
   font-size: 12px;
 }
+
+.status-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--ink-muted);
+}

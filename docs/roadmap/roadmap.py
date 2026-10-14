@@ -96,12 +96,12 @@ DATA = {
       ("later","Adjust sky, exposure and shadow quality in a panel",""),
       ("later","Photorealistic view in drawings' 3D snapshots and scenes",""),
       ("done","Sky gradient and a softer horizon in the sketch style","d29f52d"),
-      ("done","Mouse or trackpad controls (two-finger orbit, Shift pans, pinch zooms), chosen in the status bar",""),
+      ("done","Mouse or trackpad controls (two-finger orbit, Shift pans, pinch zooms), chosen with one icon in the status bar","HEAD"),
       ("done","Line weight setting: thin, normal, bold or heavy model lines, remembered","d29f52d"),
       ("done","Heavier outline: the edge of the model seen from the camera is drawn bolder than inner edges","9fb1d3a"),
       ("done","Settings panel for the photorealistic view: exposure, sky light, corner shade, shadow sharpness, haze","9fb1d3a")]},
   ],
-  "log":[("Now","The 3D view look phase is complete; waiting for your pick of what to build next."),("Just finished","The model now has a bolder outline against its inner lines, and the realistic view has a Render panel (exposure, sky light, corner shade, shadow sharpness, haze) that opens when you switch it on and remembers your choices. The line-weight menu was removed as asked."),("Known issue","Glass is not truly refractive and the realistic view has no light bounce, so rooms lit only through windows look flat."),("Direction","Next best step: a path-traced still image for final pictures, or dimensions that follow the geometry for precise drawings.")]
+  "log":[("Now","Navigation controls are done; waiting for your pick of what to build next."),("Just finished","The mouse/trackpad switch is now a single icon in the status bar (it was missing from the code before) and remembers your choice. Earlier: the model now has a bolder outline against its inner lines, and the realistic view has a Render panel (exposure, sky light, corner shade, shadow sharpness, haze) that opens when you switch it on and remembers your choices. The line-weight menu was removed as asked."),("Known issue","Glass is not truly refractive and the realistic view has no light bounce, so rooms lit only through windows look flat."),("Direction","Next best step: a path-traced still image for final pictures, or dimensions that follow the geometry for precise drawings.")]
 }
 
 def render(d):
