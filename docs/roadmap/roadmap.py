@@ -95,6 +95,8 @@ DATA = {
       ("later","Path-traced render of a still image (global illumination)",""),
       ("later","Adjust sky, exposure and shadow quality in a panel",""),
       ("later","Photorealistic view in drawings' 3D snapshots and scenes",""),
+      ("next","Sky gradient and a softer horizon in the sketch style",""),
+      ("done","Mouse or trackpad controls (two-finger orbit, Shift pans, pinch zooms), chosen in the status bar",""),
       ("later","Line weight setting and line styles (profile edges heavier)","")]},
   ],
   "log":[("Now","Photorealistic view is in: the Aperture button in the top bar switches the 3D view between the clean sketch style and a realistic one."),("Just finished","Faces can carry a real material (brick, timber, concrete, glass and more) chosen in the Paint palette; the realistic view shows them with texture, relief, sky light and soft shadows, and old files open unchanged."),("Known issue","Glass is not truly refractive, and the realistic view does not light interiors through windows (no light bounce); the cut-plane and glass are skipped by ambient occlusion by design."),("Direction","Next best step: a small panel for sky, exposure and shadow quality, then a path-traced still image for final pictures.")]
