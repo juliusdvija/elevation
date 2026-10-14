@@ -2,7 +2,7 @@ import html, json, sys
 
 # status: done | doing | next | later
 DATA = {
-  "stats": [("242","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("55","design decisions logged")],
+  "stats": [("242","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("56","design decisions logged")],
   "phases": [
     {"name":"Engine","blurb":"A kernel that does not corrupt models, and stays fast.","items":[
       ("done","Solid-safe push/pull: refuse edits that would open a closed solid","f1fd617"),
@@ -95,11 +95,13 @@ DATA = {
       ("later","Path-traced render of a still image (global illumination)",""),
       ("later","Adjust sky, exposure and shadow quality in a panel",""),
       ("later","Photorealistic view in drawings' 3D snapshots and scenes",""),
-      ("next","Sky gradient and a softer horizon in the sketch style",""),
+      ("done","Sky gradient and a softer horizon in the sketch style","SHA1"),
       ("done","Mouse or trackpad controls (two-finger orbit, Shift pans, pinch zooms), chosen in the status bar",""),
-      ("later","Line weight setting and line styles (profile edges heavier)","")]},
+      ("done","Line weight setting: thin, normal, bold or heavy model lines, remembered","SHA1"),
+      ("later","Line styles: profile edges heavier than inner edges",""),
+      ("later","Settings panel for the photorealistic view (exposure, sky, shadows)","")]},
   ],
-  "log":[("Now","Photorealistic view is in: the Aperture button in the top bar switches the 3D view between the clean sketch style and a realistic one."),("Just finished","Faces can carry a real material (brick, timber, concrete, glass and more) chosen in the Paint palette; the realistic view shows them with texture, relief, sky light and soft shadows, and old files open unchanged."),("Known issue","Glass is not truly refractive, and the realistic view does not light interiors through windows (no light bounce); the cut-plane and glass are skipped by ambient occlusion by design."),("Direction","Next best step: a small panel for sky, exposure and shadow quality, then a path-traced still image for final pictures.")]
+  "log":[("Now","The sketch-style 3D view is finished for this round: soft sky and horizon, adjustable line weight."),("Just finished","The 3D view now has a sky that fades from pale blue overhead to the paper colour at the horizon, the ground melts into it, and a Lines menu in the status bar sets how thick the model lines are."),("Known issue","Line style is one weight for all edges; outlines of shapes are not yet heavier than inner edges."),("Direction","Next best step: heavier profile edges (silhouette lines) for a more drawn look, then the settings panel for the photorealistic view.")]
 }
 
 def render(d):

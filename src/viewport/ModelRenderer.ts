@@ -170,6 +170,12 @@ export class ModelRenderer {
     return mesh === layer.glass ? layer.glassRefs[triangle] : layer.refs[triangle];
   }
 
+  /** Sets the width (screen pixels) of the model's edge lines. */
+  setLineWidth(width: number): void {
+    for (const layer of [this.active, this.faded]) layer.edges.material.linewidth = width;
+    this.viewport.requestRender();
+  }
+
   /** Hides the plain faces, edges and guides (they still take part in picking) while the photorealistic view draws the model. */
   setRealistic(on: boolean): void {
     this.realistic = on;

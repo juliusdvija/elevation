@@ -1,7 +1,7 @@
 import * as THREE from 'three';
 import { Emitter } from '../core/emitter';
 import { CameraRig, WORLD_UP } from './CameraRig';
-import { AdaptiveGrid, Ground, NorthArrow, createAxes, niceSpacing } from './helpers';
+import { AdaptiveGrid, Ground, NorthArrow, SkyGradient, createAxes, niceSpacing } from './helpers';
 import { theme } from './theme';
 import { DEFAULT_SUN, type SunSettings } from '../drawing/settings';
 
@@ -52,6 +52,7 @@ export class Viewport {
   private readonly raycaster = new THREE.Raycaster();
   private readonly adaptiveGrid = new AdaptiveGrid();
   private readonly ground = new Ground();
+  private readonly skyGradient = new SkyGradient();
   private readonly north = new NorthArrow();
   private northAngle: number | null = null;
   private readonly sun = new THREE.DirectionalLight(0xffffff, SUN_INTENSITY);
@@ -106,8 +107,8 @@ export class Viewport {
 
     this.scene.background = new THREE.Color(theme.background);
     const axes = (this.axes = createAxes());
-    this.helpers = [this.ground.group, this.adaptiveGrid.group, axes, this.north.group, this.overlay];
-    this.scene.add(this.ground.group, this.adaptiveGrid.group, axes, this.north.group, this.content, this.overlay);
+    this.helpers = [this.skyGradient.mesh, this.ground.group, this.adaptiveGrid.group, axes, this.north.group, this.overlay];
+    this.scene.add(this.skyGradient.mesh, this.ground.group, this.adaptiveGrid.group, axes, this.north.group, this.content, this.overlay);
 
     const hemisphere = this.hemisphere;
     hemisphere.position.copy(WORLD_UP);
@@ -286,8 +287,10 @@ export class Viewport {
     this.beforeRender?.();
     if (this.mode) {
       // The photorealistic view has no grid, axes or ground helper of its own kind.
-      for (const helper of [this.ground.group, this.adaptiveGrid.group, this.axes, this.north.group]) helper.visible = false;
+      for (const helper of [this.skyGradient.mesh, this.ground.group, this.adaptiveGrid.group, this.axes, this.north.group]) helper.visible = false;
     } else {
+      this.skyGradient.mesh.visible = true;
+      this.skyGradient.update(this.rig.camera);
       this.ground.group.visible = true;
       this.axes.visible = true;
       this.adaptiveGrid.group.visible = this.gridVisible;

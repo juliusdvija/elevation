@@ -124,6 +124,25 @@ shell.smoothSelect.addEventListener('change', () => {
 });
 syncSmoothing();
 
+// Thickness of the model lines, remembered between sessions.
+const LINE_WIDTH_KEY = 'elevation.lineWidth';
+try {
+  const saved = localStorage.getItem(LINE_WIDTH_KEY);
+  if (saved && [...shell.lineSelect.options].some((o) => o.value === saved)) shell.lineSelect.value = saved;
+} catch {
+  /* keep normal */
+}
+const applyLineWidth = () => {
+  renderer.setLineWidth(Number(shell.lineSelect.value));
+  try {
+    localStorage.setItem(LINE_WIDTH_KEY, shell.lineSelect.value);
+  } catch {
+    /* not remembered */
+  }
+};
+shell.lineSelect.addEventListener('change', applyLineWidth);
+applyLineWidth();
+
 // Snap and grid spacing: automatic from the zoom, or a fixed step.
 const GRID_MODE_KEY = 'elevation.gridMode';
 try {

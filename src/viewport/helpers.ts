@@ -79,6 +79,50 @@ export class AdaptiveGrid {
 }
 
 /**
+ * The sky as a dome around the camera: `theme.background` at the horizon, bluer towards the zenith, and
+ * the ground colour below the horizon. Ground and sky meet at the same colour, so the horizon is soft.
+ */
+export class SkyGradient {
+  readonly mesh: THREE.Mesh;
+
+  constructor() {
+    this.mesh = new THREE.Mesh(
+      new THREE.SphereGeometry(1, 32, 16),
+      new THREE.ShaderMaterial({
+        uniforms: {
+          horizon: { value: new THREE.Color(theme.background) },
+          zenith: { value: new THREE.Color(theme.zenith) },
+          below: { value: new THREE.Color(theme.ground) },
+        },
+        side: THREE.BackSide,
+        depthWrite: false,
+        depthTest: false,
+        vertexShader: `varying float vHeight;
+          void main() { vHeight = normalize(position).z; gl_Position = projectionMatrix * modelViewMatrix * vec4(position, 1.0); }`,
+        fragmentShader: `uniform vec3 horizon; uniform vec3 zenith; uniform vec3 below; varying float vHeight;
+          void main() {
+            vec3 up = mix(horizon, zenith, smoothstep(0.0, 0.75, vHeight));
+            vec3 down = mix(horizon, below, smoothstep(0.0, 0.25, -vHeight));
+            gl_FragColor = vec4(vHeight >= 0.0 ? up : down, 1.0);
+            #include <colorspace_fragment>
+          }`,
+      }),
+    );
+    this.mesh.name = 'sky';
+    this.mesh.renderOrder = -20;
+    this.mesh.frustumCulled = false;
+    this.mesh.raycast = () => {};
+  }
+
+  /** Centres the dome on the camera and sizes it to sit inside the far plane. */
+  update(camera: THREE.Camera): void {
+    const far = camera instanceof THREE.PerspectiveCamera || camera instanceof THREE.OrthographicCamera ? camera.far : 1e5;
+    this.mesh.position.copy(camera.position);
+    this.mesh.scale.setScalar(far * 0.8);
+  }
+}
+
+/**
  * An endless flat ground, like SketchUp's: a plane that follows the camera target and blends into the sky colour
  * towards its edge, so there is no visible end. It writes no depth, so anything below z = 0 still shows through
  * it; a second, transparent plane catches the sun's shadows.

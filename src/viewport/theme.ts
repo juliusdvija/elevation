@@ -2,6 +2,8 @@
 export const theme = {
   background: 0xf4f3ef,
   ground: 0xd8d5cc,
+  /** The sky straight up; it blends down to `background` at the horizon. */
+  zenith: 0xdce6f0,
   gridMinor: 0xe4e2dc,
   gridMajor: 0xd5d2ca,
   axisX: 0xd2564c,
