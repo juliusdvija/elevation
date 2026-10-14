@@ -21,13 +21,15 @@ export interface RenderMode {
   resize(width: number, height: number): void;
   /** The sun moved. */
   sunChanged(): void;
+  /** Whether to keep drawing frames although nothing changed (a picture that refines over time). */
+  continuous?(): boolean;
 }
 
 /**
  * Owns the WebGL renderer, the scene and the camera rig. Renders on demand:
  * call `requestRender()` after anything visible changes.
  */
-const SUN_INTENSITY = 2.4;
+export const SUN_INTENSITY = 2.4;
 
 export class Viewport {
   readonly renderer: THREE.WebGLRenderer;
@@ -55,7 +57,8 @@ export class Viewport {
   private readonly skyGradient = new SkyGradient();
   private readonly north = new NorthArrow();
   private northAngle: number | null = null;
-  private readonly sun = new THREE.DirectionalLight(0xffffff, SUN_INTENSITY);
+  /** The sun's light; the photorealistic view tints and dims it for the time of day (`restoreSunLight` puts it back). */
+  readonly sun = new THREE.DirectionalLight(0xffffff, SUN_INTENSITY);
   /** Dimensions drawn highlighted: the selected ones and the one under the cursor. */
   readonly dimensionHighlight = { selected: new Set<string>(), hover: null as string | null };
   readonly dimensionHighlightChanged = new Emitter<void>();
@@ -70,8 +73,12 @@ export class Viewport {
   }
   /** Whether the snap grid is drawn on the ground. */
   gridVisible = false;
-  /** Whether the sun casts shadows. */
+  /** Where the sun's light comes from (a unit vector; held at least 2° above the horizon). */
   readonly sunDirection = new THREE.Vector3();
+  /** The sun's true height above the horizon in degrees (negative at night), and whether it should cast shadows. */
+  sunAltitude = 0;
+  sunShadows = true;
+  private plainSunIntensity = SUN_INTENSITY;
 
   /** Sets the sun: its compass direction and height decide where it stands, and shadows can be switched off. */
   setSun(sun: SunSettings): void {
@@ -80,10 +87,19 @@ export class Viewport {
     this.sunDirection.set(Math.sin(azimuth) * Math.cos(altitude), Math.cos(azimuth) * Math.cos(altitude), Math.sin(altitude));
     // Below the horizon there is no sunlight and no shadow; near it the light fades in.
     const light = Math.min(1, Math.max(0, sun.altitude / 8));
-    this.sun.intensity = SUN_INTENSITY * light;
-    this.sun.castShadow = sun.shadows && light > 0;
+    this.sunAltitude = sun.altitude;
+    this.sunShadows = sun.shadows;
+    this.plainSunIntensity = SUN_INTENSITY * light;
+    this.restoreSunLight();
     this.mode?.sunChanged();
     this.requestRender();
+  }
+
+  /** The plain view's sunlight: white, fading in over the first 8° above the horizon. */
+  restoreSunLight(): void {
+    this.sun.color.set(0xffffff);
+    this.sun.intensity = this.plainSunIntensity;
+    this.sun.castShadow = this.sunShadows && this.plainSunIntensity > 0;
   }
 
   /** Shows an arrow pointing to true north on the ground beside the model (null hides it). */
@@ -294,7 +310,7 @@ export class Viewport {
   }
 
   private frame(): void {
-    if (!this.dirty) return;
+    if (!this.dirty && !this.mode?.continuous?.()) return;
     this.dirty = false;
     this.beforeRender?.();
     for (const hook of this.beforeFrame) hook();

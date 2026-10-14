@@ -1,4 +1,6 @@
 import { DEFAULT_REALISTIC, type RealisticRenderer, type RealisticSettings } from '../viewport/RealisticRenderer';
+import type { Document } from '../document';
+import { DEFAULT_SUN, type SunSettings } from '../drawing/settings';
 
 const KEY = 'elevation.realistic';
 
@@ -31,6 +33,9 @@ export function loadRealisticSettings(): RealisticSettings {
       occlusionStrength: number(saved.occlusionStrength, DEFAULT_REALISTIC.occlusionStrength, 0, 1),
       shadowSize: [1024, 2048, 4096].includes(saved.shadowSize) ? saved.shadowSize : DEFAULT_REALISTIC.shadowSize,
       haze: number(saved.haze, DEFAULT_REALISTIC.haze, 0, 1),
+      rayTracing: typeof saved.rayTracing === 'boolean' ? saved.rayTracing : DEFAULT_REALISTIC.rayTracing,
+      raySamples: [64, 256, 1024].includes(saved.raySamples) ? saved.raySamples : DEFAULT_REALISTIC.raySamples,
+      rayBounces: Math.round(number(saved.rayBounces, DEFAULT_REALISTIC.rayBounces, 1, 12)),
     };
   } catch {
     return { ...DEFAULT_REALISTIC };
@@ -49,10 +54,30 @@ export class RenderPanel {
   private readonly occlusionStrength = range(0, 1, 0.05);
   private readonly shadows = el('select', 'tag-select');
   private readonly haze = range(0, 1, 0.05);
+  private readonly rayTracing = el('input');
+  private readonly raySamples = el('select', 'tag-select');
+  private readonly rayBounces = range(1, 12, 1);
+  private readonly rayRows: HTMLElement[] = [];
+  private readonly progress = el('div', 'render-progress');
+  private readonly progressBar = el('i');
+  private readonly progressLabel = el('span');
+  private readonly save = el('button', 'pill-button', 'Save image');
+  private readonly time = range(0, 1435, 5);
+  private readonly timeLabel = el('span');
+  private readonly timeRow = el('label', 'sun-row');
+  private readonly byTime = el('button', 'pill-button', 'Sun by time of day');
 
-  constructor(private readonly realistic: RealisticRenderer) {
+  constructor(
+    private readonly realistic: RealisticRenderer,
+    private readonly doc: Document,
+  ) {
     this.el.hidden = true;
     this.occlusion.type = 'checkbox';
+    this.rayTracing.type = 'checkbox';
+    for (const [value, label] of [['64', 'Draft'], ['256', 'Good'], ['1024', 'Best']]) this.raySamples.append(Object.assign(el('option', undefined, label), { value }));
+    const bar = el('div', 'render-progress-bar');
+    bar.append(this.progressBar);
+    this.progress.append(bar, this.progressLabel);
     for (const [value, label] of [['1024', 'Fast'], ['2048', 'Normal'], ['4096', 'Sharp']]) this.shadows.append(Object.assign(el('option', undefined, label), { value }));
     const row = (label: string, control: HTMLElement) => {
       const r = el('label', 'sun-row');
@@ -60,18 +85,49 @@ export class RenderPanel {
       return r;
     };
     const reset = el('button', 'pill-button', 'Reset');
+    const rayRow = row('Ray tracing', this.rayTracing);
+    rayRow.title = realistic.canRayTrace
+      ? 'Light bounces between surfaces and glass refracts; the picture refines while the camera rests'
+      : 'Ray tracing needs a graphics card with floating-point render targets (WebGL 2)';
+    this.rayTracing.disabled = !realistic.canRayTrace;
+    this.rayRows.push(row('Quality', this.raySamples), row('Bounces', this.rayBounces), this.progress);
+    this.save.title = 'Download the picture as it is now (PNG)';
+    this.save.addEventListener('click', () => {
+      void realistic.saveImage().then((url) => {
+        const link = Object.assign(el('a'), { href: url, download: `${doc.name || 'render'}.png` });
+        link.click();
+      });
+    });
+    realistic.onProgress = (samples, of) => {
+      this.progressBar.style.width = `${Math.round((100 * samples) / of)}%`;
+      this.progressLabel.textContent = samples >= of ? `Done · ${of} samples` : `${samples} / ${of} samples`;
+    };
+    // The time of day moves the document's sun (the same as the Sun panel); dragging is live, letting go saves it.
+    this.timeRow.append(this.timeLabel, this.time);
+    this.byTime.title = 'Place the sun by date and time (set the location in the Sun panel)';
+    this.byTime.addEventListener('click', () => this.doc.setSun({ ...this.sun(), mode: 'place' }));
+    this.time.addEventListener('input', () => this.doc.setSun({ ...this.sun(), minutes: Number(this.time.value) }, true));
+    this.time.addEventListener('change', () => this.doc.setSun({ ...this.sun(), minutes: Number(this.time.value) }));
+    doc.settingsChanged.on(() => this.showSun());
+    doc.sunMoved.on(() => this.showSun());
+    this.showSun();
     this.el.append(
       el('h3', undefined, 'Render'),
+      this.timeRow,
+      this.byTime,
       row('Exposure', this.exposure),
       row('Sky light', this.sky),
       row('Corner shade', this.occlusion),
       row('Strength', this.occlusionStrength),
       row('Shadows', this.shadows),
       row('Haze', this.haze),
-      reset,
+      rayRow,
+      ...this.rayRows,
+      el('div', 'render-actions'),
     );
+    this.el.lastElementChild!.append(this.save, reset);
     reset.addEventListener('click', () => this.apply({ ...DEFAULT_REALISTIC }));
-    for (const control of [this.exposure, this.sky, this.occlusion, this.occlusionStrength, this.shadows, this.haze]) {
+    for (const control of [this.exposure, this.sky, this.occlusion, this.occlusionStrength, this.shadows, this.haze, this.rayTracing, this.raySamples, this.rayBounces]) {
       control.addEventListener('input', () => this.apply(this.read()));
     }
     this.apply(loadRealisticSettings());
@@ -85,6 +141,20 @@ export class RenderPanel {
     return !this.el.hidden;
   }
 
+  private sun(): SunSettings {
+    return { ...DEFAULT_SUN, ...this.doc.drawingSettings.sun };
+  }
+
+  private showSun(): void {
+    const sun = this.sun();
+    const byPlace = sun.mode === 'place';
+    this.timeRow.hidden = !byPlace;
+    this.byTime.hidden = byPlace;
+    const minutes = sun.minutes ?? DEFAULT_SUN.minutes!;
+    if (document.activeElement !== this.time) this.time.value = String(minutes);
+    this.timeLabel.textContent = `Time ${String(Math.floor(minutes / 60) % 24).padStart(2, '0')}:${String(Math.round(minutes % 60)).padStart(2, '0')}`;
+  }
+
   private read(): RealisticSettings {
     return {
       exposure: Number(this.exposure.value),
@@ -93,6 +163,9 @@ export class RenderPanel {
       occlusionStrength: Number(this.occlusionStrength.value),
       shadowSize: Number(this.shadows.value) as RealisticSettings['shadowSize'],
       haze: Number(this.haze.value),
+      rayTracing: this.rayTracing.checked,
+      raySamples: Number(this.raySamples.value) as RealisticSettings['raySamples'],
+      rayBounces: Number(this.rayBounces.value),
     };
   }
 
@@ -104,6 +177,10 @@ export class RenderPanel {
     this.occlusionStrength.disabled = !settings.occlusion;
     this.shadows.value = String(settings.shadowSize);
     this.haze.value = String(settings.haze);
+    this.rayTracing.checked = settings.rayTracing && this.realistic.canRayTrace;
+    this.raySamples.value = String(settings.raySamples);
+    this.rayBounces.value = String(settings.rayBounces);
+    for (const r of this.rayRows) r.hidden = !this.rayTracing.checked;
     this.realistic.setSettings(settings);
     try {
       localStorage.setItem(KEY, JSON.stringify(settings));

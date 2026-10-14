@@ -8,8 +8,11 @@ import type { Document } from '../document';
 import type { Material } from '../core/materials';
 import { mapsFor } from './proceduralTextures';
 import { buildMaterialBuckets } from './realisticScene';
+import { atmosphere, type Atmosphere } from './atmosphere';
+import { NightSky } from './nightSky';
 import type { ModelRenderer } from './ModelRenderer';
-import type { Viewport } from './Viewport';
+import { SUN_INTENSITY, type Viewport } from './Viewport';
+import type { PathTracer } from './PathTracer';
 
 /** What the photorealistic view can be tuned with; a viewer preference, not part of the document. */
 export interface RealisticSettings {
@@ -24,9 +27,24 @@ export interface RealisticSettings {
   shadowSize: 1024 | 2048 | 4096;
   /** How soon the distance fades into haze (0 none, 1 thick). */
   haze: number;
+  /** Ray tracing: light bounces and real glass, refining while the camera rests (off: real-time only). */
+  rayTracing: boolean;
+  /** When the ray-traced picture is finished (samples per pixel), and how often light may bounce. */
+  raySamples: 64 | 256 | 1024;
+  rayBounces: number;
 }
 
-export const DEFAULT_REALISTIC: RealisticSettings = { exposure: 0.9, skyLight: 0.15, occlusion: true, occlusionStrength: 1, shadowSize: 4096, haze: 0.5 };
+export const DEFAULT_REALISTIC: RealisticSettings = {
+  exposure: 0.9,
+  skyLight: 0.15,
+  occlusion: true,
+  occlusionStrength: 1,
+  shadowSize: 4096,
+  haze: 0.5,
+  rayTracing: false,
+  raySamples: 256,
+  rayBounces: 5,
+};
 
 const HORIZON = 0xc9d6e3;
 const GROUND = 0xa9a79e;
@@ -57,6 +75,12 @@ export class RealisticRenderer {
   private readonly ground: THREE.Mesh;
   private readonly sky = new Sky();
   private readonly skyScene = new THREE.Scene();
+  private readonly night = new NightSky();
+  private air: Atmosphere = atmosphere(45);
+  /** Cool, soft light from high up opposite the sun, so the model stays readable at night. */
+  private readonly moon = new THREE.DirectionalLight(0x9fb4ff, 0);
+  private lastBake = 0;
+  private bakeTimer: ReturnType<typeof setTimeout> | null = null;
   private readonly pmrem: THREE.PMREMGenerator;
   private environment: THREE.WebGLRenderTarget | null = null;
   private composer: EffectComposer | null = null;
@@ -65,6 +89,16 @@ export class RealisticRenderer {
   private settings: RealisticSettings = { ...DEFAULT_REALISTIC };
   private enabled = false;
   private dirty = true;
+  /** The ray tracer, loaded the first time ray tracing is switched on (it is a large module). */
+  private tracer: PathTracer | null = null;
+  private tracerLoading = false;
+  private tracerScene = true;
+  private tracerSky = true;
+  /** Can this GPU ray trace at all (null: not checked yet). */
+  private rayTracingSupported: boolean | null = null;
+  /** Called after each frame while ray tracing, with the samples so far (for the panel's progress). */
+  onProgress: ((samples: number, of: number) => void) | null = null;
+  private capture: ((url: string) => void) | null = null;
 
   constructor(
     private readonly doc: Document,
@@ -82,10 +116,11 @@ export class RealisticRenderer {
     this.ground.raycast = () => {};
     this.ground.visible = false;
     this.pmrem = new THREE.PMREMGenerator(viewport.renderer);
-    this.skyScene.add(this.sky);
+    this.skyScene.add(this.sky, this.night.mesh);
     this.sky.scale.setScalar(50);
 
-    viewport.scene.add(this.group, this.ground);
+    this.moon.visible = false;
+    viewport.scene.add(this.group, this.ground, this.moon, this.moon.target);
     doc.geometryChanged.on(() => {
       if (this.enabled) this.rebuild();
       else this.dirty = true;
@@ -103,12 +138,39 @@ export class RealisticRenderer {
 
   /** Applies new settings (only the view changes, nothing in the model). */
   setSettings(settings: RealisticSettings): void {
+    const before = this.settings;
     this.settings = { ...settings };
     if (this.enabled) {
       this.viewport.setShadowResolution(settings.shadowSize);
-      this.viewport.scene.environmentIntensity = settings.skyLight;
+      this.viewport.scene.environmentIntensity = this.environmentIntensity();
+    }
+    if (this.tracer) {
+      this.tracer.maxSamples = settings.raySamples;
+      this.tracer.bounces = settings.rayBounces;
+      if (before.skyLight !== settings.skyLight) this.tracerSky = true;
     }
     this.viewport.requestRender();
+  }
+
+  /** Whether ray tracing can work on this GPU. */
+  get canRayTrace(): boolean {
+    if (this.rayTracingSupported === null) {
+      const { renderer } = this.viewport;
+      this.rayTracingSupported = renderer.capabilities.isWebGL2 && renderer.extensions.has('EXT_color_buffer_float');
+    }
+    return this.rayTracingSupported;
+  }
+
+  private get tracing(): boolean {
+    return this.enabled && this.settings.rayTracing && this.canRayTrace;
+  }
+
+  /** The picture as it is now (ray traced or real-time), as a PNG data URL. */
+  saveImage(): Promise<string> {
+    return new Promise((resolve) => {
+      this.capture = resolve;
+      this.viewport.requestRender();
+    });
   }
 
   get isOn(): boolean {
@@ -130,7 +192,8 @@ export class RealisticRenderer {
       this.viewport.mode = {
         render: () => this.render(),
         resize: (width, height) => this.composer?.setSize(width, height),
-        sunChanged: () => this.updateSky(),
+        sunChanged: () => this.scheduleSky(),
+        continuous: () => this.tracing && (this.tracer?.refining ?? true),
       };
     } else {
       this.viewport.mode = null;
@@ -150,29 +213,77 @@ export class RealisticRenderer {
     scene.environmentRotation.set(-Math.PI / 2, 0, 0);
     scene.backgroundRotation.set(-Math.PI / 2, 0, 0);
     scene.background = on && this.environment ? this.environment.texture : new THREE.Color(this.viewport.plainBackground);
-    scene.environmentIntensity = this.settings.skyLight;
-    scene.backgroundIntensity = 0.4;
-    scene.fog = on ? new THREE.Fog(HORIZON, 1, 2) : null;
+    scene.environmentIntensity = this.environmentIntensity();
+    scene.backgroundIntensity = 0.4 + 0.6 * this.air.night;
+    scene.fog = on ? new THREE.Fog(this.horizon(), 1, 2) : null;
     renderer.toneMapping = on ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
     renderer.toneMappingExposure = this.settings.exposure;
-    // The hemisphere light is replaced by the sky.
+    // The hemisphere light is replaced by the sky; sunlight takes the colour and strength of the hour.
     this.viewport.hemisphere.visible = !on;
+    this.moon.visible = on;
+    if (on) this.applySunLight();
+    else this.viewport.restoreSunLight();
     this.viewport.requestRender();
   }
 
-  /** Redraws the sky for the sun's position and lights the model with it. */
-  private updateSky(): void {
+  /** The sky's light on the model: the panel's setting, scaled for twilight; the dark night sky is turned up so the model stays readable. */
+  private environmentIntensity(): number {
+    return this.settings.skyLight * (this.air.skyIntensity * (1 - this.air.night) + this.air.night * (1.5 + 4.5 * this.air.stars));
+  }
+
+  /** The haze colour: the daytime horizon, warmed at sunrise and sunset, deep blue at night. */
+  private horizon(): THREE.Color {
+    const [r, g, b] = this.air.sunColor;
+    const day = new THREE.Color(HORIZON).multiply(new THREE.Color(0.75 + 0.25 * r, 0.8 + 0.2 * g, 0.7 + 0.3 * b));
+    return day.lerp(new THREE.Color(NightSky.HORIZON), this.air.stars);
+  }
+
+  private applySunLight(): void {
+    const sun = this.viewport.sun;
     const d = this.viewport.sunDirection;
+    this.moon.position.set(-d.x, -d.y, Math.hypot(d.x, d.y) * 1.2).normalize();
+    this.moon.intensity = 0.5 * this.air.night;
+    sun.color.setRGB(...this.air.sunColor);
+    sun.intensity = SUN_INTENSITY * 1.1 * this.air.sunIntensity;
+    sun.castShadow = this.viewport.sunShadows && this.air.sunIntensity > 0;
+  }
+
+  /** Redraws the sky soon: at most about twelve times a second while the sun is being dragged or played through the day. */
+  private scheduleSky(): void {
+    // The light follows at once; only the sky picture waits.
+    this.air = atmosphere(this.viewport.sunAltitude);
+    this.applySunLight();
+    this.tracerSky = true;
+    const wait = 80 - (performance.now() - this.lastBake);
+    if (wait <= 0) return this.updateSky();
+    this.bakeTimer ??= setTimeout(() => {
+      this.bakeTimer = null;
+      if (this.enabled) this.updateSky();
+    }, wait);
+  }
+
+  /** Redraws the sky for the sun's position and time of day and lights the model with it. */
+  private updateSky(): void {
+    this.lastBake = performance.now();
+    const viewport = this.viewport;
+    this.air = atmosphere(viewport.sunAltitude);
+    // The sky sees the sun where it truly is, also below the horizon (the light's direction is held above it).
+    const d = viewport.sunDirection;
+    const flat = Math.hypot(d.x, d.y) || 1;
+    const h = (viewport.sunAltitude * Math.PI) / 180;
+    const sky = new THREE.Vector3((d.x / flat) * Math.cos(h), (d.y / flat) * Math.cos(h), Math.sin(h));
     const u = this.sky.material.uniforms;
     // The sky is drawn Y-up; the model is Z-up (the scene's environment rotation turns one into the other).
-    u.sunPosition.value.set(d.x, d.z, -d.y);
-    u.turbidity.value = 4;
-    u.rayleigh.value = 1.6;
-    u.mieCoefficient.value = 0.004;
+    u.sunPosition.value.set(sky.x, sky.z, -sky.y);
+    u.turbidity.value = this.air.turbidity;
+    u.rayleigh.value = this.air.rayleigh;
+    u.mieCoefficient.value = this.air.mieCoefficient;
     u.mieDirectionalG.value = 0.8;
+    this.night.set(this.air.night, this.air.stars);
     const previous = this.environment;
     this.environment = this.pmrem.fromScene(this.skyScene, 0, 0.1, 100);
     previous?.dispose();
+    this.tracerSky = true;
     if (this.enabled) this.applyStyle(true);
   }
 
@@ -191,6 +302,12 @@ export class RealisticRenderer {
       opacity: glass ? m.opacity : 1,
       depthWrite: !glass,
       envMapIntensity: glass ? 1.5 : 1,
+      clearcoat: m.clearcoat ?? 0,
+      clearcoatRoughness: m.clearcoatRoughness ?? 0.1,
+      sheen: m.sheen ?? 0,
+      sheenColor: new THREE.Color(m.color).lerp(new THREE.Color(0xffffff), 0.3),
+      sheenRoughness: 0.6,
+      anisotropy: m.anisotropy ?? 0,
     });
     if (m.texture) {
       const maps = mapsFor(m.texture.kind);
@@ -220,8 +337,10 @@ export class RealisticRenderer {
       mesh.receiveShadow = true;
       mesh.renderOrder = glass ? 1 : 0;
       mesh.raycast = () => {};
+      mesh.userData.material = bucket.material;
       this.group.add(mesh);
     }
+    this.tracerScene = true;
     this.viewport.requestRender();
   }
 
@@ -245,6 +364,16 @@ export class RealisticRenderer {
   }
 
   private render(): void {
+    if (this.tracing) this.renderTraced();
+    else this.renderRealTime();
+    if (this.capture) {
+      // Read the canvas now, in the same task as the drawing (the buffer is not kept for later).
+      this.capture(this.viewport.canvas.toDataURL('image/png'));
+      this.capture = null;
+    }
+  }
+
+  private renderRealTime(): void {
     const { rig, scene, renderer } = this.viewport;
     const composer = this.ensureComposer();
     this.renderPass!.camera = rig.camera;
@@ -260,5 +389,42 @@ export class RealisticRenderer {
     }
     renderer.toneMappingExposure = this.settings.exposure;
     composer.render();
+  }
+
+  /** One more ray-traced sample, or the real-time picture while the tracer loads or has too few samples. */
+  private renderTraced(): void {
+    const tracer = this.tracer;
+    if (!tracer) {
+      this.loadTracer();
+      this.renderRealTime();
+      return;
+    }
+    const { rig, renderer, sun, sunDirection } = this.viewport;
+    if (this.tracerScene) {
+      this.group.updateMatrixWorld(true);
+      tracer.setScene({ meshes: this.group.children as THREE.Mesh[], ground: { color: GROUND, radius: Math.max(rig.perspective.far, 1e5) } });
+      this.tracerScene = false;
+    }
+    if (this.tracerSky) {
+      tracer.setSky(this.skyScene, this.environmentIntensity(), this.viewport.scene.backgroundIntensity);
+      tracer.setLights({ sun, sunDirection, moon: this.moon });
+      this.tracerSky = false;
+    }
+    renderer.toneMappingExposure = this.settings.exposure;
+    tracer.render(rig.camera);
+    this.onProgress?.(Math.min(tracer.samples, tracer.maxSamples), tracer.maxSamples);
+  }
+
+  private loadTracer(): void {
+    if (this.tracerLoading) return;
+    this.tracerLoading = true;
+    void import('./PathTracer').then(({ PathTracer }) => {
+      const tracer = new PathTracer(this.viewport.renderer, () => this.renderRealTime());
+      tracer.maxSamples = this.settings.raySamples;
+      tracer.bounces = this.settings.rayBounces;
+      this.tracer = tracer;
+      this.tracerScene = this.tracerSky = true;
+      this.viewport.requestRender();
+    });
   }
 }
