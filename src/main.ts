@@ -4,7 +4,8 @@ import { Document } from './document';
 import { Viewport } from './viewport/Viewport';
 import { ModelRenderer } from './viewport/ModelRenderer';
 import { RealisticRenderer } from './viewport/RealisticRenderer';
-import { Navigator } from './tools/Navigator';
+import { Navigator, type InputScheme } from './tools/Navigator';
+import { createElement, Mouse, Touchpad } from 'lucide';
 import { Picker } from './tools/Picker';
 import { Selection } from './tools/Selection';
 import { SnapMarker } from './tools/overlay';
@@ -146,6 +147,31 @@ const applyGridMode = () => {
 };
 shell.gridSelect.addEventListener('change', applyGridMode);
 applyGridMode();
+// Mouse or trackpad navigation, one icon in the status bar.
+const INPUT_KEY = 'elevation.inputScheme';
+const applyInputScheme = (scheme: InputScheme) => {
+  navigator.scheme = scheme;
+  const trackpad = scheme === 'trackpad';
+  const title = trackpad
+    ? 'Trackpad: two-finger scroll orbits, Shift pans, pinch zooms. Click for mouse'
+    : 'Mouse: wheel zooms, middle button orbits (Shift pans). Click for trackpad';
+  shell.inputToggle.title = title;
+  shell.inputToggle.setAttribute('aria-label', title);
+  shell.inputToggle.replaceChildren(createElement(trackpad ? Touchpad : Mouse, { width: 16, height: 16, 'stroke-width': 1.75 }));
+  try {
+    localStorage.setItem(INPUT_KEY, scheme);
+  } catch {
+    /* not remembered */
+  }
+};
+let savedScheme: string | null = null;
+try {
+  savedScheme = localStorage.getItem(INPUT_KEY);
+} catch {
+  /* default */
+}
+applyInputScheme(savedScheme === 'trackpad' ? 'trackpad' : 'mouse');
+shell.inputToggle.addEventListener('click', () => applyInputScheme(navigator.scheme === 'mouse' ? 'trackpad' : 'mouse'));
 shell.unitSelect.addEventListener('change', changeDisplay);
 shell.decimalsSelect.addEventListener('change', changeDisplay);
 

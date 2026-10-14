@@ -1552,4 +1552,8 @@ input.swatch.custom {
 .presentation-dot[aria-pressed='true'] {
   background: #fff;
   transform: scale(1.25);
+.status-icon {
+  width: 24px;
+  height: 24px;
+  color: var(--ink-muted);
 }

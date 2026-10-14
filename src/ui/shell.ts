@@ -22,6 +22,7 @@ import {
   PanelRight,
   Boxes,
   MousePointer2,
+  Mouse,
   PenLine,
   RectangleHorizontal,
   Ruler,
@@ -51,6 +52,8 @@ export interface ShellElements {
   sunToggle: HTMLButtonElement;
   renderToggle: HTMLButtonElement;
   presentButton: HTMLButtonElement;
+  /** Status-bar icon: switches between mouse and trackpad navigation. */
+  inputToggle: HTMLButtonElement;
   infoToggle: HTMLButtonElement;
   gridSnapToggle: HTMLButtonElement;
   docName: HTMLElement;
@@ -231,10 +234,12 @@ export function buildShell(
   smoothSelect.title = 'Smooth shading: faces that meet at less than this angle blend, and the edge between them is not drawn';
   for (const [value, label] of [['0', 'Smooth: off'], ['10', 'Smooth: 10°'], ['20', 'Smooth: 20°'], ['35', 'Smooth: 35°']]) smoothSelect.append(Object.assign(el('option', undefined, label), { value }));
   smoothSelect.value = '20';
-  statusbar.append(hint, smoothSelect, gridSelect, unitSelect, decimalsSelect, measureWrap);
+  const inputToggle = iconButton(Mouse, '');
+  inputToggle.classList.add('status-icon');
+  statusbar.append(hint, inputToggle, smoothSelect, gridSelect, unitSelect, decimalsSelect, measureWrap);
 
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, sunToggle, renderToggle, presentButton, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, sunToggle, renderToggle, presentButton, inputToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
 }
