@@ -2,7 +2,7 @@ import html, json, sys
 
 # status: done | doing | next | later
 DATA = {
-  "stats": [("251","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("60","design decisions logged")],
+  "stats": [("262","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("63","design decisions logged")],
   "phases": [
     {"name":"Engine","blurb":"A kernel that does not corrupt models, and stays fast.","items":[
       ("done","Solid-safe push/pull: refuse edits that would open a closed solid","f1fd617"),
@@ -105,10 +105,23 @@ DATA = {
       ("done","Library of 45 ready-made materials (woods, metals, stone, glass, fabrics) in eight groups with small previews","593a32a"),
       ("done","Optional ray tracing: light that bounces and real glass, refining while the camera rests","7668b97"),
       ("done","Save the rendered picture as an image","7668b97"),
-      ("later","Relief (bump) and haze in the ray-traced picture",""),
-      ("later","Ray-traced pictures for scenes on sheets","")]},
+      ("done","Five finished looks (Natural, Warm, Crisp, Bright, Moody): tone, contrast, colour, vignette, glow","ad954f4"),
+      ("done","Water and polished floors mirror the house; surface relief and roughness on all patterns","ad954f4"),
+      ("done","Eight photographed skies (park, sunset, forest, city ...) turned to match your sun","ad954f4"),
+      ("done","Fixed: the realistic ground hid sunken lawns and pools; haze started 15 m away","ad954f4"),
+      ("done","Ray-traced pictures in the same look, with grain removal and a soft sun","7ab8cba"),
+      ("done","Depth of field: choose the aperture and click the point that should be sharp","7ab8cba"),
+      ("done","Render image: a large finished picture up to 4K, without selection or guides","7ab8cba"),
+      ("later","Ray-traced pictures for scenes on sheets",""),
+      ("later","Nicer trees and people; a recorded tour video","")]},
+    {"name":"Client presentation","blurb":"Showing a design to a client, not just drawing it.","items":[
+      ("done","Present: full screen, photorealistic, no tools; a quiet bar steps through the saved views","b88e0c0"),
+      ("done","Tour: the views play one after the other with slow camera flights","b88e0c0"),
+      ("done","Walk through the model at eye height: mouse to look, WASD to walk, stairs climbed, walls stop you","b88e0c0"),
+      ("done","Touch screens: drag to look, joystick to walk","b88e0c0"),
+      ("later","Share a link that opens straight into the presentation","")]},
   ],
-  "log":[("Now","The photorealistic render engine is in: a toggle with the aperture button, a sky that follows the time of day, 45 materials and optional ray tracing."),("Just finished","Ray tracing in the Render panel: switch it on and the picture refines while the camera rests, with bouncing light and see-through glass; Save image downloads it. Before that: a sky with sunrise colours, twilight and stars, and the material library."),("Known issue","Ray tracing needs a decent graphics card to be quick; it ignores surface relief and haze, and hides selection and dimensions while it shows."),("Direction","Next best step: ray-traced pictures for scenes on sheets, so presentation pages can carry final renders.")]
+  "log":[("Now","Round two of the render engine is in: finished looks, mirror reflections, photographed skies, final 4K renders, a client presentation mode and a walk-through."),("Just finished","Present opens a full-screen, tool-free view that steps through your saved views or plays them as a tour; Walk lets you stroll through the model at eye height, up steps and stopped by walls. Render image makes a large ray-traced picture with soft sun and optional depth of field."),("Known issue","Ray tracing still needs a good graphics card; the example's box trees and flat ground keep it looking like a model rather than a photo."),("Direction","Next best step: nicer trees, plants and people (entourage), which now limit realism more than the renderer does.")]
 }
 
 def render(d):
