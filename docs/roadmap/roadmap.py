@@ -2,7 +2,7 @@ import html, json, sys
 
 # status: done | doing | next | later
 DATA = {
-  "stats": [("233","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("53","design decisions logged")],
+  "stats": [("242","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("55","design decisions logged")],
   "phases": [
     {"name":"Engine","blurb":"A kernel that does not corrupt models, and stays fast.","items":[
       ("done","Solid-safe push/pull: refuse edits that would open a closed solid","f1fd617"),
@@ -21,7 +21,7 @@ DATA = {
       ("done","Scenes: saved views with an animated fly-to","2202a9a"),
       ("done","Materials with hatch patterns: brick, boards, tiles, concrete, grass","1ab0d26"),
       ("later","Adjustable sun direction and time of day",""),
-      ("later","Real textures in the 3D view","")]},
+      ("done","Real textures in the 3D view: procedural brick, boards, tiles, concrete, grass","0b774f0")]},
     {"name":"Interoperability","blurb":"Models in and out.","items":[
       ("done","OBJ import: units, axes, colours, drag and drop","ea39fba"),
       ("done","OBJ export with colours and glass","5d977bb"),
@@ -90,10 +90,14 @@ DATA = {
       ("done","2D drawings follow the sun: shading and cast shadows, none at night",""),
       ("done","Play the day: the sun moves from sunrise to sunset, drawings update when it stops",""),
       ("done","UTC offset field removed: summer time is applied automatically",""),
-      ("next","Sky gradient and a softer horizon",""),
+      ("done","Photorealistic view: a toolbar button switches to sky light, soft shadows, ambient occlusion and glass","0b774f0"),
+      ("done","Materials on faces: pick brick, timber, concrete, glass ... with the Paint tool; saved in files","0b774f0"),
+      ("later","Path-traced render of a still image (global illumination)",""),
+      ("later","Adjust sky, exposure and shadow quality in a panel",""),
+      ("later","Photorealistic view in drawings' 3D snapshots and scenes",""),
       ("later","Line weight setting and line styles (profile edges heavier)","")]},
   ],
-  "log":[("Now","Testing and tidying: dimension deleting is covered by automated tests."),("Just finished","Dimensions can be selected and deleted with the Select tool and the Eraser, with undo; tested in code and in the app."),("Known issue","A subtract leaves open edges when the cutter touches a face exactly tangentially."),("Direction","Next best step: dimensions that stay attached to the geometry and follow it when it moves. They make the live drawings trustworthy for precise work, and radius and angle dimensions and schedules build on them.")],
+  "log":[("Now","Photorealistic view is in: the Aperture button in the top bar switches the 3D view between the clean sketch style and a realistic one."),("Just finished","Faces can carry a real material (brick, timber, concrete, glass and more) chosen in the Paint palette; the realistic view shows them with texture, relief, sky light and soft shadows, and old files open unchanged."),("Known issue","Glass is not truly refractive, and the realistic view does not light interiors through windows (no light bounce); the cut-plane and glass are skipped by ambient occlusion by design."),("Direction","Next best step: a small panel for sky, exposure and shadow quality, then a path-traced still image for final pictures.")]
 }
 
 def render(d):
