@@ -95,7 +95,7 @@ DATA = {
       ("later","Adjust sky, exposure and shadow quality in a panel",""),
       ("later","Photorealistic view in drawings' 3D snapshots and scenes",""),
       ("done","Sky gradient and a softer horizon in the sketch style","d29f52d"),
-      ("done","Mouse or trackpad controls (two-finger orbit, Shift pans, pinch zooms), chosen in the status bar",""),
+      ("done","Mouse or trackpad controls (two-finger orbit, Shift pans, pinch zooms), chosen with one icon in the status bar","0276477"),
       ("done","Line weight setting: thin, normal, bold or heavy model lines, remembered","d29f52d"),
       ("done","Heavier outline: the edge of the model seen from the camera is drawn bolder than inner edges","9fb1d3a"),
       ("done","Settings panel for the photorealistic view: exposure, sky light, corner shade, shadow sharpness, haze","9fb1d3a")]},
@@ -121,7 +121,7 @@ DATA = {
       ("done","Touch screens: drag to look, joystick to walk","b88e0c0"),
       ("later","Share a link that opens straight into the presentation","")]},
   ],
-  "log":[("Now","Round two of the render engine is in: finished looks, mirror reflections, photographed skies, final 4K renders, a client presentation mode and a walk-through."),("Just finished","Present opens a full-screen, tool-free view that steps through your saved views or plays them as a tour; Walk lets you stroll through the model at eye height, up steps and stopped by walls. Render image makes a large ray-traced picture with soft sun and optional depth of field."),("Known issue","Ray tracing still needs a good graphics card; the example's box trees and flat ground keep it looking like a model rather than a photo."),("Direction","Next best step: nicer trees, plants and people (entourage), which now limit realism more than the renderer does.")]
+  "log":[("Now","Round two of the render engine is in: finished looks, mirror reflections, photographed skies, final 4K renders, a client presentation mode and a walk-through."),("Just finished","(Elsewhere: the mouse/trackpad switch is now a single icon in the status bar.) Present opens a full-screen, tool-free view that steps through your saved views or plays them as a tour; Walk lets you stroll through the model at eye height, up steps and stopped by walls. Render image makes a large ray-traced picture with soft sun and optional depth of field."),("Known issue","Ray tracing still needs a good graphics card; the example's box trees and flat ground keep it looking like a model rather than a photo."),("Direction","Next best step: nicer trees, plants and people (entourage), which now limit realism more than the renderer does.")]
 }
 
 def render(d):
