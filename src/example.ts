@@ -57,8 +57,8 @@ function box(x0: number, y0: number, z0: number, x1: number, y1: number, z1: num
   return extrude([v(x0, y0, z0), v(x1, y0, z0), v(x1, y1, z0), v(x0, y1, z0)], UP, z1 - z0);
 }
 
-function paint(m: Model, color: string, opacity?: number, hatch?: string): void {
-  m.edit(() => paintFaces(m, m.allFaces().map((f) => f.id), color, opacity, hatch));
+function paint(m: Model, color: string, opacity?: number, hatch?: string, material?: string): void {
+  m.edit(() => paintFaces(m, m.allFaces().map((f) => f.id), color, opacity, hatch, material));
 }
 
 /** The smallest face without holes lying in an axis-aligned plane (`axis` = 0, 1 or 2 at `at`), facing along `sign`. */
@@ -180,7 +180,7 @@ function buildGarden(): Model {
 /** The water: a thin translucent slab a little below the coping. */
 function buildWater(): Model {
   const m = box(POOL.x0 + 20, POOL.y0 + 20, -450, POOL.x1 - 20, POOL.y1 - 20, -300);
-  paint(m, COLOR.water, 0.5);
+  paint(m, COLOR.water, 0.5, undefined, 'water');
   return m;
 }
 

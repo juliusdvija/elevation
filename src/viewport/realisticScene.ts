@@ -79,3 +79,66 @@ export function buildMaterialBuckets(placements: Iterable<Placement>, smoothAngl
   }
   return buckets;
 }
+
+/**
+ * The area of upward-facing horizontal triangles per height (rounded to the millimetre), from flat triangle lists in
+ * world space (Z up): where the floors, terraces, lawns and water surfaces of a model are.
+ */
+export function levelAreas(surfaces: Iterable<{ positions: ArrayLike<number>; normals: ArrayLike<number> }>): Map<number, number> {
+  const area = new Map<number, number>();
+  const a = new THREE.Vector3();
+  const b = new THREE.Vector3();
+  const c = new THREE.Vector3();
+  for (const { positions, normals } of surfaces) {
+    for (let i = 0; i + 8 < positions.length; i += 9) {
+      if (normals[i + 2] < 0.98 || normals[i + 5] < 0.98 || normals[i + 8] < 0.98) continue;
+      a.set(positions[i], positions[i + 1], positions[i + 2]);
+      b.set(positions[i + 3], positions[i + 4], positions[i + 5]);
+      c.set(positions[i + 6], positions[i + 7], positions[i + 8]);
+      if (Math.abs(a.z - b.z) > 0.5 || Math.abs(a.z - c.z) > 0.5) continue;
+      const z = Math.round(a.z);
+      area.set(z, (area.get(z) ?? 0) + b.sub(a).cross(c.sub(a)).length() / 2);
+    }
+  }
+  return area;
+}
+
+/**
+ * Where the endless ground of the photorealistic view lies: just under the largest level at or below z = 0. When that
+ * level is sunk below zero (a lawn with a pool let into it), the ground leaves a hole the size of that level, so the
+ * pool and anything else below the lawn stays visible while the site's buried sides stay hidden under the ground.
+ */
+export function groundPlan(surfaces: Iterable<{ positions: ArrayLike<number>; normals: ArrayLike<number> }>): { z: number; hole: THREE.Box2 | null } {
+  const list = [...surfaces];
+  let best = 0;
+  let bestArea = 0;
+  for (const [z, area] of levelAreas(list)) {
+    if (z <= 0 && area > bestArea) {
+      best = z;
+      bestArea = area;
+    }
+  }
+  if (best > -1) return { z: best - 0.5, hole: null };
+  const hole = new THREE.Box2();
+  for (const { positions, normals } of list) {
+    for (let i = 0; i + 8 < positions.length; i += 9) {
+      if (normals[i + 2] < 0.98) continue;
+      if ([2, 5, 8].every((k) => Math.round(positions[i + k]) === best)) {
+        for (const k of [0, 3, 6]) hole.expandByPoint(new THREE.Vector2(positions[i + k], positions[i + k + 1]));
+      }
+    }
+  }
+  return { z: best - 0.5, hole };
+}
+
+/** The ground as a flat disc of `radius` around `centre` at height `z`, with a rectangular hole (see `groundPlan`). */
+export function groundGeometry(plan: { z: number; hole: THREE.Box2 | null }, centre: THREE.Vector2, radius: number): THREE.BufferGeometry {
+  const shape = new THREE.Shape().absarc(centre.x, centre.y, radius, 0, Math.PI * 2, false);
+  if (plan.hole) {
+    const { min, max } = plan.hole;
+    shape.holes.push(new THREE.Path().moveTo(min.x, min.y).lineTo(min.x, max.y).lineTo(max.x, max.y).lineTo(max.x, min.y).lineTo(min.x, min.y));
+  }
+  const geometry = new THREE.ShapeGeometry(shape, 64);
+  geometry.translate(0, 0, plan.z);
+  return geometry;
+}

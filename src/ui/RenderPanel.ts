@@ -1,4 +1,6 @@
 import { DEFAULT_REALISTIC, type RealisticRenderer, type RealisticSettings } from '../viewport/RealisticRenderer';
+import { isLook, LOOKS } from '../viewport/grading';
+import { HDRIS, isHdri } from '../viewport/hdri';
 import type { Document } from '../document';
 import { DEFAULT_SUN, type SunSettings } from '../drawing/settings';
 
@@ -36,6 +38,9 @@ export function loadRealisticSettings(): RealisticSettings {
       rayTracing: typeof saved.rayTracing === 'boolean' ? saved.rayTracing : DEFAULT_REALISTIC.rayTracing,
       raySamples: [64, 256, 1024].includes(saved.raySamples) ? saved.raySamples : DEFAULT_REALISTIC.raySamples,
       rayBounces: Math.round(number(saved.rayBounces, DEFAULT_REALISTIC.rayBounces, 1, 12)),
+      look: isLook(saved.look) ? saved.look : DEFAULT_REALISTIC.look,
+      sky: saved.sky === 'time' || isHdri(saved.sky) ? saved.sky : DEFAULT_REALISTIC.sky,
+      reflections: typeof saved.reflections === 'boolean' ? saved.reflections : DEFAULT_REALISTIC.reflections,
     };
   } catch {
     return { ...DEFAULT_REALISTIC };
@@ -54,6 +59,9 @@ export class RenderPanel {
   private readonly occlusionStrength = range(0, 1, 0.05);
   private readonly shadows = el('select', 'tag-select');
   private readonly haze = range(0, 1, 0.05);
+  private readonly look = el('select', 'tag-select');
+  private readonly skyChoice = el('select', 'tag-select');
+  private readonly reflections = el('input');
   private readonly rayTracing = el('input');
   private readonly raySamples = el('select', 'tag-select');
   private readonly rayBounces = range(1, 12, 1);
@@ -73,6 +81,10 @@ export class RenderPanel {
   ) {
     this.el.hidden = true;
     this.occlusion.type = 'checkbox';
+    this.reflections.type = 'checkbox';
+    for (const [value, look] of Object.entries(LOOKS)) this.look.append(Object.assign(el('option', undefined, look.name), { value }));
+    this.skyChoice.append(Object.assign(el('option', undefined, 'Time of day'), { value: 'time' }));
+    for (const [value, hdri] of Object.entries(HDRIS)) this.skyChoice.append(Object.assign(el('option', undefined, hdri.name), { value }));
     this.rayTracing.type = 'checkbox';
     for (const [value, label] of [['64', 'Draft'], ['256', 'Good'], ['1024', 'Best']]) this.raySamples.append(Object.assign(el('option', undefined, label), { value }));
     const bar = el('div', 'render-progress-bar');
@@ -113,6 +125,8 @@ export class RenderPanel {
     this.showSun();
     this.el.append(
       el('h3', undefined, 'Render'),
+      row('Look', this.look),
+      row('Sky', this.skyChoice),
       this.timeRow,
       this.byTime,
       row('Exposure', this.exposure),
@@ -121,13 +135,14 @@ export class RenderPanel {
       row('Strength', this.occlusionStrength),
       row('Shadows', this.shadows),
       row('Haze', this.haze),
+      row('Reflections', this.reflections),
       rayRow,
       ...this.rayRows,
       el('div', 'render-actions'),
     );
     this.el.lastElementChild!.append(this.save, reset);
     reset.addEventListener('click', () => this.apply({ ...DEFAULT_REALISTIC }));
-    for (const control of [this.exposure, this.sky, this.occlusion, this.occlusionStrength, this.shadows, this.haze, this.rayTracing, this.raySamples, this.rayBounces]) {
+    for (const control of [this.exposure, this.sky, this.occlusion, this.occlusionStrength, this.shadows, this.haze, this.rayTracing, this.raySamples, this.rayBounces, this.look, this.skyChoice, this.reflections]) {
       control.addEventListener('input', () => this.apply(this.read()));
     }
     this.apply(loadRealisticSettings());
@@ -166,6 +181,9 @@ export class RenderPanel {
       rayTracing: this.rayTracing.checked,
       raySamples: Number(this.raySamples.value) as RealisticSettings['raySamples'],
       rayBounces: Number(this.rayBounces.value),
+      look: isLook(this.look.value) ? this.look.value : DEFAULT_REALISTIC.look,
+      sky: isHdri(this.skyChoice.value) ? this.skyChoice.value : 'time',
+      reflections: this.reflections.checked,
     };
   }
 
@@ -180,6 +198,9 @@ export class RenderPanel {
     this.rayTracing.checked = settings.rayTracing && this.realistic.canRayTrace;
     this.raySamples.value = String(settings.raySamples);
     this.rayBounces.value = String(settings.rayBounces);
+    this.look.value = settings.look;
+    this.skyChoice.value = settings.sky;
+    this.reflections.checked = settings.reflections;
     for (const r of this.rayRows) r.hidden = !this.rayTracing.checked;
     this.realistic.setSettings(settings);
     try {

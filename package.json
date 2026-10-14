@@ -15,6 +15,7 @@
     "bench": "vitest run --config scripts/vitest.config.ts --silent=false scripts/bench.test.ts"
   },
   "dependencies": {
+    "@pmndrs/assets": "^1.7.0",
     "lucide": "^1.55.0",
     "three": "^0.186.1",
     "three-gpu-pathtracer": "^0.0.27",

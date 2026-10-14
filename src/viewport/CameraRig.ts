@@ -31,6 +31,8 @@ export class CameraRig {
 
   readonly position = new THREE.Vector3(9000, -14000, 8000);
   readonly target = new THREE.Vector3(0, 0, 1000);
+  /** The far clip plane is at least this far (mm); the photorealistic view raises it so ground and haze reach the horizon. */
+  minFar = 1e5;
 
   isOrtho = false;
   /** Visible world height in ortho mode. */
@@ -201,7 +203,7 @@ export class CameraRig {
     this.perspective.aspect = this.aspect;
     // (Scaled with the distance all the way down to a few hundredths of a millimetre, so a small part can fill the view.)
     this.perspective.near = THREE.MathUtils.clamp(distance / 1000, 0.005, 1e4);
-    this.perspective.far = Math.max(distance * 1000, 1e5);
+    this.perspective.far = Math.max(distance * 1000, this.minFar);
     this.perspective.updateProjectionMatrix();
 
     // Depth range for the parallel view: wide enough for the scene, no wider, so edges do not fight faces on small parts.

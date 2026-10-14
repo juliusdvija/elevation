@@ -3,10 +3,45 @@ import type { TextureKind } from '../core/materials';
 
 const SIZE = 512;
 
-/** A greyscale pattern for the colour (multiplied with the material colour) and a height map for relief. */
+/**
+ * A greyscale pattern for the colour (multiplied with the material colour), a height map, and from it a tangent-space
+ * normal map (relief that also works for the ray tracer, which ignores bump maps) and a roughness map (recesses such
+ * as mortar and grout are rougher than the faces around them).
+ */
 export interface MaterialMaps {
   map: THREE.CanvasTexture;
   bump: THREE.CanvasTexture;
+  normal: THREE.CanvasTexture;
+  roughness: THREE.CanvasTexture;
+}
+
+/**
+ * Normal (RGB) and roughness (G) pixels from greyscale heights (`size` × `size`, wrapping at the edges): the slope is a
+ * Sobel filter scaled by `strength`; roughness is 1 in the lowest recesses down to 0.75 on the highest faces.
+ */
+export function reliefPixels(heights: ArrayLike<number>, size: number, strength: number): { normal: Uint8ClampedArray<ArrayBuffer>; roughness: Uint8ClampedArray<ArrayBuffer> } {
+  const normal = new Uint8ClampedArray(size * size * 4);
+  const roughness = new Uint8ClampedArray(size * size * 4);
+  const h = (x: number, y: number) => heights[((y + size) % size) * size + ((x + size) % size)] / 255;
+  for (let y = 0; y < size; y++) {
+    for (let x = 0; x < size; x++) {
+      const dx = h(x + 1, y - 1) + 2 * h(x + 1, y) + h(x + 1, y + 1) - h(x - 1, y - 1) - 2 * h(x - 1, y) - h(x - 1, y + 1);
+      // Canvas rows run down, texture v runs up: a height rising downwards is a slope facing up the texture.
+      const dy = h(x - 1, y - 1) + 2 * h(x, y - 1) + h(x + 1, y - 1) - h(x - 1, y + 1) - 2 * h(x, y + 1) - h(x + 1, y + 1);
+      const nx = -dx * strength;
+      const ny = -dy * strength;
+      const length = Math.hypot(nx, ny, 1);
+      const i = (y * size + x) * 4;
+      normal[i] = Math.round(((nx / length) * 0.5 + 0.5) * 255);
+      normal[i + 1] = Math.round(((ny / length) * 0.5 + 0.5) * 255);
+      normal[i + 2] = Math.round(((1 / length) * 0.5 + 0.5) * 255);
+      normal[i + 3] = 255;
+      const r = Math.round((1 - 0.25 * h(x, y)) * 255);
+      roughness[i] = roughness[i + 1] = roughness[i + 2] = r;
+      roughness[i + 3] = 255;
+    }
+  }
+  return { normal, roughness };
 }
 
 function canvas(): { c: HTMLCanvasElement; g: CanvasRenderingContext2D } {
@@ -82,7 +117,15 @@ function both(draw: (g: CanvasRenderingContext2D, height: boolean) => void): Mat
   const height = canvas();
   draw(colour.g, false);
   draw(height.g, true);
-  return { map: texture(colour.c, true), bump: texture(height.c, false) };
+  const pixels = height.g.getImageData(0, 0, SIZE, SIZE).data;
+  const heights = new Uint8ClampedArray(SIZE * SIZE);
+  for (let i = 0; i < heights.length; i++) heights[i] = pixels[i * 4];
+  const relief = reliefPixels(heights, SIZE, 2.5);
+  const normal = canvas();
+  normal.g.putImageData(new ImageData(relief.normal, SIZE, SIZE), 0, 0);
+  const rough = canvas();
+  rough.g.putImageData(new ImageData(relief.roughness, SIZE, SIZE), 0, 0);
+  return { map: texture(colour.c, true), bump: texture(height.c, false), normal: texture(normal.c, false), roughness: texture(rough.c, false) };
 }
 
 function texture(source: HTMLCanvasElement, colour: boolean): THREE.CanvasTexture {

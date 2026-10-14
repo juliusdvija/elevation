@@ -6,8 +6,8 @@ import type { Material } from '../core/materials';
 export interface TracedScene {
   /** The realistic view's meshes, each with its catalogue material in `userData.material`. */
   meshes: THREE.Mesh[];
-  /** The ground's colour and how far it reaches (mm, a disc around the origin). */
-  ground: { color: THREE.ColorRepresentation; radius: number };
+  /** The realistic view's ground (a disc around the model, maybe with a hole for a sunken site). */
+  ground: THREE.Mesh;
 }
 
 /**
@@ -76,9 +76,7 @@ export class PathTracer {
       copy.matrix.copy(mesh.matrixWorld);
       this.content.add(copy);
     }
-    const disc = new THREE.Mesh(new THREE.CircleGeometry(ground.radius, 64), new THREE.MeshStandardMaterial({ color: ground.color, roughness: 1, metalness: 0 }));
-    disc.position.z = -0.5;
-    this.content.add(disc);
+    this.content.add(new THREE.Mesh(ground.geometry, ground.material));
     this.sceneDirty = true;
   }
 

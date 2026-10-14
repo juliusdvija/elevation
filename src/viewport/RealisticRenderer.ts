@@ -4,10 +4,16 @@ import { EffectComposer } from 'three/examples/jsm/postprocessing/EffectComposer
 import { GTAOPass } from 'three/examples/jsm/postprocessing/GTAOPass.js';
 import { OutputPass } from 'three/examples/jsm/postprocessing/OutputPass.js';
 import { RenderPass } from 'three/examples/jsm/postprocessing/RenderPass.js';
+import { SMAAPass } from 'three/examples/jsm/postprocessing/SMAAPass.js';
+import { UnrealBloomPass } from 'three/examples/jsm/postprocessing/UnrealBloomPass.js';
+import type { ShaderPass } from 'three/examples/jsm/postprocessing/ShaderPass.js';
+import { applyLook, createGradePass, LOOKS, type LookId } from './grading';
+import { alignTurn, isHdri, loadHdri, type Hdri, type HdriId } from './hdri';
+import { isReflective, PlanarReflections, reflectivePlanes } from './planarReflections';
 import type { Document } from '../document';
 import type { Material } from '../core/materials';
 import { mapsFor } from './proceduralTextures';
-import { buildMaterialBuckets } from './realisticScene';
+import { buildMaterialBuckets, groundGeometry, groundPlan } from './realisticScene';
 import { atmosphere, type Atmosphere } from './atmosphere';
 import { NightSky } from './nightSky';
 import type { ModelRenderer } from './ModelRenderer';
@@ -32,6 +38,12 @@ export interface RealisticSettings {
   /** When the ray-traced picture is finished (samples per pixel), and how often light may bounce. */
   raySamples: 64 | 256 | 1024;
   rayBounces: number;
+  /** The finished look: tone mapping and grade (see `LOOKS`). */
+  look: LookId;
+  /** The sky: the time-of-day sky from the document's sun, or a photographed panorama. */
+  sky: 'time' | HdriId;
+  /** Mirror reflections in water and polished floors. */
+  reflections: boolean;
 }
 
 export const DEFAULT_REALISTIC: RealisticSettings = {
@@ -44,10 +56,16 @@ export const DEFAULT_REALISTIC: RealisticSettings = {
   rayTracing: false,
   raySamples: 256,
   rayBounces: 5,
+  look: 'natural',
+  sky: 'time',
+  reflections: true,
 };
 
 const HORIZON = 0xc9d6e3;
-const GROUND = 0xa9a79e;
+/** The endless ground: a muted lawn, so a model sits in a landscape rather than on a grey plate. */
+const GROUND = 0x8b9670;
+/** How far the ground reaches from the model (mm): to where the haze has swallowed it. */
+const GROUND_RADIUS = 9e5;
 
 /** Ambient occlusion that ignores see-through things (glass, the cut-plane gizmo, selection tints), which would otherwise count as solid walls. */
 class SolidOcclusion extends GTAOPass {
@@ -86,6 +104,14 @@ export class RealisticRenderer {
   private composer: EffectComposer | null = null;
   private renderPass: RenderPass | null = null;
   private ao: SolidOcclusion | null = null;
+  private bloom: UnrealBloomPass | null = null;
+  private grade: ShaderPass | null = null;
+  private smaa: SMAAPass | null = null;
+  private readonly reflections = new PlanarReflections();
+  /** The photographed sky in use (null: the time-of-day sky), once loaded. */
+  private hdri: { id: HdriId; data: Hdri; environment: THREE.WebGLRenderTarget } | null = null;
+  private groundTextured: boolean;
+  private readonly skyRotation = new THREE.Euler(-Math.PI / 2, 0, 0, 'XZY');
   private settings: RealisticSettings = { ...DEFAULT_REALISTIC };
   private enabled = false;
   private dirty = true;
@@ -107,10 +133,8 @@ export class RealisticRenderer {
   ) {
     this.group.name = 'realistic';
     this.group.visible = false;
-    this.ground = new THREE.Mesh(
-      new THREE.CircleGeometry(1, 96),
-      new THREE.MeshStandardMaterial({ color: GROUND, roughness: 1, metalness: 0 }),
-    );
+    this.ground = new THREE.Mesh(new THREE.BufferGeometry(), new THREE.MeshStandardMaterial({ color: GROUND, roughness: 1, metalness: 0 }));
+    this.groundTextured = false;
     this.ground.receiveShadow = true;
     this.ground.frustumCulled = false;
     this.ground.raycast = () => {};
@@ -149,7 +173,28 @@ export class RealisticRenderer {
       this.tracer.bounces = settings.rayBounces;
       if (before.skyLight !== settings.skyLight) this.tracerSky = true;
     }
+    if (before.sky !== settings.sky) this.chooseSky();
+    if (before.look !== settings.look && this.enabled) this.applyStyle(true);
     this.viewport.requestRender();
+  }
+
+  /** Loads the chosen photographed sky (or drops it for the time-of-day sky), then relights. */
+  private chooseSky(): void {
+    const id = this.settings.sky;
+    if (!isHdri(id)) {
+      this.hdri?.environment.dispose();
+      this.hdri = null;
+      this.tracerSky = true;
+      if (this.enabled) this.applyStyle(true);
+      return;
+    }
+    void loadHdri(id).then((data) => {
+      if (this.settings.sky !== id) return;
+      this.hdri?.environment.dispose();
+      this.hdri = { id, data, environment: this.pmrem.fromEquirectangular(data.texture) };
+      this.tracerSky = true;
+      if (this.enabled) this.applyStyle(true);
+    });
   }
 
   /** Whether ray tracing can work on this GPU. */
@@ -191,7 +236,10 @@ export class RealisticRenderer {
       this.updateSky();
       this.viewport.mode = {
         render: () => this.render(),
-        resize: (width, height) => this.composer?.setSize(width, height),
+        resize: (width, height) => {
+          this.composer?.setSize(width, height);
+          this.reflections.setSize(width, height);
+        },
         sunChanged: () => this.scheduleSky(),
         continuous: () => this.tracing && (this.tracer?.refining ?? true),
       };
@@ -199,6 +247,9 @@ export class RealisticRenderer {
       this.viewport.mode = null;
     }
     this.viewport.setShadowResolution(on ? this.settings.shadowSize : 4096);
+    // The horizon is a couple of kilometres off, not a hundred metres (faces never overlap here, so depth precision holds).
+    this.viewport.rig.minFar = on ? 2e6 : 1e5;
+    this.viewport.rig.update();
     this.applyStyle(on);
     this.viewport.requestRender();
   }
@@ -209,15 +260,22 @@ export class RealisticRenderer {
     this.group.visible = on;
     this.ground.visible = on;
     this.plain.setRealistic(on);
-    scene.environment = on ? (this.environment?.texture ?? null) : null;
-    scene.environmentRotation.set(-Math.PI / 2, 0, 0);
-    scene.backgroundRotation.set(-Math.PI / 2, 0, 0);
-    scene.background = on && this.environment ? this.environment.texture : new THREE.Color(this.viewport.plainBackground);
+    const hdri = on ? this.hdri : null;
+    this.skyRotation.z = hdri?.data.sun ? alignTurn(hdri.data.sun, this.viewport.sunDirection) : 0;
+    scene.environment = on ? (hdri?.environment.texture ?? this.environment?.texture ?? null) : null;
+    scene.environmentRotation.copy(this.skyRotation);
+    scene.backgroundRotation.copy(this.skyRotation);
+    scene.background = on && hdri ? hdri.data.texture : on && this.environment ? this.environment.texture : new THREE.Color(this.viewport.plainBackground);
+    // A 512-pixel panorama is soft up close: a touch of blur makes it read as a photographed backdrop.
+    scene.backgroundBlurriness = hdri ? 0.02 : 0;
     scene.environmentIntensity = this.environmentIntensity();
-    scene.backgroundIntensity = 0.4 + 0.6 * this.air.night;
+    scene.backgroundIntensity = hdri ? 1 : 0.4 + 0.6 * this.air.night;
     scene.fog = on ? new THREE.Fog(this.horizon(), 1, 2) : null;
-    renderer.toneMapping = on ? THREE.ACESFilmicToneMapping : THREE.NoToneMapping;
-    renderer.toneMappingExposure = this.settings.exposure;
+    renderer.toneMapping = on ? LOOKS[this.settings.look].toneMapping : THREE.NoToneMapping;
+    renderer.toneMappingExposure = this.exposure();
+    // Soft shadows: the shadow map's filter widens as the sun gets lower (longer shadows blur more).
+    this.viewport.sun.shadow.radius = on ? 3 + 5 * (1 - Math.min(1, Math.max(0, this.viewport.sunAltitude) / 60)) : 1;
+    this.viewport.sun.shadow.blurSamples = on ? 16 : 8;
     // The hemisphere light is replaced by the sky; sunlight takes the colour and strength of the hour.
     this.viewport.hemisphere.visible = !on;
     this.moon.visible = on;
@@ -226,8 +284,14 @@ export class RealisticRenderer {
     this.viewport.requestRender();
   }
 
+  private exposure(): number {
+    return this.settings.exposure * LOOKS[this.settings.look].exposure;
+  }
+
   /** The sky's light on the model: the panel's setting, scaled for twilight; the dark night sky is turned up so the model stays readable. */
   private environmentIntensity(): number {
+    // Photographed skies are measured light: bright enough as they are, relative to the panel's default.
+    if (this.hdri) return this.settings.skyLight / DEFAULT_REALISTIC.skyLight;
     return this.settings.skyLight * (this.air.skyIntensity * (1 - this.air.night) + this.air.night * (1.5 + 4.5 * this.air.stars));
   }
 
@@ -312,9 +376,12 @@ export class RealisticRenderer {
     if (m.texture) {
       const maps = mapsFor(m.texture.kind);
       material.map = maps.map;
-      material.bumpMap = maps.bump;
-      material.bumpScale = (m.bump ?? 0.3) * 2;
+      material.normalMap = maps.normal;
+      const relief = m.bump ?? 0.3;
+      material.normalScale.set(relief, relief);
+      material.roughnessMap = maps.roughness;
     }
+    if (isReflective(m)) this.reflections.patch(material);
     this.materials.set(key, material);
     return material;
   }
@@ -325,7 +392,27 @@ export class RealisticRenderer {
       (child as THREE.Mesh).geometry.dispose();
       this.group.remove(child);
     }
-    for (const bucket of buildMaterialBuckets(this.doc.placements(), this.plain.smoothAngle).values()) {
+    const buckets = [...buildMaterialBuckets(this.doc.placements(), this.plain.smoothAngle).values()];
+    this.reflections.setPlanes(reflectivePlanes(buckets.filter((b) => isReflective(b.material))));
+    // The ground: a disc out to the horizon around the model, at the height of its site (see `groundPlan`).
+    const plan = groundPlan(buckets);
+    const box = new THREE.Box3();
+    for (const b of buckets) for (let i = 0; i < b.positions.length; i += 3) box.expandByPoint(new THREE.Vector3(b.positions[i], b.positions[i + 1], b.positions[i + 2]));
+    const centre = box.isEmpty() ? new THREE.Vector2() : new THREE.Vector2((box.min.x + box.max.x) / 2, (box.min.y + box.max.y) / 2);
+    this.ground.geometry.dispose();
+    this.ground.geometry = groundGeometry(plan, centre, GROUND_RADIUS);
+    if (!this.groundTextured) {
+      // The lawn pattern, its UVs in millimetres: one repeat every 600 mm (its own textures, so the repeat stays its own).
+      const maps = mapsFor('grass');
+      const ground = this.ground.material as THREE.MeshStandardMaterial;
+      ground.map = maps.map.clone();
+      ground.normalMap = maps.normal.clone();
+      ground.normalScale.set(0.5, 0.5);
+      for (const t of [ground.map, ground.normalMap]) t.repeat.set(1 / 600, 1 / 600);
+      ground.needsUpdate = true;
+      this.groundTextured = true;
+    }
+    for (const bucket of buckets) {
       const geometry = new THREE.BufferGeometry();
       geometry.setAttribute('position', new THREE.Float32BufferAttribute(bucket.positions, 3));
       geometry.setAttribute('normal', new THREE.Float32BufferAttribute(bucket.normals, 3));
@@ -357,9 +444,17 @@ export class RealisticRenderer {
     this.ao = new SolidOcclusion(scene, rig.perspective, size.x, size.y);
     this.ao.updateGtaoMaterial({ radius: 600, distanceExponent: 1, thickness: 1, scale: 1.1, samples: 16, distanceFallOff: 1, screenSpaceRadius: false });
     this.ao.updatePdMaterial({ lumaPhi: 10, depthPhi: 2, normalPhi: 3, radius: 8, rings: 2, samples: 16 });
+    // Glow only around light far brighter than white (sun glints, the sun itself).
+    this.bloom = new UnrealBloomPass(new THREE.Vector2(size.x, size.y), 0.2, 0.35, 4);
+    this.grade = createGradePass();
+    this.smaa = new SMAAPass();
     composer.addPass(this.renderPass);
     composer.addPass(this.ao);
+    composer.addPass(this.bloom);
     composer.addPass(new OutputPass());
+    composer.addPass(this.grade);
+    composer.addPass(this.smaa);
+    this.reflections.setSize(size.x * renderer.getPixelRatio(), size.y * renderer.getPixelRatio());
     return (this.composer = composer);
   }
 
@@ -379,15 +474,21 @@ export class RealisticRenderer {
     this.renderPass!.camera = rig.camera;
     this.ao!.enabled = this.settings.occlusion && !rig.isOrtho;
     this.ao!.blendIntensity = this.settings.occlusionStrength;
-    // The ground follows the target; it and the haze reach out to the horizon.
-    const reach = Math.max(rig.perspective.far, 1e5) * 0.45;
-    this.ground.position.set(rig.target.x, rig.target.y, -0.5);
-    this.ground.scale.set(reach, reach, 1);
+    // The haze swallows the ground before its edge.
+    const reach = Math.min(GROUND_RADIUS, rig.perspective.far * 0.45);
     if (scene.fog instanceof THREE.Fog) {
       scene.fog.near = reach * (0.6 - 0.55 * this.settings.haze);
       scene.fog.far = reach;
     }
-    renderer.toneMappingExposure = this.settings.exposure;
+    const look = LOOKS[this.settings.look];
+    renderer.toneMapping = look.toneMapping;
+    renderer.toneMappingExposure = this.exposure();
+    this.bloom!.strength = look.bloom;
+    this.bloom!.enabled = look.bloom > 0;
+    const size = renderer.getSize(new THREE.Vector2());
+    applyLook(this.grade!, look, size.x / Math.max(1, size.y));
+    if (this.settings.reflections) this.reflections.render(renderer, scene, rig.camera);
+    else this.reflections.disable();
     composer.render();
   }
 
@@ -402,7 +503,7 @@ export class RealisticRenderer {
     const { rig, renderer, sun, sunDirection } = this.viewport;
     if (this.tracerScene) {
       this.group.updateMatrixWorld(true);
-      tracer.setScene({ meshes: this.group.children as THREE.Mesh[], ground: { color: GROUND, radius: Math.max(rig.perspective.far, 1e5) } });
+      tracer.setScene({ meshes: this.group.children as THREE.Mesh[], ground: this.ground });
       this.tracerScene = false;
     }
     if (this.tracerSky) {
@@ -410,7 +511,8 @@ export class RealisticRenderer {
       tracer.setLights({ sun, sunDirection, moon: this.moon });
       this.tracerSky = false;
     }
-    renderer.toneMappingExposure = this.settings.exposure;
+    renderer.toneMapping = LOOKS[this.settings.look].toneMapping;
+    renderer.toneMappingExposure = this.exposure();
     tracer.render(rig.camera);
     this.onProgress?.(Math.min(tracer.samples, tracer.maxSamples), tracer.maxSamples);
   }
