@@ -2,7 +2,7 @@ import html, json, sys
 
 # status: done | doing | next | later
 DATA = {
-  "stats": [("245","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("57","design decisions logged")],
+  "stats": [("251","tests passing"),("0 / 100","fuzz seeds failing"),("~1 %","solids fuzz at 40 steps (was 22 %)"),("60","design decisions logged")],
   "phases": [
     {"name":"Engine","blurb":"A kernel that does not corrupt models, and stays fast.","items":[
       ("done","Solid-safe push/pull: refuse edits that would open a closed solid","f1fd617"),
@@ -100,13 +100,15 @@ DATA = {
       ("done","Heavier outline: the edge of the model seen from the camera is drawn bolder than inner edges","9fb1d3a"),
       ("done","Settings panel for the photorealistic view: exposure, sky light, corner shade, shadow sharpness, haze","9fb1d3a")]},
     {"name":"Photorealistic rendering","blurb":"Pictures that look like photos: real materials, a living sky, optional ray tracing.","items":[
-      ("doing","Sky that follows the time of day: warm sunrise and sunset light, twilight, a starry night",""),
-      ("next","Time-of-day slider right in the Render panel",""),
-      ("next","Library of about 35 ready-made materials (woods, metals, stone, glass, fabrics), in categories with thumbnails",""),
-      ("next","Optional ray tracing: light that bounces and real glass, refining while the camera rests",""),
-      ("next","Save the rendered picture as an image","")]},
+      ("done","Sky that follows the time of day: warm sunrise and sunset light, twilight, a starry night with moonlight","080fc1d"),
+      ("done","Time-of-day slider right in the Render panel","080fc1d"),
+      ("done","Library of 45 ready-made materials (woods, metals, stone, glass, fabrics) in eight groups with small previews","593a32a"),
+      ("done","Optional ray tracing: light that bounces and real glass, refining while the camera rests","7668b97"),
+      ("done","Save the rendered picture as an image","7668b97"),
+      ("later","Relief (bump) and haze in the ray-traced picture",""),
+      ("later","Ray-traced pictures for scenes on sheets","")]},
   ],
-  "log":[("Now","Building the photorealistic render engine: starting with a sky that follows the time of day."),("Just finished","The model now has a bolder outline against its inner lines, and the realistic view has a Render panel (exposure, sky light, corner shade, shadow sharpness, haze) that opens when you switch it on and remembers your choices. The line-weight menu was removed as asked."),("Known issue","Glass is not truly refractive and the realistic view has no light bounce, so rooms lit only through windows look flat."),("Direction","Next best step: a path-traced still image for final pictures, or dimensions that follow the geometry for precise drawings.")]
+  "log":[("Now","The photorealistic render engine is in: a toggle with the aperture button, a sky that follows the time of day, 45 materials and optional ray tracing."),("Just finished","Ray tracing in the Render panel: switch it on and the picture refines while the camera rests, with bouncing light and see-through glass; Save image downloads it. Before that: a sky with sunrise colours, twilight and stars, and the material library."),("Known issue","Ray tracing needs a decent graphics card to be quick; it ignores surface relief and haze, and hides selection and dimensions while it shows."),("Direction","Next best step: ray-traced pictures for scenes on sheets, so presentation pages can carry final renders.")]
 }
 
 def render(d):
