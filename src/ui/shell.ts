@@ -31,6 +31,8 @@ import {
   Aperture,
   Info,
   Sun,
+  Footprints,
+  Presentation,
   Tags,
   Rotate3d,
   Undo2,
@@ -48,6 +50,7 @@ export interface ShellElements {
   tagsToggle: HTMLButtonElement;
   sunToggle: HTMLButtonElement;
   renderToggle: HTMLButtonElement;
+  presentButton: HTMLButtonElement;
   infoToggle: HTMLButtonElement;
   gridSnapToggle: HTMLButtonElement;
   docName: HTMLElement;
@@ -90,6 +93,7 @@ const TOOL_ICONS: Record<string, IconNode> = {
   figure: PersonStanding,
   orbit: Rotate3d,
   pan: Hand,
+  walk: Footprints,
 };
 
 function el<K extends keyof HTMLElementTagNameMap>(tag: K, className?: string, text?: string) {
@@ -192,9 +196,10 @@ export function buildShell(
   const tagsToggle = iconButton(Tags, 'Show tags');
   const sunToggle = iconButton(Sun, 'Sun and shadows');
   const renderToggle = iconButton(Aperture, 'Photorealistic view: materials, sky, soft shadows (on/off)');
+  const presentButton = iconButton(Presentation, 'Present to a client: full screen, photorealistic, step through the views or walk around (Esc ends)');
   const infoToggle = iconButton(Info, 'Show info: lengths, areas, volume, size and position of the selection');
   const panelGroup = el('div', 'group');
-  panelGroup.append(renderToggle, infoToggle, tagsToggle, sunToggle, componentsToggle, drawingsToggle);
+  panelGroup.append(presentButton, renderToggle, infoToggle, tagsToggle, sunToggle, componentsToggle, drawingsToggle);
 
   toolbar.append(brand, docName, fileGroup, toolGroup, el('div', 'spacer'), viewGroup, cameraGroup, historyGroup, panelGroup);
 
@@ -231,5 +236,5 @@ export function buildShell(
   root.append(toolbar, workspace, statusbar);
   mount.append(root);
 
-  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, sunToggle, renderToggle, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
+  return { root, workspace, viewport, drawingsToggle, componentsToggle, tagsToggle, sunToggle, renderToggle, presentButton, infoToggle, gridSnapToggle, docName, newDoc, openDoc, importDoc, exportDoc, exportMenu, saveDoc, toolButtons, viewButtons, projection, zoomExtents, undo, redo, hint, measurements, unitSelect, gridSelect, smoothSelect, decimalsSelect };
 }

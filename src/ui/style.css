@@ -1424,3 +1424,132 @@ input.swatch.custom {
   border-color: var(--active);
   color: var(--active-ink);
 }
+
+/* Walk tool: a joystick for touch screens, bottom left of the view. */
+.walk-joystick {
+  position: absolute;
+  left: 24px;
+  bottom: 64px;
+  width: 112px;
+  height: 112px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.25);
+  border: 1px solid rgba(255, 255, 255, 0.6);
+  backdrop-filter: blur(6px);
+  display: none;
+  align-items: center;
+  justify-content: center;
+  touch-action: none;
+  z-index: 6;
+}
+
+.walk-joystick-knob {
+  width: 44px;
+  height: 44px;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.85);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.2);
+}
+
+@media (pointer: coarse) {
+  .walk-joystick {
+    display: flex;
+  }
+}
+
+/* Presenting to a client: only the 3D view, edge to edge, with a slim glass bar that sleeps when idle. */
+.app.presenting {
+  /* Toolbar and status bar are gone, so the workspace is the only row. */
+  grid-template-rows: 1fr;
+  background: #000;
+}
+
+.app.presenting > .toolbar,
+.app.presenting > .statusbar,
+.app.presenting .workspace > :not(.viewport),
+.app.presenting .viewport > :not(canvas):not(.presentation-bar):not(.walk-joystick) {
+  display: none !important;
+}
+
+.presentation-bar {
+  position: absolute;
+  left: 50%;
+  bottom: 28px;
+  transform: translateX(-50%);
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  padding: 8px 10px 8px 18px;
+  border-radius: 999px;
+  background: rgba(20, 22, 24, 0.55);
+  color: #fff;
+  backdrop-filter: blur(14px) saturate(1.3);
+  box-shadow: 0 8px 32px rgba(0, 0, 0, 0.25);
+  z-index: 10;
+  transition: opacity 0.6s ease, transform 0.6s ease;
+  max-width: calc(100% - 32px);
+}
+
+.presentation-bar.asleep {
+  opacity: 0;
+  transform: translate(-50%, 12px);
+  pointer-events: none;
+}
+
+.presentation-title {
+  display: flex;
+  flex-direction: column;
+  line-height: 1.2;
+  margin-right: 10px;
+  min-width: 0;
+}
+
+.presentation-title strong {
+  font-size: 13px;
+  font-weight: 600;
+  letter-spacing: 0.02em;
+}
+
+.presentation-title span {
+  font-size: 11px;
+  opacity: 0.7;
+}
+
+.present-button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  border: 0;
+  border-radius: 50%;
+  background: transparent;
+  color: inherit;
+  cursor: pointer;
+}
+
+.present-button:hover,
+.present-button[aria-pressed='true'] {
+  background: rgba(255, 255, 255, 0.18);
+}
+
+.presentation-dots {
+  display: flex;
+  gap: 6px;
+  padding: 0 4px;
+}
+
+.presentation-dot {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: 0;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.4);
+  cursor: pointer;
+}
+
+.presentation-dot[aria-pressed='true'] {
+  background: #fff;
+  transform: scale(1.25);
+}

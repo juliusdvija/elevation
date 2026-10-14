@@ -167,7 +167,7 @@ export class RealisticRenderer {
     });
     // A picture of the model (drawings, scenes) is the plain style: put it back for the duration.
     viewport.snapshotHooks.push((rendering) => {
-      if (!this.enabled || this.still) return;
+      if (!this.enabled || this.viewport.cleaning) return;
       this.applyStyle(!rendering);
     });
   }

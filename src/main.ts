@@ -21,6 +21,7 @@ import { createArcTool } from './tools/ArcTool';
 import { createOffsetTool } from './tools/OffsetTool';
 import { ToolManager } from './tools/ToolManager';
 import { createOrbitTool, createPanTool } from './tools/navigationTools';
+import { createWalkTool } from './tools/WalkTool';
 import { createSelectTool } from './tools/SelectTool';
 import { createLineTool } from './tools/LineTool';
 import { createRectangleTool } from './tools/RectangleTool';
@@ -34,6 +35,7 @@ import { ScenesBar } from './ui/ScenesBar';
 import { InfoPanel } from './ui/InfoPanel';
 import { SunPanel } from './ui/SunPanel';
 import { RenderPanel } from './ui/RenderPanel';
+import { Presentation } from './ui/Presentation';
 import { DEFAULT_SUN } from './drawing/settings';
 import { resolveSun } from './drawing/sun';
 import { TagsPanel } from './ui/TagsPanel';
@@ -191,6 +193,7 @@ for (const create of [
   createFigureTool,
   createOrbitTool,
   createPanTool,
+  createWalkTool,
 ]) {
   tools.register(create(ctx));
 }
@@ -320,7 +323,7 @@ shell.workspace.append(drawings.el);
 
 // Saved views: a strip over the 3D view; clicking one flies the camera there.
 let flight = 0;
-function flyTo(scene: Scene) {
+function flyTo(scene: Scene, duration = 450) {
   const camera = scene.camera;
   // The view remembers which tags were hidden.
   doc.setHiddenTags(scene.hidden ?? []);
@@ -331,7 +334,7 @@ function flyTo(scene: Scene) {
   const to = { position: new THREE.Vector3(...camera.position), target: new THREE.Vector3(...camera.target), orthoHeight: camera.orthoHeight };
   const started = performance.now();
   const step = (now: number) => {
-    const t = Math.min(1, (now - started) / 450);
+    const t = Math.min(1, (now - started) / duration);
     const k = t * t * (3 - 2 * t); // ease in and out
     rig.position.lerpVectors(from.position, to.position, k);
     rig.target.lerpVectors(from.target, to.target, k);
@@ -363,11 +366,30 @@ shell.tagsToggle.addEventListener('click', () => {
 // The render settings panel belongs to the photorealistic view: it shows while that is on.
 const renderPanel = new RenderPanel(realistic, doc);
 shell.viewport.append(renderPanel.el);
+/** Switches the photorealistic view (and its panel and button); returns whether it was on before. */
+function setRealistic(on: boolean): boolean {
+  const was = realistic.isOn;
+  realistic.setEnabled(on);
+  renderPanel.setVisible(on);
+  shell.renderToggle.setAttribute('aria-pressed', String(on));
+  return was;
+}
 shell.renderToggle.addEventListener('click', () => {
-  realistic.setEnabled(!realistic.isOn);
-  renderPanel.setVisible(realistic.isOn);
-  shell.renderToggle.setAttribute('aria-pressed', String(realistic.isOn));
+  setRealistic(!realistic.isOn);
   shell.renderToggle.blur();
+});
+const presentation = new Presentation({
+  root: shell.root,
+  viewport,
+  doc,
+  setRealistic,
+  flyTo: (scene, ms) => flyTo(scene, ms),
+  activateTool: (id) => tools.activate(id),
+  activeTool: () => tools.active?.id ?? null,
+});
+shell.presentButton.addEventListener('click', () => {
+  shell.presentButton.blur();
+  presentation.enter();
 });
 shell.renderToggle.setAttribute('aria-pressed', 'false');
 // "Pick focus": the next click in the view sets the distance in focus for depth of field (the tools never see it).

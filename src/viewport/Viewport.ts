@@ -45,6 +45,8 @@ export class Viewport {
   mode: RenderMode | null = null;
   readonly hemisphere = new THREE.HemisphereLight(0xffffff, theme.ground, 1.5);
 
+  /** True while `cleanFrame` runs the snapshot hooks (a clean live view, not a picture in the drawing style). */
+  cleaning = false;
   /** Things that are not part of the model picture (selection, hover, guides) hide themselves while a snapshot renders. */
   readonly snapshotHooks: ((rendering: boolean) => void)[] = [];
 
@@ -276,7 +278,9 @@ export class Viewport {
    */
   cleanFrame(clean: boolean): void {
     this.overlay.visible = !clean;
+    this.cleaning = clean;
     for (const hook of this.snapshotHooks) hook(clean);
+    this.cleaning = false;
     this.requestRender();
   }
 
