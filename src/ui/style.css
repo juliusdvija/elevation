@@ -689,8 +689,10 @@ input:focus-visible {
   left: 50%;
   transform: translateX(-50%);
   display: flex;
-  align-items: center;
+  flex-direction: column;
+  align-items: stretch;
   gap: 6px;
+  max-width: calc(100% - 24px);
   padding: 6px 8px;
   border: 1px solid var(--line);
   border-radius: 10px;
@@ -1318,5 +1320,28 @@ input.swatch.custom {
   font-size: 12px;
 }
 .render-panel [hidden] {
+  display: none;
+}
+
+.palette-tabs,
+.palette-swatches,
+.palette-controls {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+}
+
+.palette-tabs .text-button[aria-pressed='true'] {
+  color: var(--ink);
+  background: var(--hover);
+}
+
+.swatch.material {
+  width: 32px;
+  height: 32px;
+}
+
+.swatch[hidden] {
   display: none;
 }

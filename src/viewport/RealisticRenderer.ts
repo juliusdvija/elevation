@@ -246,6 +246,12 @@ export class RealisticRenderer {
       opacity: glass ? m.opacity : 1,
       depthWrite: !glass,
       envMapIntensity: glass ? 1.5 : 1,
+      clearcoat: m.clearcoat ?? 0,
+      clearcoatRoughness: m.clearcoatRoughness ?? 0.1,
+      sheen: m.sheen ?? 0,
+      sheenColor: new THREE.Color(m.color).lerp(new THREE.Color(0xffffff), 0.3),
+      sheenRoughness: 0.6,
+      anisotropy: m.anisotropy ?? 0,
     });
     if (m.texture) {
       const maps = mapsFor(m.texture.kind);

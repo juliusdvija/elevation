@@ -5,8 +5,9 @@ import type { Id } from '../kernel/Model';
 import type { Tool, ToolContext } from './Tool';
 
 /** Architectural palette: the material catalogue (a colour, and for most a hatch pattern shown in drawings). */
-export const PALETTE: { name: string; color: string; opacity?: number; hatch?: string; material: string }[] = MATERIALS.map((m) => ({
+export const PALETTE: { name: string; color: string; opacity?: number; hatch?: string; material: string; category?: string }[] = MATERIALS.map((m) => ({
   name: m.name,
+  category: m.category,
   color: m.color,
   opacity: m.opacity,
   hatch: m.hatch,
